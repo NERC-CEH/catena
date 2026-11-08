@@ -22,7 +22,8 @@ It installs as `ukceh-catena` and imports as `catena`.
     uv add git+https://github.com/NERC-CEH/catena
     ```
 
-This installs the library and its Python API.
+This installs the library and its Python API from the latest `main`.
+To install a specific release, append its tag to the URL, e.g. `git+https://github.com/NERC-CEH/catena@v0.4.0`.
 The `catena` command, geospatial support and graph rendering are optional extras.
 
 ## Extras

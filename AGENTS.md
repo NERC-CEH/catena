@@ -19,3 +19,14 @@ catena is an opinionated integration of Apache Hamilton (DAG execution), xarray 
 - **Keyword-only args (after `*`) from all config sections share one flat Hamilton namespace.** A name collision between two sections is a parse-time error naming both sections — choose parameter names accordingly.
 - **`nodegen.py` generates Hamilton modules from `[[node]]` TOML entries via `exec()`** (a node expression is arbitrary user code). Node names and inputs are validated as identifiers, and against `specs.RESERVED_NODE_NAMES`, at parse time in `NodeSpec.from_config`; keep that validation intact if you touch this path.
 - **Tests** use session-scoped synthetic netCDF fixtures (`tests/conftest.py` ← `tests/synthetic_data.py`); the session pipeline (`tests/test_config.toml`) is deliberately model-free — a single `[[node]]` derived variable stands in for a model.
+
+## Releasing
+
+Every PR merges to `main`; a release is a tag on it, made by the maintainer only.
+Nothing is published to PyPI: users install a tag from GitHub.
+
+1. `uv version --bump rc` (giving e.g. `0.5.0rc1`), or `--bump stable` for a full release, and commit.
+2. `just tag`, then `just release`.
+3. After a full release, `uv version --bump minor --bump dev` and commit, so a git install of `main` does not report the released version.
+
+The docs site deploys only on a stable release, so it documents the latest release.

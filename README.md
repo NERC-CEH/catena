@@ -24,6 +24,8 @@ Installation via `uv` is recommended.
 uv add "ukceh-catena[all] @ git+https://github.com/NERC-CEH/catena"
 ```
 
+Append a tag such as `@v0.4.0` to the URL to install a specific release rather than the latest `main`.
+
 `pip` is also fine.
 
 ```sh
