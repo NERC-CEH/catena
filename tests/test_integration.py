@@ -12,11 +12,11 @@ from typing import Annotated
 import numpy as np
 import pandas as pd
 import xarray as xr
-from xarray_annotated import Freq, check_annotations, enabled
+from xarray_annotated import Freq, Unit, check_annotations, enabled
 
 from catena.config import IOSpec
 from catena.io import get_final_vars
-from catena.pipeline import run
+from catena.pipeline import dry_run, run
 
 N_PIXELS = 4  # 2x2 grid
 N_DAYS = 365
@@ -77,6 +77,58 @@ class TestGridInputs:
     def test_grid_pixel_count(self, pipeline_inputs):
         assert pipeline_inputs["latitude"].sizes["pixel"] == N_PIXELS
         assert pipeline_inputs["longitude"].sizes["pixel"] == N_PIXELS
+
+    def test_lat_lon_carry_cf_units(self, pipeline_inputs):
+        assert pipeline_inputs["latitude"].attrs["units"] == "degrees_north"
+        assert pipeline_inputs["longitude"].attrs["units"] == "degrees_east"
+
+
+class TestLatLonUnitContract:
+    """A node may declare a unit on the computed ``latitude``."""
+
+    @staticmethod
+    def _config(tmp_path, synthetic_data_dir, monkeypatch):
+        @check_annotations
+        def scaled_latitude(
+            latitude: Annotated[xr.DataArray, Unit("degrees")],
+        ) -> Annotated[xr.DataArray, Unit("degrees")]:
+            return latitude * 1
+
+        module = types.ModuleType("latitude_model")
+        scaled_latitude.__module__ = module.__name__
+        module.scaled_latitude = scaled_latitude  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, module.__name__, module)
+
+        config = tmp_path / "config.toml"
+        config.write_text(
+            f"""
+[inputs.static]
+path = "{synthetic_data_dir / "static.nc"}"
+vars = ["elevation"]
+
+[latitude_model]
+_import_path = "latitude_model"
+
+[outputs.latitude]
+path = "{tmp_path / "latitude.nc"}"
+suffix = ""
+vars = ["scaled_latitude"]
+"""
+        )
+        return config
+
+    def test_dry_run(self, tmp_path, synthetic_data_dir, monkeypatch):
+        config = self._config(tmp_path, synthetic_data_dir, monkeypatch)
+        with enabled(True):
+            report = dry_run(str(config))
+        assert {s.name: s.status for s in report.stages}["contracts"] == "ok"
+
+    def test_run(self, tmp_path, synthetic_data_dir, monkeypatch):
+        config = self._config(tmp_path, synthetic_data_dir, monkeypatch)
+        with enabled(True):
+            run(str(config))
+        written = xr.open_dataarray(tmp_path / "latitude.nc")
+        assert np.all((written.values >= 49.0) & (written.values <= 55.0))
 
 
 class TestDriverExecution:

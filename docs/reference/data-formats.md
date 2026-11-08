@@ -41,6 +41,8 @@ catena handles two spatial layouts automatically:
 - **Pre-stacked.** Data that already has a `pixel` dimension is used as-is.
 
 Grid coordinate nodes (`latitude`, `longitude`) are computed from the CRS when a gridded input is loaded.
+They are in EPSG:4326 with CF `units` of `degrees_north` and `degrees_east`, so a node can declare `Unit("degrees")` (or the CF spelling) on either.
+The unit cannot tell the two apart: under the CF registry both are plain degrees, so a swapped latitude and longitude still passes the check.
 
 ## Temporal handling
 
