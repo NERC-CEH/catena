@@ -11,10 +11,11 @@ executing any node (the basis of ``catena run --dry-run``).
 
 **Facets.** The checks cover every `xarray-annotated` facet — **units** (pint/CF),
 **dims** / **coords** / **dtype** (schema), and **freq** (the spacing and phase of
-the time axis) — and apply the rules `xarray_annotated.enforce` applies at run time,
-through `xarray_annotated.declaration_conflicts` for edges and
+the time axis) — and apply the rules `xarray_annotated.check_annotations` applies at
+run time, through `xarray_annotated.declaration_conflicts` for edges and
 `xarray_annotated.declaration_violations` for inputs. A malformed declaration, on a
-function no `xarray_annotated.enforce` has validated, raises `CatenaValueError`.
+function no `xarray_annotated.check_annotations` has validated, raises
+`CatenaValueError`.
 
 **Switching off.** Both checks do nothing when `xarray-annotated` is switched off,
 with ``XARRAY_ANNOTATED_ENABLED=false`` or inside ``xarray_annotated.enabled(False)``.

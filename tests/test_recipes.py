@@ -68,7 +68,7 @@ def test_pipeline_101_notebook_executes(tmp_path: Path) -> None:
 
 
 def test_flux_notebook_executes(tmp_path: Path) -> None:
-    """Exporting the notebook executes every cell and produces valid products."""
+    """Exporting the notebook executes every cell and produces labelled products."""
     with (
         executed_recipe("flux_pipeline", tmp_path) as recipe,
         xr.open_dataset(recipe / "results" / "flux_products.nc") as products,
@@ -83,6 +83,15 @@ def test_flux_notebook_executes(tmp_path: Path) -> None:
         }
         assert expected <= set(products)
         assert products.gpp_weekly.sizes["time"] == 53
+        units = {name: products[name].attrs.get("units") for name in expected}
+        assert units == {
+            "annual_nee": "g m-2 yr-1",
+            "annual_gpp": "g m-2 yr-1",
+            "annual_reco": "g m-2 yr-1",
+            "gpp_weekly": "g m-2 d-1",
+            "bias": "g m-2 d-1",
+            "rmse": "g m-2 d-1",
+        }
 
 
 def _write_inputs(recipe: Path) -> None:

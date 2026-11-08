@@ -2799,7 +2799,7 @@ requires-dist = [
     { name = "typer", marker = "extra == 'cli'", specifier = ">=0.24.1" },
     { name = "ukceh-catena", extras = ["cli", "viz", "geo"], marker = "extra == 'all'" },
     { name = "xarray", specifier = ">=2026.2.0" },
-    { name = "xarray-annotated", extras = ["cf"], specifier = ">=0.8.0" },
+    { name = "xarray-annotated", extras = ["cf"], specifier = ">=0.9.0rc1" },
     { name = "zarr", specifier = ">=3.2.1" },
 ]
 provides-extras = ["cli", "viz", "geo", "all"]
@@ -3045,7 +3045,7 @@ wheels = [
 
 [[package]]
 name = "xarray-annotated"
-version = "0.8.0"
+version = "0.9.0rc1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pandas" },
@@ -3053,9 +3053,9 @@ dependencies = [
     { name = "pint-xarray" },
     { name = "xarray" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/46/2f/079a0a158f6ffbbb7330b4ccbd6b54d32e9987b656dc7efba716ea920dd2/xarray_annotated-0.8.0.tar.gz", hash = "sha256:0ed0b0085beb5e0fceab8b9e217418d874d51fab8faad5e05078b76065f4b3a7", size = 43109, upload-time = "2026-11-06T22:20:03.898Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bc/99/204de543a6bdf73cc239f06a872e60ef1386b907f181288be0469f458f87/xarray_annotated-0.9.0rc1.tar.gz", hash = "sha256:154e91bb6c35856179fd3a991fe59c77fc2b53aa99c2552b3a5d43d193a19421", size = 49923, upload-time = "2026-11-07T22:13:17.37Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3e/0e/6599f189c40c76d71527fd7d04679adec699d239184245da6ea4938dd776/xarray_annotated-0.8.0-py3-none-any.whl", hash = "sha256:ce7eac2d81e644d8d76f36073ad0f902a337d9c6224dc815db7e7fa617356d1a", size = 52062, upload-time = "2026-11-06T22:20:02.726Z" },
+    { url = "https://files.pythonhosted.org/packages/c0/73/13f15f3a47affe3c3f59a411ef5b8562c35318b2d1333169ece4112872c0/xarray_annotated-0.9.0rc1-py3-none-any.whl", hash = "sha256:3a351c1934975faec27e97e901b75feeedeb36123122b2b58be1ab67fecc31c1", size = 60206, upload-time = "2026-11-07T22:13:16.117Z" },
 ]
 
 [package.optional-dependencies]

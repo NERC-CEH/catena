@@ -55,8 +55,9 @@ If you genuinely want the weekly *amount* from a daily *rate*, do the multiplica
 [[node]]
 name = "gpp_weekly_total"
 inputs = ["gpp_weekly"]
-expression = "(gpp_weekly * 7.0).assign_attrs(units='g C m-2')"
+expression = "gpp_weekly * 7.0"
 units = "g C m-2"
+overwrite_units = true  # the product keeps the daily rate's label
 ```
 
 Now the declared units say what the number is, and the contract check has something to check against.

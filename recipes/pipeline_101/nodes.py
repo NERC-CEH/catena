@@ -13,12 +13,11 @@ from xarray_annotated import Unit
 from xarray_annotated.units import use_cf_units
 
 use_cf_units()
-xr.set_options(keep_attrs=True)
 
 Temperature = Annotated[xr.DataArray, Unit("degC")]
 
 
-@xra.enforce
+@xra.check_annotations
 def temperature_anomaly_climate(temperature_climate: Temperature) -> Temperature:
     """Departure of each day's temperature from the record mean."""
     return temperature_climate - temperature_climate.mean("time")

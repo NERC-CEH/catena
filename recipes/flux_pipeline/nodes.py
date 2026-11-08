@@ -13,7 +13,6 @@ from xarray_annotated import Freq, Unit
 from xarray_annotated.units import use_cf_units
 
 use_cf_units()
-xr.set_options(keep_attrs=True)
 
 
 MolarFlux = Annotated[xr.DataArray, Unit("umol m-2 s-1")]
@@ -26,13 +25,13 @@ class PartitionedFluxes(TypedDict):
     reco: MolarFlux
 
 
-@xra.enforce
+@xra.check_annotations
 def nee(nee_raw: MolarFlux, qc: xr.DataArray) -> MolarFlux:
     """Keep only records whose quality-control flag is zero."""
     return nee_raw.where(qc == 0)
 
 
-@xra.enforce
+@xra.check_annotations
 def tair_celsius(
     tair: Annotated[xr.DataArray, Unit("K")],
 ) -> Annotated[xr.DataArray, Unit("degC")]:
@@ -40,8 +39,11 @@ def tair_celsius(
     return xra.units.convert(tair, "degC")
 
 
+# Respiration is an empirical formula in temperature, so it keeps the temperature's
+# label until the declaration replaces it. GPP arrives unlabelled and is stamped.
 @extract_fields()
-@xra.enforce
+@xra.check_annotations
+@xra.stamp_output_units(overwrite=("reco",))
 def partition_fluxes(
     nee: MolarFlux,
     tair_celsius: Annotated[xr.DataArray, Unit("degC")],
@@ -49,7 +51,7 @@ def partition_fluxes(
 ) -> PartitionedFluxes:
     """Partition net ecosystem exchange into GPP and respiration."""
     q10 = 2.0 ** ((tair_celsius - 10.0) / 10.0)
-    reco = (2.60 * q10).assign_attrs(units="umol m-2 s-1")
+    reco = 2.60 * q10
     gpp = (reco - nee).where(ppfd > 5.0, 0.0)
     return {"gpp": gpp, "reco": reco}
 
@@ -59,15 +61,16 @@ def partition_fluxes(
     to_mass_flux_gpp={"flux": "gpp"},
     to_mass_flux_reco={"flux": "reco"},
 )
-@xra.enforce
+@xra.check_annotations
+@xra.stamp_output_units(overwrite=True)
 def to_mass_flux(
     flux: MolarFlux,
 ) -> Annotated[xr.DataArray, Unit("g m-2 d-1")]:
     """Convert {flux} to grams of carbon per square metre per day."""
-    return (flux * (1e-6 * 12.011 * 86400.0)).assign_attrs(units="g m-2 d-1")
+    return flux * (1e-6 * 12.011 * 86400.0)
 
 
-@xra.enforce
+@xra.check_annotations
 def nee_daily(
     to_mass_flux_nee: Annotated[xr.DataArray, Unit("g m-2 d-1")],
 ) -> Annotated[xr.DataArray, Freq("D")]:
@@ -75,7 +78,7 @@ def nee_daily(
     return to_mass_flux_nee.resample(time="D").mean()
 
 
-@xra.enforce
+@xra.check_annotations
 def gpp_daily(
     to_mass_flux_gpp: Annotated[xr.DataArray, Unit("g m-2 d-1")],
 ) -> Annotated[xr.DataArray, Freq("D")]:
@@ -83,7 +86,7 @@ def gpp_daily(
     return to_mass_flux_gpp.resample(time="D").mean()
 
 
-@xra.enforce
+@xra.check_annotations
 def reco_daily(
     to_mass_flux_reco: Annotated[xr.DataArray, Unit("g m-2 d-1")],
 ) -> Annotated[xr.DataArray, Freq("D")]:
@@ -91,7 +94,7 @@ def reco_daily(
     return to_mass_flux_reco.resample(time="D").mean()
 
 
-@xra.enforce
+@xra.check_annotations
 def gpp_weekly(
     gpp_daily: Annotated[xr.DataArray, Freq("D")],
 ) -> Annotated[xr.DataArray, Freq("W-SUN")]:
@@ -100,30 +103,33 @@ def gpp_weekly(
 
 
 # Each daily mean is weighted by one day, so a year's sum is a total per year.
-# `keep_attrs` would carry the daily unit through the sum, so each annual node
-# sets the unit it declares.
-@xra.enforce
+# The sum keeps the daily unit, so each annual node overwrites it with the one it
+# declares.
+@xra.check_annotations
+@xra.stamp_output_units(overwrite=True)
 def annual_nee(
     nee_daily: Annotated[xr.DataArray, Freq("D")],
 ) -> Annotated[xr.DataArray, Unit("g m-2 yr-1")]:
     """Calculate the annual NEE total from daily mean fluxes."""
-    return nee_daily.sum().assign_attrs(units="g m-2 yr-1")
+    return nee_daily.sum()
 
 
-@xra.enforce
+@xra.check_annotations
+@xra.stamp_output_units(overwrite=True)
 def annual_gpp(
     gpp_daily: Annotated[xr.DataArray, Freq("D")],
 ) -> Annotated[xr.DataArray, Unit("g m-2 yr-1")]:
     """Calculate the annual GPP total from daily mean fluxes."""
-    return gpp_daily.sum().assign_attrs(units="g m-2 yr-1")
+    return gpp_daily.sum()
 
 
-@xra.enforce
+@xra.check_annotations
+@xra.stamp_output_units(overwrite=True)
 def annual_reco(
     reco_daily: Annotated[xr.DataArray, Freq("D")],
 ) -> Annotated[xr.DataArray, Unit("g m-2 yr-1")]:
     """Calculate the annual respiration total from daily mean fluxes."""
-    return reco_daily.sum().assign_attrs(units="g m-2 yr-1")
+    return reco_daily.sum()
 
 
 class Comparison(TypedDict):
@@ -134,7 +140,7 @@ class Comparison(TypedDict):
 
 
 @extract_fields()
-@xra.enforce
+@xra.check_annotations
 def compare_with_satellite(
     gpp_weekly: Annotated[xr.DataArray, Unit("g m-2 d-1"), Freq("W-SUN")],
     sat_gpp: Annotated[xr.DataArray, Unit("g m-2 d-1"), Freq("W-SUN")],

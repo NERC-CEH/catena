@@ -262,7 +262,7 @@ class TestNodeFreq:
             self._dr(register, "7D", Freq("7D"))
 
     def test_runtime_check_on_node_output(self):
-        # The generated node is wrapped in enforce, so a node whose output
+        # The generated node is wrapped in check_annotations, so a node whose output
         # contradicts its declaration fails when it runs.
         specs = [
             NodeSpec(

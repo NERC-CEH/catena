@@ -68,7 +68,7 @@ def _consumer(unit: str, name: str = "consumer", in_name: str = "vpd_weekly"):
         "class _Out(TypedDict):\n"
         f"    {name}_out: Annotated[xr.DataArray, xra.Unit('t ha-1')]\n"
         "@extract_fields()\n"
-        "@xra.enforce\n"
+        "@xra.check_annotations\n"
         f"def {name}({in_name}: Annotated[xr.DataArray, xra.Unit({unit!r})]) -> _Out:\n"
         f"    return {{{name + '_out'!r}: {in_name}}}\n"
     )
@@ -141,7 +141,7 @@ class TestCheckInputUnitsDirect:
             check_input_contracts(dr, {"some_other_var": _input("kg")})
 
     def test_non_dataarray_on_a_declared_input_raises(self, dr):
-        # enforce would raise TypeError when the node runs, so the pre-flight does too.
+        # check_annotations would raise TypeError when the node runs, so the pre-flight does too.
         with (
             xra.enabled(True),
             pytest.raises(CatenaValueError, match="declared a DataArray, got float"),

@@ -129,8 +129,9 @@ Each entry uses **either** an `expression` **or** (`_import_path` + `function`),
 [[node]]
 name = "aridity_index_daily"
 inputs = ["precipitation_daily", "evapotranspiration_daily"]
-expression = "(precipitation_daily / evapotranspiration_daily).assign_attrs(units='1')"
+expression = "precipitation_daily / evapotranspiration_daily"
 units = "1"
+overwrite_units = true
 ```
 
 | Key | Description |
@@ -139,7 +140,8 @@ units = "1"
 | `inputs` | **Required.** Node names this entry consumes (available in `expression`). |
 | `expression` | A Python/xarray expression over `inputs` (`xr` and `xra`, for `xarray_annotated`, are in scope). |
 | `_import_path` + `function` | Alternative to `expression`: call `function` in that module. Same two forms as a module section's. |
-| `units` | Output unit contract (validated at parse time). The output must already carry this unit, so an expression that changes it ends with `.assign_attrs(units=...)`. |
+| `units` | Output unit contract (validated at parse time). An output with no `units` label is stamped with it; an output that kept a label from its inputs must match it. |
+| `overwrite_units` | `true` replaces the label an output kept from its inputs with `units`. Needs `units`; not allowed on a `passthrough` node. Default `false`. |
 | `dims` | Output dimension contract (list of names). |
 | `dtype` | Output dtype contract (validated at parse time). A name with a width (`float64`) is exact; `float`, `int` and the like mean any width. |
 | `coords` | Output coordinate contract (list of names). |

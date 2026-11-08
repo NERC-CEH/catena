@@ -74,7 +74,7 @@ def _producer(unit: str):
         gpp_weekly: Annotated[xr.DataArray, xra.Unit(unit)]
 
     @extract_fields()
-    @xra.enforce
+    @xra.check_annotations
     def producer() -> Out:  # type: ignore[valid-type]
         return {"gpp_weekly": _da()}
 
@@ -96,7 +96,7 @@ def _consumer(unit: str, name: str = "consumer", in_name: str = "gpp_weekly"):
         f"class _Out(TypedDict):\n"
         f"    {name}_out: Annotated[xr.DataArray, xra.Unit('t ha-1')]\n"
         "@extract_fields()\n"
-        "@xra.enforce\n"
+        "@xra.check_annotations\n"
         f"def {name}({in_name}: Annotated[xr.DataArray, xra.Unit({unit!r})]) -> _Out:\n"
         f"    return {{{name + '_out'!r}: {in_name}}}\n"
     )
@@ -117,7 +117,7 @@ def _bare_producer(unit: str, name: str = "flux"):
         "from typing import Annotated\n"
         "import xarray as xr\n"
         "import xarray_annotated as xra\n"
-        "@xra.enforce\n"
+        "@xra.check_annotations\n"
         f"def {name}() -> Annotated[xr.DataArray, xra.Unit({unit!r})]:\n"
         "    return xr.DataArray([1.0])\n"
     )
@@ -140,7 +140,7 @@ def _plain_consumer(name: str = "plain_cons", in_name: str = "gpp_weekly"):
         f"class _Out(TypedDict):\n"
         f"    {name}_out: Annotated[xr.DataArray, xra.Unit('t ha-1')]\n"
         "@extract_fields()\n"
-        "@xra.enforce\n"
+        "@xra.check_annotations\n"
         f"def {name}({in_name}: xr.DataArray) -> _Out:\n"
         f"    return {{{name + '_out'!r}: {in_name}}}\n"
     )
@@ -441,7 +441,7 @@ class TestResamplePropagation:
             gpp_daily: Annotated[xr.DataArray, xra.Unit("g m-2 d-1")]
 
         @extract_fields()
-        @xra.enforce
+        @xra.check_annotations
         def prod() -> _P:  # type: ignore[valid-type]
             return {"gpp_daily": _da()}
 
@@ -497,7 +497,7 @@ class TestNodePropagation:
 
 class TestRuntimeQualname:
     def test_missing_units_error_includes_qualname(self):
-        @xra.enforce
+        @xra.check_annotations
         def my_model_node(vpd: Annotated[xr.DataArray, xra.Unit("Pa")]) -> xr.DataArray:
             return vpd
 
@@ -510,7 +510,7 @@ class TestRuntimeQualname:
             my_model_node(vpd=xr.DataArray([1.0]))
 
     def test_unparseable_units_error_includes_qualname(self):
-        @xra.enforce
+        @xra.check_annotations
         def another_node(vpd: Annotated[xr.DataArray, xra.Unit("Pa")]) -> xr.DataArray:
             return vpd
 
@@ -818,7 +818,7 @@ class TestParameterizedNodes:
         from hamilton.function_modifiers import parameterize_sources
 
         @parameterize_sources(mass_nee={"flux": "nee"})
-        @xra.enforce
+        @xra.check_annotations
         def to_mass(flux: Annotated[xr.DataArray, xra.Unit("kg")]) -> xr.DataArray:
             return flux
 
@@ -836,14 +836,14 @@ class TestParameterizedNodes:
         from hamilton.function_modifiers import parameterize_sources
 
         @parameterize_sources(mass_a={"flux": "a"})
-        @xra.enforce
+        @xra.check_annotations
         def as_mass(
             flux: Annotated[xr.DataArray, xra.Unit("g m-2 d-1")],
         ) -> xr.DataArray:
             return flux
 
         @parameterize_sources(molar_b={"flux": "b"})
-        @xra.enforce
+        @xra.check_annotations
         def as_molar(
             flux: Annotated[xr.DataArray, xra.Unit("umol m-2 s-1")],
         ) -> xr.DataArray:

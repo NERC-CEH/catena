@@ -176,14 +176,35 @@ def _assert_valid_contract(entry: dict, node_name: Any) -> None:
         raise CatenaValueError(str(exc)) from exc
 
 
+def _assert_valid_overwrite_units(entry: dict, node_name: Any) -> None:
+    """Reject an ``overwrite_units`` the node cannot apply."""
+    if "overwrite_units" not in entry:
+        return
+    value = entry["overwrite_units"]
+    if not isinstance(value, bool):
+        raise CatenaValueError(
+            f"node '{node_name}': overwrite_units must be true or false, not {value!r}."
+        )
+    if value and entry.get("units") is None:
+        raise CatenaValueError(
+            f"node '{node_name}': overwrite_units = true needs a declared 'units' "
+            f"to overwrite with."
+        )
+    if value and entry.get("passthrough"):
+        raise CatenaValueError(
+            f"node '{node_name}': overwrite_units cannot be set on a passthrough "
+            f"node, which keeps its input's units."
+        )
+
+
 @dataclass
 class NodeSpec:
     """Specification for a single (already fan-out-expanded) [[node]] entry.
 
     ``units`` / ``dims`` / ``dtype`` / ``coords`` / ``freq`` declare the node's output
-    contract: validated at runtime, and read by the build-time check. The output must
-    already carry the declared unit, so an ``expression`` that changes it ends with
-    ``.assign_attrs(units=...)``.
+    contract: validated at runtime, and read by the build-time check. An output with no
+    ``units`` label is stamped with the declared unit; one that keeps its input's label
+    still has to match, unless ``overwrite_units`` replaces it with the declared unit.
     ``passthrough`` instead declares no fixed contract and tags the node so the check
     propagates its input's declaration across it — per facet, so ``freq`` may still be
     declared. See `catena.contract_check` for what propagation means.
@@ -199,6 +220,7 @@ class NodeSpec:
     dtype: str | None = None
     coords: list[str] | None = None
     freq: str | None = None
+    overwrite_units: bool = False
     passthrough: bool = False
 
     @classmethod
@@ -230,6 +252,7 @@ class NodeSpec:
                 f"'_import_path' (the module) and 'function' (the name within it)."
             )
         _assert_valid_contract(entry, name)
+        _assert_valid_overwrite_units(entry, name)
         return cls(
             name=entry["name"],
             inputs=entry["inputs"],
@@ -241,6 +264,7 @@ class NodeSpec:
             dtype=entry.get("dtype"),
             coords=entry.get("coords"),
             freq=entry.get("freq"),
+            overwrite_units=entry.get("overwrite_units", False),
             passthrough=bool(entry.get("passthrough", False)),
         )
 

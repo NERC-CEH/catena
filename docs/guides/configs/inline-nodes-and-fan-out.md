@@ -46,13 +46,23 @@ Any of `units`, `dims`, `dtype`, `coords` or `freq` makes the node a *typed prod
 [[node]]
 name = "aridity_index_daily"
 inputs = ["precipitation_daily", "evapotranspiration_daily"]
-expression = "(precipitation_daily / evapotranspiration_daily).assign_attrs(units='1')"
+expression = "precipitation_daily / evapotranspiration_daily"
 units = "1"                 # dimensionless ratio
+overwrite_units = true      # replace the mm d-1 the ratio kept
 dims = ["time", "pixel"]    # optional dimension contract
 ```
 
 `units` and `dtype` are validated when the config is parsed.
-The output must already carry the declared unit, so an expression that changes it ends with `.assign_attrs(units=...)`, and [`xra.units.convert`](../nodes/contracts.md#converting-units) is in scope for a real conversion.
+The declared unit is a statement about the expression, and catena treats it as one:
+
+- **An output with no `units` label** is stamped with the declared unit.
+  xarray drops the label when the inputs' labels disagree, as in a depth in `mm` divided by a duration in `d`.
+- **An output that kept a label** from its inputs must match the declared unit, or the node raises.
+  xarray keeps the first input's label through `x * 7.0`, `x.sum()`, and a ratio of two inputs with the same label, so it is usually stale when the expression changes the unit.
+- **`overwrite_units = true`** replaces a kept label with the declared one.
+  It also hides a forgotten conversion, so for a real conversion use [`xra.units.convert`](../nodes/contracts.md#converting-units), which is in scope, and leave `overwrite_units` off.
+
+The stamp is a claim, not a check: it labels the values with what the config says, whether or not the expression computed them in that unit.
 A node that declares nothing has no output contract, so edges leaving it go unchecked.
 
 ## Fan-out with `for_each`

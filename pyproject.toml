@@ -20,7 +20,7 @@ dependencies = [
     "numpy>=2.4.2",
     "tomli-w>=1.2.0",
     "xarray>=2026.2.0",
-    "xarray-annotated[cf]>=0.8.0",
+    "xarray-annotated[cf]>=0.9.0rc1",
     "zarr>=3.2.1",
 ]
 
