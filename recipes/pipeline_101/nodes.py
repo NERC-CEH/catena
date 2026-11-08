@@ -13,7 +13,6 @@ from xarray_annotated import Unit
 from xarray_annotated.units import use_cf_units
 
 use_cf_units()
-xr.set_options(keep_attrs=True)
 
 Temperature = Annotated[xr.DataArray, Unit("degC")]
 

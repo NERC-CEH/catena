@@ -13,7 +13,6 @@ from xarray_annotated import Freq, Unit
 from xarray_annotated.units import use_cf_units
 
 use_cf_units()
-xr.set_options(keep_attrs=True)
 
 
 MolarFlux = Annotated[xr.DataArray, Unit("umol m-2 s-1")]
