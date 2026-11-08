@@ -80,7 +80,8 @@ def _(mo, nodes_path):
     ## The Python module
 
     The annotations declare the units and time frequencies that catena checks across the DAG.
-    A node never converts its inputs for you, so `tair_celsius` converts the temperature from the kelvin in the file, and a node whose calculation changes the unit states the new one with `.assign_attrs(units=...)`.
+    A node never converts its inputs for you, so `tair_celsius` converts the temperature from the kelvin in the file.
+    A node whose calculation changes the unit in some other way also has `@xra.stamp_output_units` beneath `@xra.check_annotations`: it labels each output with the declared unit, and `overwrite` replaces a label the output kept from an input.
 
     ```python
     {nodes_path.read_text()}

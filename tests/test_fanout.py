@@ -85,7 +85,7 @@ class TestForEachExpansion:
 
 class TestSchemaOnNode:
     def test_schema_markers_annotated_and_decorated(self):
-        # annotate() builds the schema return contract and enforce is applied,
+        # annotate() builds the schema return contract and check_annotations is applied,
         # so both markers are readable off the built node's signature.
         mod = make_node_module(
             [_node("f", ["a"], "a", dims=["time", "x"], dtype="float64")]

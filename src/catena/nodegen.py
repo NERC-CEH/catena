@@ -62,8 +62,11 @@ def make_node_module(
     The node's *body* is built by ``exec`` (a ``[[node]]`` expression is arbitrary
     user code), but its declared output contract is attached programmatically:
     ``xarray_annotated.annotate`` builds the ``Annotated`` return hint from the raw
-    spec values, then ``xarray_annotated.enforce`` is applied as an ordinary decorator
-    — no annotation/decorator source is generated.
+    spec values, then the decorators are applied as ordinary calls — no
+    annotation/decorator source is generated. A node declaring ``units`` has its
+    output stamped with them by ``xarray_annotated.stamp_output_units`` (which
+    replaces a present label only under ``overwrite_units``) before
+    ``xarray_annotated.check_annotations`` checks it.
 
     The module is registered in ``sys.modules`` under a content-derived name (see
     `_module_name`), which Hamilton requires and which keeps repeated builds of the
@@ -99,7 +102,7 @@ def _decorate(fn: Any, spec: NodeSpec) -> Any:
     # facet it does not preserve), and is tagged for the check to propagate the rest.
     if spec.passthrough:
         fn.__annotations__["return"] = xra.annotate(freq=spec.freq)
-        fn = xra.enforce(fn)
+        fn = xra.check_annotations(fn)
         return tag(**{PASSTHROUGH_TAG: "true"})(fn)  # type: ignore[reportArgumentType]
 
     # Otherwise a declared unit/dims/dtype/coords/freq makes the node a typed producer:
@@ -112,7 +115,9 @@ def _decorate(fn: Any, spec: NodeSpec) -> Any:
         coords=spec.coords or None,
         freq=spec.freq,
     )
-    return xra.enforce(fn)
+    if spec.units is not None:
+        fn = xra.stamp_output_units(overwrite=spec.overwrite_units)(fn)
+    return xra.check_annotations(fn)
 
 
 def _build_fn_code(spec: NodeSpec) -> str:

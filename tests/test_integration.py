@@ -12,7 +12,7 @@ from typing import Annotated
 import numpy as np
 import pandas as pd
 import xarray as xr
-from xarray_annotated import Freq, enabled, enforce
+from xarray_annotated import Freq, check_annotations, enabled
 
 from catena.config import IOSpec
 from catena.io import get_final_vars
@@ -135,7 +135,7 @@ class TestGappyAndCalendarDeclarations:
             np.ones(6), dims="time", coords={"time": midpoints}, name="rain"
         ).to_netcdf(tmp_path / "monthly.nc")
 
-        @enforce
+        @check_annotations
         def doubled_temperature(
             temperature_daily: Annotated[xr.DataArray, Freq("D", gaps_ok=True)],
         ) -> Annotated[xr.DataArray, Freq("D", gaps_ok=True)]:

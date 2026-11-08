@@ -35,7 +35,7 @@ def test_anomaly_is_centred():
     assert float(anomaly.mean("time")) == pytest.approx(0.0)
 ```
 
-`@xra.enforce` runs on the call, checking the argument's `units` as it would in a pipeline, with no config or DAG needed.
+`@xra.check_annotations` runs on the call, checking the argument's `units` as it would in a pipeline, with no config or DAG needed.
 Give test arrays a `units` attribute, or the call raises before your function runs.
 
 This is where the science belongs: assert on known analytic cases, conservation properties, limits, or whatever else tells you the calculation is the one you meant.

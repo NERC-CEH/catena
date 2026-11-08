@@ -8,6 +8,7 @@ import xarray as xr
 import xarray_annotated as xra
 
 from catena.config import NodeSpec
+from catena.errors import CatenaValueError
 from catena.nodegen import _build_fn_code, _node_namespace, make_node_module
 from catena.specs import RESERVED_NODE_NAMES
 
@@ -18,7 +19,9 @@ def test_reserved_names_match_generated_namespace():
     assert set(_node_namespace()) == RESERVED_NODE_NAMES
 
 
-def _expr_spec(name, inputs, expression, units=None, passthrough=False):
+def _expr_spec(
+    name, inputs, expression, units=None, passthrough=False, overwrite_units=False
+):
     return NodeSpec(
         name=name,
         inputs=list(inputs),
@@ -26,6 +29,7 @@ def _expr_spec(name, inputs, expression, units=None, passthrough=False):
         import_path=None,
         function=None,
         units=units,
+        overwrite_units=overwrite_units,
         passthrough=passthrough,
     )
 
@@ -165,13 +169,21 @@ class TestNodeUnits:
             out = mod.f(xr.DataArray([1.0], attrs={"units": "g m-2 d-1"}))
         assert out.attrs["units"] == "g m-2 d-1"
 
-    def test_output_with_no_unit_raises(self):
+    @pytest.mark.parametrize("on", [True, False])
+    def test_output_with_no_unit_is_stamped(self, on):
         mod = make_node_module([_expr_spec("f", ["a"], "a", units="t ha-1")])
-        with (
-            xra.enabled(True),
-            pytest.raises(xra.units.UnitError, match="no 'units' attribute"),
-        ):
-            mod.f(xr.DataArray([1.0]))
+        with xra.enabled(on):
+            out = mod.f(xr.DataArray([1.0]))
+        assert out.attrs["units"] == "t ha-1"
+
+    def test_output_whose_inputs_disagree_is_stamped(self):
+        mod = make_node_module([_expr_spec("f", ["a", "b"], "a / b", units="mm d-1")])
+        with xra.enabled(True):
+            out = mod.f(
+                xr.DataArray([2.0], attrs={"units": "mm"}),
+                xr.DataArray([1.0], attrs={"units": "d"}),
+            )
+        assert out.attrs["units"] == "mm d-1"
 
     def test_output_with_a_stale_unit_raises(self):
         mod = make_node_module([_expr_spec("f", ["a"], "a * 0.01", units="hPa")])
@@ -180,6 +192,20 @@ class TestNodeUnits:
             pytest.raises(xra.units.UnitError, match="differs from declared"),
         ):
             mod.f(xr.DataArray([1.0], attrs={"units": "Pa"}))
+
+    def test_overwrite_units_replaces_a_stale_unit(self):
+        spec = _expr_spec("f", ["a"], "a * 7.0", units="g m-2", overwrite_units=True)
+        mod = make_node_module([spec])
+        with xra.enabled(True):
+            out = mod.f(xr.DataArray([1.0], attrs={"units": "g m-2 d-1"}))
+        assert out.attrs["units"] == "g m-2"
+
+    def test_passthrough_is_not_stamped(self):
+        spec = _expr_spec("f", ["a"], "a", passthrough=True)
+        mod = make_node_module([spec])
+        with xra.enabled(True):
+            out = mod.f(xr.DataArray([1.0]))
+        assert "units" not in out.attrs
 
     @pytest.mark.parametrize("passthrough", [False, True])
     def test_node_declaring_nothing_is_left_unwrapped(self, passthrough):
@@ -200,6 +226,28 @@ class TestNodeUnits:
             out = mod.f(xr.DataArray([100.0], attrs={"units": "Pa"}))
         assert out.attrs["units"] == "hPa"
         assert out.item() == pytest.approx(1.0)
+
+    @pytest.mark.parametrize(
+        ("extra", "match"),
+        [
+            ({"overwrite_units": "yes", "units": "mm"}, "true or false"),
+            ({"overwrite_units": True}, "needs a declared 'units'"),
+            (
+                {"overwrite_units": True, "units": "mm", "passthrough": True},
+                "passthrough",
+            ),
+        ],
+    )
+    def test_invalid_overwrite_units_is_refused(self, extra, match):
+        entry = {"name": "f", "inputs": ["a"], "expression": "a", **extra}
+        with pytest.raises(CatenaValueError, match=match):
+            NodeSpec.from_config(entry)
+
+    def test_overwrite_units_is_read_from_config(self):
+        entry = {"name": "f", "inputs": ["a"], "expression": "a", "units": "mm"}
+        assert not NodeSpec.from_config(entry).overwrite_units
+        spec = NodeSpec.from_config({**entry, "overwrite_units": True})
+        assert spec.overwrite_units
 
     def test_xra_is_refused_as_a_node_name(self):
         with pytest.raises(ValueError, match="reserved"):

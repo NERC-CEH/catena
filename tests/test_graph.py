@@ -205,7 +205,7 @@ class TestGraphPostProcessing:
             "from typing import Annotated\n\n"
             "import xarray as xr\n"
             "import xarray_annotated as xra\n\n\n"
-            "@xra.enforce\n"
+            "@xra.check_annotations\n"
             "def wet(precipitation: Annotated[xr.DataArray, xra.Unit('mm')]) -> xr.DataArray:\n"
             "    return precipitation\n"
         )
