@@ -156,7 +156,12 @@ def _check_common_grid(
 def compute_lat_lon(
     spatial_datasets: dict[str, xr.Dataset],
 ) -> tuple[xr.DataArray, xr.DataArray]:
-    """Compute stacked latitude and longitude DataArrays from CRS-bearing datasets."""
+    """Compute stacked latitude and longitude DataArrays from CRS-bearing datasets.
+
+    Both are in EPSG:4326 and carry CF metadata: ``units`` of ``degrees_north`` /
+    ``degrees_east`` and the matching ``standard_name``. Under the CF unit registry
+    either satisfies a declared ``Unit("degrees")``.
+    """
     from pyproj import Transformer
 
     _ensure_rio()
@@ -190,7 +195,11 @@ def compute_lat_lon(
     # match `stack_spatial_dims`' — pinned by
     # test_grid.py::test_lat_lon_aligns_with_renamed_spatial_dims.
     stacked = grid_ds.stack(pixel=(y_dim, x_dim))
-    return stacked.latitude, stacked.longitude
+    lat = stacked.latitude.assign_attrs(units="degrees_north", standard_name="latitude")
+    lon = stacked.longitude.assign_attrs(
+        units="degrees_east", standard_name="longitude"
+    )
+    return lat, lon
 
 
 # ---------------------------------------------------------------------------
