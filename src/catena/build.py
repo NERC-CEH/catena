@@ -20,6 +20,7 @@ def build_driver(
     node_specs: list[NodeSpec] | None = None,
     base: Path | None = None,
     registered: list[RegisteredModule] | None = None,
+    check_contracts: bool = True,
 ) -> driver.Driver:
     """Build a Hamilton driver from a list of module names and config.
 
@@ -46,6 +47,10 @@ def build_driver(
         The modules an installed package supplied
         (`catena.specs.ParsedConfig.registered_modules`). Used only to name the
         responsible distribution if one of them fails to import.
+    check_contracts
+        Run `catena.contract_check.check_dag_contracts` on the built driver.
+        Pass ``False`` only to run that check separately, as `catena.dry_run`
+        does to record its failure alongside the other stages.
 
     Returns
     -------
@@ -88,8 +93,9 @@ def build_driver(
 
     # The flagship guarantee: every declared contract on the whole DAG is checked
     # here, before any compute. A no-op when xarray-annotated is switched off.
-    from .contract_check import check_dag_contracts
+    if check_contracts:
+        from .contract_check import check_dag_contracts
 
-    check_dag_contracts(built)
+        check_dag_contracts(built)
 
     return built

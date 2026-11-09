@@ -22,15 +22,17 @@ It checks, in order, and prints a summary per stage:
 3. **Input checks** — any [`[validation]` checks](#input-compatibility-checks) you declared pass (compatible grids, aligned time axes, matching coordinates).
    Skipped if you declared none, or under `[subset]`.
 4. **DAG** — the driver builds, and the contract check passes on every edge with a contract at both ends.
-5. **Execution plan** — every variable in `[outputs.*]` is reachable from the inputs.
-6. **Wiring** — required inputs are all bound; unused inputs are reported ([below](#the-wiring-check)).
-7. **Input contracts** — each loaded input's metadata (units, dims, coords, dtype) is checked against what its consuming node declares.
+5. **Execution plan and wiring** — every variable in `[outputs.*]` is reachable from the inputs, required inputs are all bound, and unused inputs are reported ([below](#the-wiring-check)).
+   With no `[outputs.*]`, this checks every terminal node of the DAG, the nodes nothing else consumes.
+6. **Input contracts** — each loaded input's metadata (units, dims, coords, dtype) is checked against what its consuming node declares.
    A normal run defers this to when the node is called, so this stage is how you catch a file with wrong or missing `units` without running the pipeline.
-8. **Output paths** — every destination would accept a write (supported extension, a parent directory that is writable or can be created, and — for subset runs — a pre-created Zarr store).
+7. **Output paths** — every destination would accept a write (supported extension, a parent directory that is writable or can be created, and — for subset runs — a pre-created Zarr store).
 
 A clean pre-flight exits `0`.
-A problem with the config, inputs, DAG plan, wiring or output paths always fails.
-A contract problem fails too, and every failing input is reported at once.
+A stage that finds a fault is marked `✗` with each fault under it, and the dry run carries on, so one run reports every fault it can reach.
+A stage that needs the output of a failed one is skipped: with an input file missing, the DAG is still built and checked, but the execution plan and input contracts are not.
+If any stage failed, the dry run exits `1`.
+A config that does not parse stops it at once.
 If checks are [switched off](../nodes/contracts.md#turning-the-checks-off), the contract stages say so.
 
 ## Input compatibility checks
@@ -81,7 +83,7 @@ python recipes/flux_pipeline/make_data.py > /dev/null
 catena run --dry-run recipes/flux_pipeline/broken.toml
 ```
 
-The failure names both ends of the edge, and comes during DAG construction, before any input is read.
+The failure names both ends of the edge, and comes from the DAG alone, before any node runs.
 
 To fix it, correct whichever annotation is wrong.
 Units that merely differ in scale, `umol m-2 s-1` against `nmol m-2 s-1` say, fail the same way, since nothing [converts](../nodes/contracts.md#converting-units) them between nodes.

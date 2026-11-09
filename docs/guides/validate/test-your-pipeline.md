@@ -53,12 +53,26 @@ import catena
 def test_config_is_valid():
     report = catena.dry_run(Path("config.toml"))
 
-    # A hard failure raises, so reaching here means the pipeline is valid.
+    # Any fault raises DryRunError, so reaching here means the pipeline is valid.
     # Assert on findings too if you want soft issues to fail the build.
     assert not [f for stage in report.stages for f in stage.findings]
 ```
 
-`Stage.findings` holds the soft issues, such as an input no node consumes.
+A dry run that finds a fault raises `catena.DryRunError`, whose message lists every fault and whose `report` holds the full `DryRunReport`.
+`Stage.errors` holds each stage's faults and `Stage.findings` the soft issues, such as an input no node consumes.
+To assert that a config is broken in one specific way, as when a parameter is left out deliberately and supplied on each run, inspect the report:
+
+```python
+import pytest
+
+
+def test_only_the_calibrated_parameter_is_missing():
+    with pytest.raises(catena.DryRunError) as excinfo:
+        catena.dry_run(Path("config.toml"))
+    [plan] = excinfo.value.report.failed
+    assert plan.name == "plan"
+    assert "['scaling_factor']" in plan.errors[0]
+```
 In CI, this catches a renamed input, a mistyped section, a unit that stopped matching or an output nothing produces, in seconds.
 [Validate before running](validate-before-running.md) lists every stage.
 

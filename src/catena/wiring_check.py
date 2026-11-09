@@ -49,6 +49,25 @@ def _required_external_inputs(
     return all_external & required, all_external
 
 
+def terminal_nodes(dr: driver.Driver) -> list[str]:
+    """Return the computed nodes no other node depends on, sorted by name.
+
+    These are the targets that cover the whole DAG, for checking the wiring of a
+    config that requests no outputs.
+    """
+    hg = graph_types.HamiltonGraph.from_graph(dr.graph)
+    consumed = {
+        dep
+        for node in hg.nodes
+        for dep in (*node.required_dependencies, *node.optional_dependencies)
+    }
+    return sorted(
+        node.name
+        for node in hg.nodes
+        if not node.is_external_input and node.name not in consumed
+    )
+
+
 def check_wiring(
     dr: driver.Driver,
     final_vars: list[str],

@@ -16,7 +16,15 @@ from .io import (
     load_inputs,
     save_outputs,
 )
-from .pipeline import DryRunReport, RunReport, Stage, WrittenOutput, dry_run, run
+from .pipeline import (
+    DryRunError,
+    DryRunReport,
+    RunReport,
+    Stage,
+    WrittenOutput,
+    dry_run,
+    run,
+)
 from .specs import (
     BlockingSpec,
     CacheSpec,
@@ -34,6 +42,7 @@ __all__ = [
     "BlockingSpec",
     "CacheSpec",
     "CheckSpec",
+    "DryRunError",
     "DryRunReport",
     "IOSpec",
     "NodeSpec",

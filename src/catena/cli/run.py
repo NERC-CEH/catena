@@ -12,7 +12,7 @@ from typing import Annotated
 
 import typer
 
-from ..pipeline import DryRunReport, RunReport
+from ..pipeline import DryRunError, DryRunReport, RunReport
 from ..pipeline import dry_run as _dry_run
 from ..pipeline import run as _run
 
@@ -57,7 +57,12 @@ def run(
 ) -> None:
     """Execute a pipeline defined in a configuration file."""
     if dry_run:
-        _echo_report(_dry_run(config_file, allow_overrides=allow_overrides))
+        try:
+            report = _dry_run(config_file, allow_overrides=allow_overrides)
+        except DryRunError as exc:
+            _echo_report(exc.report)
+            raise typer.Exit(1) from exc
+        _echo_report(report)
         return
 
     _echo_progress_as_it_happens()
@@ -136,19 +141,28 @@ def _format_size(size_bytes: int) -> str:
 
 
 def _echo_report(report: DryRunReport) -> None:
-    """Print a `DryRunReport` as the per-stage summary, with findings indented under.
+    """Print a `DryRunReport` per stage, with errors and findings indented under.
 
     ``typer.echo`` strips the escape codes when stdout is not a terminal, so piped
     and captured output (the documentation build among them) stays plain.
     """
+    glyphs = {
+        "ok": typer.style("✓", fg=typer.colors.GREEN),
+        "skipped": typer.style("-", dim=True),
+        "failed": typer.style("✗", fg=typer.colors.RED),
+    }
     typer.echo(f"Dry run for {report.config_file}")
     for stage in report.stages:
-        glyph = (
-            typer.style("✓", fg=typer.colors.GREEN)
-            if stage.status == "ok"
-            else typer.style("-", dim=True)
-        )
-        typer.echo(f"  {glyph} {stage.detail}")
+        typer.echo(f"  {glyphs[stage.status]} {stage.detail}")
+        for error in stage.errors:
+            error = error.replace("\n", "\n        ")
+            typer.echo(f"      {typer.style('✗', fg=typer.colors.RED)} {error}")
         for finding in stage.findings:
             typer.echo(f"      {typer.style('!', fg=typer.colors.YELLOW)} {finding}")
-    typer.echo("Dry run passed.")
+    if report.failed:
+        typer.secho(
+            f"Dry run failed: {len(report.failed)} stage(s) found a fault.",
+            fg=typer.colors.RED,
+        )
+    else:
+        typer.echo("Dry run passed.")

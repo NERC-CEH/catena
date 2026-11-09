@@ -7,6 +7,7 @@ directly rather than installing packages, so they exercise catena's handling of
 what the metadata says without a real install.
 """
 
+import sys
 from importlib.metadata import EntryPoint
 
 import pytest
@@ -192,7 +193,15 @@ class TestReporting:
     """A section whose code the config does not name must not be invisible."""
 
     @pytest.fixture
-    def config_toml(self, tmp_path, synthetic_data_dir):
+    def config_toml(self, tmp_path, synthetic_data_dir, monkeypatch):
+        # A module whose every node is wired, so the dry run passes.
+        (tmp_path / "reporting_nodes.py").write_text(
+            "import xarray as xr\n\n\n"
+            "def doubled(temperature_daily: xr.DataArray) -> xr.DataArray:\n"
+            "    return temperature_daily * 2\n"
+        )
+        monkeypatch.syspath_prepend(str(tmp_path))
+        monkeypatch.delitem(sys.modules, "reporting_nodes", raising=False)
         cfg = tmp_path / "config.toml"
         cfg.write_text(
             f"""\
@@ -206,29 +215,29 @@ vars = ["temperature"]
         return cfg
 
     def test_dry_run_reports_the_source(self, registry, config_toml):
-        registry(_entry_point("transforms", "catena.transforms", "science"))
+        registry(_entry_point("transforms", "reporting_nodes", "science"))
         report = catena.dry_run(config_toml)
         [config_stage] = [s for s in report.stages if s.name == "config"]
         assert "provided by science" in config_stage.detail
 
     def test_dry_run_does_not_report_it_as_a_warning(self, registry, config_toml):
         """`findings` render with a warning glyph; provenance is information."""
-        registry(_entry_point("transforms", "catena.transforms", "science"))
+        registry(_entry_point("transforms", "reporting_nodes", "science"))
         [config_stage] = [
             s for s in catena.dry_run(config_toml).stages if s.name == "config"
         ]
         assert config_stage.findings == ()
 
     def test_run_logs_the_source(self, registry, config_toml, caplog):
-        registry(_entry_point("transforms", "catena.transforms", "science"))
+        registry(_entry_point("transforms", "reporting_nodes", "science"))
         with caplog.at_level("INFO", logger="catena.pipeline"):
             catena.run(config_toml)
         assert any("provided by science" in r.getMessage() for r in caplog.records)
 
     def test_nothing_reported_without_a_registry(self, config_toml, registry):
-        registry(_entry_point("transforms", "catena.transforms", "science"))
+        registry(_entry_point("transforms", "reporting_nodes", "science"))
         cfg = config_toml.read_text().replace(
-            "[transforms]\n", '[transforms]\n_import_path = "catena.transforms"\n'
+            "[transforms]\n", '[transforms]\n_import_path = "reporting_nodes"\n'
         )
         config_toml.write_text(cfg)
         [config_stage] = [
