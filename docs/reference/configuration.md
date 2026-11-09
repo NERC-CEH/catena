@@ -34,7 +34,7 @@ vars = ["elevation"]
 | Key | Description |
 |-----|-------------|
 | `path` | **Required.** File to load. Format is inferred from the extension — see [Data formats](data-formats.md). |
-| `vars` | Which variables to expose, and under what node names (see below). Omit to load them all. |
+| `vars` | Which variables or coordinates to expose, and under what node names (see below). Omit to load every data variable. |
 | `suffix` | Overrides the node-name suffix for the list form of `vars`. |
 
 **`vars` has three forms:**
@@ -51,8 +51,21 @@ vars = ["elevation"]
   path = "data/daily.nc"   # no `vars`: loads every variable as `{var}_daily`
   ```
 
+  This form binds data variables only.
   An empty list (`vars = []`) is a parse error.
   Output sections always require `vars`.
+
+In the list and mapping forms, an input's `vars` may name a coordinate as well as a data variable.
+This reads per-site metadata straight from a file.
+A station file with dims `(time, site)` that carries `lat` and `altitude` as coordinates on `site` binds them as nodes `latitude` and `elevation`:
+
+```toml
+[inputs.site]
+path = "stations.nc"
+vars = { latitude = "lat", elevation = "altitude" }
+```
+
+The nodes keep the coordinates' attributes, `units` included, so contracts check them like any other input.
 
 ## Outputs
 

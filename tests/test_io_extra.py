@@ -423,6 +423,27 @@ class TestMissingVars:
         )
         assert "pixel" in inputs
 
+    def test_non_dimension_coordinate_binds_with_its_units(self, tmp_path):
+        """The documented station-metadata example: coordinates on ``site``."""
+        path = tmp_path / "stations.nc"
+        xr.Dataset(
+            {"t": (("time", "site"), np.zeros((3, 2)))},
+            coords={
+                "time": pd.date_range("2000-01-01", periods=3),
+                "site": ["a", "b"],
+                "lat": ("site", [51.0, 52.0], {"units": "degrees_north"}),
+                "altitude": ("site", [10.0, 20.0], {"units": "m"}),
+            },
+        ).to_netcdf(path)
+        spec = IOSpec(path=str(path), vars={"latitude": "lat", "elevation": "altitude"})
+        inputs = load_inputs({"site": spec})
+        assert inputs["latitude"].dims == ("site",)
+        assert inputs["latitude"].attrs["units"] == "degrees_north"
+        assert inputs["elevation"].attrs["units"] == "m"
+
+        everything = load_inputs({"site": IOSpec(path=str(path), suffix="")})
+        assert set(everything) == {"t"}
+
     def test_present_vars_still_load(self, input_path):
         inputs = self._load(input_path, ["var_a"])
         assert "var_a_daily" in inputs
