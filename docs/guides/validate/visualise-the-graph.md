@@ -14,6 +14,8 @@ catena graph config.toml --pdf
 This writes `pipeline.pdf` (and the `.dot` source).
 Each node shows its declared unit, and requested outputs are highlighted.
 Nodes are coloured and clustered by their declared `freq` contract, never by section label; a node with no declared frequency joins its neighbours' cluster when they all agree.
+A node's data inputs and its config are drawn as separate tables, and the config table shows each value in use: the config's, or else the function's default.
+[Pipeline 101](../../recipes/pipeline-101.md#the-graph-catena-builds) shows both.
 
 Pass `--png` for PNG, and `-o/--output` to change the base filename.
 `catena graph` needs the `viz` extra **and** the [Graphviz system binary](../install.md#graphviz).

@@ -1,5 +1,5 @@
 # The smallest pipeline that still has every moving part: an input file, an
-# imported node function, an inline node, and an output file.
+# imported node function and its config, an inline node, and an output file.
 
 [inputs.climate]
 path = "data/climate.nc"
@@ -7,8 +7,10 @@ vars = ["temperature"]
 
 # Any section catena does not recognise is one of your own modules, and must
 # say where to import it from. A path ending in .py is relative to this file.
+# Any other key sets a keyword-only parameter of a function in the module.
 [climate_nodes]
 _import_path = "nodes.py"
+baseline_days = 30
 
 # Glue that does not deserve a Python module can be declared inline.
 [[node]]
