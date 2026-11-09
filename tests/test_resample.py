@@ -171,6 +171,17 @@ class TestResamplePresetPipeline:
         )
         assert set(results) == {"a_weekly", "b_weekly"}
 
+    def test_empty_from_reads_the_bare_name(self):
+        dr = self._driver(
+            {"vars": ["temperature"], "from": "", "to": "weekly", "freq": "7D"}
+        )
+        da = _daily_da(14, 1)
+        out = dr.execute(["temperature_weekly"], inputs={"temperature": da})[
+            "temperature_weekly"
+        ]
+        expected = da.isel(time=slice(0, 7)).mean("time").values
+        np.testing.assert_allclose(out.isel(time=0).values, expected)
+
 
 class TestResampleSpecValidation:
     """ResampleSpec.from_config validation."""
@@ -222,4 +233,12 @@ class TestResampleSpecValidation:
         with pytest.raises(CatenaValueError, match="invalid frequency 'banana'"):
             ResampleSpec.from_config(
                 {"vars": ["x"], "from": "daily", "to": "weekly", "freq": "banana"}
+            )
+
+    def test_empty_to_raises(self):
+        from catena.config import ResampleSpec
+
+        with pytest.raises(CatenaValueError, match="to = ''"):
+            ResampleSpec.from_config(
+                {"vars": ["x"], "from": "daily", "to": "", "freq": "7D"}
             )

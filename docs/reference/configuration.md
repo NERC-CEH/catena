@@ -170,9 +170,9 @@ aggfunc = "mean"
 
 | Key | Description |
 |-----|-------------|
-| `vars` | **Required.** Variables to resample; each `{v}_{from}` → `{v}_{to}`. |
-| `from` | **Required.** Node-name suffix to read from. |
-| `to` | **Required.** Node-name suffix to write to. |
+| `vars` | **Required.** Variables to resample; each `{v}_{from}` → `{v}_{to}`, or `{v}` → `{v}_{to}` when `from = ""`. |
+| `from` | **Required.** Node-name suffix to read from; `""` reads the bare name. |
+| `to` | **Required.** Node-name suffix to write to; must not be empty. |
 | `freq` | **Required.** Target frequency: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), validated at parse time. A calendar step such as `"month"` is refused, as it does not say where to stamp the result. |
 | `aggfunc` | Aggregation: `mean` (default), `sum`, `max`, `min`, `first`, `last`. |
 
