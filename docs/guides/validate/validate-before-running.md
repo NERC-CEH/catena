@@ -24,6 +24,7 @@ It checks, in order, and prints a summary per stage:
 4. **DAG** — the driver builds, and the contract check passes on every edge with a contract at both ends.
 5. **Execution plan and wiring** — every variable in `[outputs.*]` is reachable from the inputs, required inputs are all bound, and unused inputs are reported ([below](#the-wiring-check)).
    With no `[outputs.*]`, this checks every terminal node of the DAG, the nodes nothing else consumes.
+   From Python, `catena.dry_run(config, final_vars=[...])` checks the nodes you name instead, for when you pass `final_vars` to `Driver.execute` yourself.
 6. **Input contracts** — each loaded input's metadata (units, dims, coords, dtype) is checked against what its consuming node declares.
    A normal run defers this to when the node is called, so this stage is how you catch a file with wrong or missing `units` without running the pipeline.
 7. **Output paths** — every destination would accept a write (supported extension, a parent directory that is writable or can be created, and — for subset runs — a pre-created Zarr store).

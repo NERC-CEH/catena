@@ -270,7 +270,12 @@ class DryRunError(CatenaValueError):
         super().__init__(f"dry run found {len(lines)} fault(s):\n" + "\n".join(lines))
 
 
-def dry_run(config: ConfigSource, *, allow_overrides: bool = False) -> DryRunReport:
+def dry_run(
+    config: ConfigSource,
+    *,
+    allow_overrides: bool = False,
+    final_vars: list[str] | None = None,
+) -> DryRunReport:
     """Validate everything a real run depends on, without executing it.
 
     Runs the same setup as `run` up to (but excluding) execution: parse the
@@ -280,8 +285,10 @@ def dry_run(config: ConfigSource, *, allow_overrides: bool = False) -> DryRunRep
     dims/coords/dtype + freq) against what the DAG declares, and confirm the
     output destinations are writable.
 
-    The wiring is checked against the nodes the ``[outputs.*]`` sections request
-    or, with no outputs configured, against every terminal node of the DAG.
+    The wiring and execution plan are checked for ``final_vars`` if given, the
+    nodes you will pass to ``Driver.execute`` when driving the DAG yourself.
+    Otherwise they are checked for the nodes the ``[outputs.*]`` sections request
+    or, with no outputs configured, for every terminal node of the DAG.
 
     A stage that finds a fault is marked ``failed`` with the fault in
     `Stage.errors`, and the dry run carries on through every later stage that does
@@ -367,7 +374,7 @@ def dry_run(config: ConfigSource, *, allow_overrides: bool = False) -> DryRunRep
     if dr is None or inputs is None:
         stages.append(_skipped("plan", "execution plan", dr, inputs))
     else:
-        stages.append(_plan_stage(dr, inputs, parsed))
+        stages.append(_plan_stage(dr, inputs, parsed, final_vars))
 
     if not checking:
         stages.append(
@@ -441,19 +448,25 @@ def _checks_stage(parsed: ParsedConfig, *, inputs_loaded: bool) -> Stage:
     return Stage("checks", "ok", f"input checks passed ({n_checks})")
 
 
-def _plan_stage(dr: Any, inputs: dict[str, Any], parsed: ParsedConfig) -> Stage:
+def _plan_stage(
+    dr: Any,
+    inputs: dict[str, Any],
+    parsed: ParsedConfig,
+    final_vars: list[str] | None,
+) -> Stage:
     """Check the wiring and execution plan for the requested or terminal nodes."""
-    if parsed.output_specs:
+    if final_vars is not None:
+        requested, what, source = list(final_vars), "requested node(s)", "final_vars"
+    elif parsed.output_specs:
         requested = get_final_vars(parsed.output_specs)
-        what = "output node(s)"
+        what, source = "output node(s)", "[outputs.*]"
     else:
-        requested = terminal_nodes(dr)
-        what = "terminal node(s)"
+        requested, what, source = terminal_nodes(dr), "terminal node(s)", ""
     known = set(dr.graph.nodes)
     targets = [var for var in requested if var in known]
     errors: list[str] = []
     if unknown := [var for var in requested if var not in known]:
-        errors.append(f"[outputs.*] request node(s) the DAG does not define: {unknown}")
+        errors.append(f"{source} requests node(s) the DAG does not define: {unknown}")
     with warnings.catch_warnings(record=True) as wiring_warnings:
         warnings.simplefilter("always")
         try:

@@ -435,6 +435,29 @@ class TestEveryFaultInOneRun:
         assert "'offset'" in _stage(report, "plan").errors[0]
         assert _stage(report, "outputs").status == "ok"
 
+    def test_final_vars_that_need_no_unbound_input_pass(self, tmp_path):
+        """Driving the DAG from Python: check only what will be executed."""
+        with xra.enabled(True):
+            report = dry_run(_unbound_config(tmp_path), final_vars=["temperature"])
+        assert "1 requested node(s)" in _stage(report, "plan").detail
+
+    def test_final_vars_replace_the_configured_outputs(self, tmp_path):
+        cfg = _unbound_config(tmp_path, outputs=True)
+        with xra.enabled(True):
+            report = dry_run(cfg, final_vars=["temperature"])
+        assert _stage(report, "plan").status == "ok"
+
+    def test_final_vars_that_need_an_unbound_input_fail(self, tmp_path):
+        with xra.enabled(True), pytest.raises(DryRunError, match="'offset'"):
+            dry_run(_unbound_config(tmp_path), final_vars=["total"])
+
+    def test_unknown_final_vars_are_named(self, tmp_path):
+        with (
+            xra.enabled(True),
+            pytest.raises(DryRunError, match=r"final_vars requests.*'nope'"),
+        ):
+            dry_run(_unbound_config(tmp_path), final_vars=["nope"])
+
     def test_cli_renders_every_fault_and_exits_non_zero(self, tmp_path):
         cfg = _unbound_config(tmp_path, units="K", outputs=True)
         with xra.enabled(True):
