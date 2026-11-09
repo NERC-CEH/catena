@@ -25,6 +25,7 @@ from catena.graph import (
     infer_frequencies,
     make_style_function,
     relabel_with_units,
+    separate_config_inputs,
 )
 from catena.graph_style import (
     DEFAULT_PALETTE,
@@ -313,6 +314,79 @@ expression = "precipitation * 2"
         source = "".join(digraph.body)
         assert "subgraph cluster_W_SUN {" in source
         assert 'label="W-SUN"' in source
+
+
+class TestConfigInputs:
+    """A node's config inputs get a table of their own, apart from its data."""
+
+    @pytest.fixture
+    def config_source(self, tmp_path) -> str:
+        (tmp_path / "scaling.py").write_text(
+            "import xarray as xr\n\n\n"
+            "def scaled(\n"
+            "    precipitation: xr.DataArray, *, factor: float = 2.0, mode: str = 'a'\n"
+            ") -> xr.DataArray:\n"
+            "    return precipitation * factor\n\n\n"
+            "def flagged(scaled: xr.DataArray, *, strict: bool = False) -> xr.DataArray:\n"
+            "    return scaled\n"
+        )
+        config = tmp_path / "config.toml"
+        config.write_text('[scaling]\n_import_path = "scaling.py"\nfactor = 3.0\n')
+        return build_graph(config).source
+
+    @staticmethod
+    def _line(source: str, node_id: str) -> str:
+        return next(
+            line
+            for line in source.splitlines()
+            if line.strip().startswith(f"{node_id} [")
+        )
+
+    @requires_dot
+    def test_config_leaves_the_input_table(self, config_source):
+        inputs = self._line(config_source, "_scaled_inputs")
+        assert "<td>precipitation</td>" in inputs
+        assert "factor" not in inputs
+        assert "mode" not in inputs
+
+    @requires_dot
+    def test_config_table_shows_values(self, config_source):
+        config = self._line(config_source, "_scaled_config")
+        assert "shape=note" in config
+        # set in the config, else the signature default
+        assert "<td>factor</td><td>3.0</td>" in config
+        assert "<td>mode</td><td>&quot;a&quot;</td>" in config
+        assert "_scaled_config -> scaled" in config_source
+
+    @requires_dot
+    def test_input_table_of_only_config_is_removed(self, config_source):
+        assert "_flagged_inputs" not in config_source
+        assert "<td>strict</td><td>false</td>" in self._line(
+            config_source, "_flagged_config"
+        )
+
+    @requires_dot
+    def test_floating_config_box_is_dropped_once_tabled(self, config_source):
+        assert not any(
+            line.strip().startswith("factor [") for line in config_source.splitlines()
+        )
+
+    @requires_dot
+    def test_catena_own_hamilton_setting_is_not_drawn(self, config_source):
+        assert "hamilton.enable_power_user_mode" not in config_source
+
+    @requires_dot
+    def test_legend_has_a_config_entry(self, config_source):
+        legend = config_source.split("cluster__legend", 1)[1]
+        assert "config [" in legend
+
+    def test_no_config_inputs_leaves_the_body_alone(self):
+        body = [
+            '\t_f_inputs [label=<<table border="0"><tr><td>x</td><td>1</td></tr></table>>]\n'
+        ]
+        digraph = SimpleNamespace(body=list(body))
+        separate_config_inputs(digraph, {})  # type: ignore[arg-type]
+        assert digraph.body == body
 
 
 class TestGraphvizSpec:

@@ -20,7 +20,7 @@ An opinionated integration of [Apache Hamilton](https://github.com/DAGWorks-Inc/
 ## A very simple demo
 
 [Pipeline 101](recipes/pipeline-101.md) derives a temperature anomaly from 90 days of daily temperature at three sites, then reduces it to a per-site range.
-It has one input file, one node function in a Python module, one node declared inline in the config, and one output file.
+It has one input file, one configurable node function in a Python module, one node declared inline in the config, and one output file.
 
 <!-- The input file comes from `recipes/pipeline_101/make_data.py`. -->
 
@@ -40,7 +40,7 @@ python recipes/pipeline_101/make_data.py > /dev/null
 
 === "TOML config"
 
-    The config names the input file, the module, an inline node and the output.
+    The config names the input file, the module and its config, an inline node and the output.
     From Python, the same structure can be passed as a dict.
 
     ```toml
@@ -49,7 +49,7 @@ python recipes/pipeline_101/make_data.py > /dev/null
 
 === "Graph visualisation"
 
-    Node labels carry the declared units and requested outputs are highlighted, so a wiring mistake is often visible before anything runs.
+    Node labels carry the declared units, requested outputs are highlighted, and each node's config is drawn apart from its data inputs, so a wiring mistake is often visible before anything runs.
 
     ```bash exec="true" source="block" result="text"
     catena graph recipes/pipeline_101/config.toml --png \

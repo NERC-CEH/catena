@@ -41,9 +41,9 @@ def _(mo):
     mo.md("""
     # Pipeline 101
 
-    The smallest pipeline that still has every moving part: an input file, a node function imported from a Python module, a node defined inline in the config, and an output file.
+    The smallest pipeline that still has every moving part: an input file, a node function imported from a Python module and configured from the config file, a node defined inline in the config, and an output file.
 
-    It derives a temperature anomaly from 90 days of daily temperature at three sites, then reduces the anomaly to a per-site range.
+    It derives a temperature anomaly against a 30-day baseline from 90 days of daily temperature at three sites, then reduces the anomaly to a per-site range.
 
     Everything below drives the library directly, so nothing here needs the `catena` command installed.
     """)
@@ -79,7 +79,7 @@ def _(mo, nodes_path):
     ## The node module
 
     An ordinary xarray function is an ordinary DAG node.
-    The function name is the node name, each parameter name is the node it consumes, and the annotations declare the units.
+    The function name is the node name, each positional parameter name is the node it consumes, a keyword-only parameter is config, and the annotations declare the units.
 
     ```python
     {nodes_path.read_text()}
@@ -109,6 +109,7 @@ def _(mo):
 
     `catena.build_graph` returns a `graphviz.Digraph` without running anything, so it renders inline.
     Node labels carry the declared units, so a wiring mistake is often visible before a dry run reports it.
+    Each node's data inputs and config are drawn as separate tables, and the config table shows the value in use: `baseline_days` from the config file.
     """)
     return
 

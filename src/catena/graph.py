@@ -11,6 +11,10 @@ place of the near-universal ``DataArray`` type text. A pipeline whose resample
 targets are called ``raw``/``smoothed`` is therefore grouped exactly as well as
 one using ``daily``/``weekly``.
 
+Each node's data inputs and config inputs are drawn as separate tables. A config
+input is one the driver config sets, or a keyword-only parameter of the node's
+function; its table shows the value in use, from the config or else the default.
+
 Styling defaults live in `catena.graph_style`; a ``--style`` TOML file is
 deep-merged over them, and may name its own ``style_function`` to replace the
 built-in one entirely.
@@ -18,13 +22,15 @@ built-in one entirely.
 
 import html
 import importlib
+import inspect
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from hamilton import graph_types
 from hamilton.driver import Driver
+from hamilton.settings import ENABLE_POWER_USER_MODE
 from xarray_annotated import declarations_from_signature
 
 from .build import build_driver
@@ -163,6 +169,145 @@ def assign_freq_colors(
 # A single ``<td>name</td><td>type</td>`` cell pair inside an input table. The type is
 # not always ``DataArray``: an untyped second consumer widens it to ``Any``.
 _INPUT_ROW_RE = re.compile(r"<td>(?P<name>[^<]+)</td><td>[^<]*</td>")
+
+
+def _config_inputs(
+    dr: Driver, driver_config: Mapping[str, Any]
+) -> dict[str, dict[str, str]]:
+    """Return ``node -> {config input -> displayed value}`` for the DAG's nodes.
+
+    A config input is an external input that is a keyword-only parameter of the
+    consuming function, or that the driver config sets. Its value is the
+    config's, else the signature default, else ``required``.
+    """
+    result: dict[str, dict[str, str]] = {}
+    for n in dr.graph.nodes.values():
+        if n.user_defined or not n.originating_functions:
+            continue
+        params = inspect.signature(n.originating_functions[0]).parameters
+        found: dict[str, str] = {}
+        for name in n.input_types:
+            dep = dr.graph.nodes.get(name)
+            if dep is None or not dep.user_defined:
+                continue
+            param = params.get(name)
+            if name in driver_config:
+                found[name] = _format_config_value(driver_config[name])
+            elif param is None or param.kind is not param.KEYWORD_ONLY:
+                continue
+            elif param.default is not param.empty:
+                found[name] = _format_config_value(param.default)
+            else:
+                found[name] = "required"
+        if found:
+            result[n.name] = found
+    return result
+
+
+def _format_config_value(value: Any) -> str:
+    """Render a config value as it would be written in TOML."""
+    if value is None:
+        return "unset"
+    if isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, str):
+        return f'"{value}"'
+    return str(value)
+
+
+# Hamilton's own style for config nodes, plus the margin its input tables use.
+_CONFIG_STYLE = "fontname=Helvetica margin=0.15 shape=note style=filled"
+_LEGEND_CONFIG = "\t\tconfig [fontname=Helvetica shape=note style=filled]\n"
+_TABLE_ROW_RE = re.compile(r"<tr><td>(?P<name>[^<]+)</td><td>[^<]*</td></tr>")
+
+
+def _node_id(line: str) -> str:
+    return line.split("[label=", 1)[0].strip().strip('"')
+
+
+def _config_table(target: str, keys: dict[str, str]) -> list[str]:
+    """Return the DOT lines for ``target``'s config table and its edge."""
+    rows = "".join(
+        f"<tr><td>{html.escape(key)}</td><td>{html.escape(value)}</td></tr>"
+        for key, value in keys.items()
+    )
+    name = f"_{target}_config"
+    return [
+        f'\t{name} [label=<<table border="0">{rows}</table>> {_CONFIG_STYLE}]\n',
+        f"\t{name} -> {target}\n",
+    ]
+
+
+def separate_config_inputs(
+    digraph: "graphviz.Digraph", config_inputs: dict[str, dict[str, str]]
+) -> None:
+    """Move each node's config inputs into a table of their own, in-place.
+
+    Hamilton lists every external input of a node in one ``_<fn>_inputs``
+    table, so data and config read alike. Here the config rows leave that
+    table for a ``_<fn>_config`` table in Hamilton's config style, which shows
+    each value rather than its type. Hamilton's free-floating box for a config
+    key is dropped once a table shows it, as is the one for the Hamilton setting
+    `catena.build_driver` adds, and an input table left empty is removed along
+    with its edge.
+    """
+    shown = {key for keys in config_inputs.values() for key in keys}
+    hidden = shown | {ENABLE_POWER_USER_MODE}
+
+    # Strip the config rows first, so the edges of emptied tables are known
+    # whichever order Hamilton wrote the definitions and edges in.
+    tables: dict[int, str] = {}
+    emptied: set[str] = set()
+    for i, line in enumerate(digraph.body):
+        if " -> " in line or "[label=<<table" not in line:
+            continue
+        node_id = _node_id(line)
+        target = node_id.removeprefix("_").removesuffix("_inputs")
+        if not node_id.endswith("_inputs") or target not in config_inputs:
+            continue
+        tables[i] = _TABLE_ROW_RE.sub(
+            lambda m, keys=config_inputs[target]: (
+                "" if m.group("name") in keys else m.group(0)
+            ),
+            line,
+        )
+        if "<tr>" not in tables[i]:
+            emptied.add(node_id)
+
+    body: list[str] = []
+    pending = dict(config_inputs)
+    in_legend = False
+    legend_at: int | None = None
+    legend_has_config = False
+    for i, line in enumerate(digraph.body):
+        if "subgraph cluster__legend" in line:
+            in_legend = True
+            legend_at = len(body)
+        if in_legend:
+            legend_has_config |= line.strip().startswith("config [")
+            in_legend = line.strip() != "}"
+            body.append(line)
+        elif " -> " in line:
+            if line.split(" -> ", 1)[0].strip().strip('"') not in emptied:
+                body.append(line)
+        elif "[label=" in line and _node_id(line) in hidden and "shape=note" in line:
+            continue
+        elif i in tables:
+            target = _node_id(line).removeprefix("_").removesuffix("_inputs")
+            if _node_id(line) not in emptied:
+                body.append(tables[i])
+            body.extend(_config_table(target, pending.pop(target)))
+        else:
+            body.append(line)
+
+    # A node whose external inputs are all config has no input table.
+    for target, keys in pending.items():
+        body.extend(_config_table(target, keys))
+
+    if shown and legend_at is not None and not legend_has_config:
+        # Hamilton orders the legend config first, after the graph attributes.
+        body.insert(legend_at + 2, _LEGEND_CONFIG)
+    digraph.body[:] = body
 
 
 def relabel_with_units(digraph: "graphviz.Digraph", unit_map: dict[str, str]) -> None:
@@ -416,6 +561,7 @@ def build_graph(
             'git+https://github.com/NERC-CEH/catena"`.'
         )
 
+    separate_config_inputs(digraph, _config_inputs(dr, parsed.driver_config))
     freq_map = infer_frequencies(digraph, freq_map)
     relabel_with_units(digraph, unit_map)
     color_edges_by_frequency(digraph, freq_map, freq_colors)
