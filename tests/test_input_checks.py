@@ -199,6 +199,12 @@ class TestRunInputChecks:
         assert "time_equal" in msg
         assert "time_subset" in msg
 
+    def test_failures_name_inputs_by_section_label(self):
+        raw = {"daily": _ts_ds(DAILY), "short": _ts_ds(DAILY[:5])}
+        with pytest.raises(InputCheckError) as exc:
+            run_input_checks(raw, [CheckSpec("time_equal", ["daily", "short"])])
+        assert "[inputs.short] time index differs from [inputs.daily]" in str(exc.value)
+
     def test_unknown_arity_backstop(self):
         # Direct call bypassing the parser: fixed-arity self-guard still fires.
         with pytest.raises(ValueError, match="exactly 2"):

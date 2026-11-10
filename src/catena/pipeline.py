@@ -330,7 +330,7 @@ def dry_run(
             if parsed.blocking_spec is not None:
                 assert_dim_in_inputs(inputs, parsed.blocking_spec.dim, "blocking")
         except CatenaError as exc:
-            stages.append(_failed("inputs", detail, exc))
+            stages.append(_failed("inputs", "inputs invalid", exc))
         else:
             stages.append(Stage("inputs", "ok", detail))
 

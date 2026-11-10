@@ -450,6 +450,26 @@ class TestEveryFaultInOneRun:
         assert "'offset'" in plan.errors[0]
         assert any("humidity_extra" in f for f in plan.findings)
 
+    def test_a_failed_blocking_dim_labels_the_inputs_invalid(
+        self, tmp_path, synthetic_data_dir
+    ):
+        cfg = _config(
+            tmp_path, synthetic_data_dir, '[blocking]\nblock_size = 2\ndim = "x"\n'
+        )
+        with pytest.raises(DryRunError) as excinfo:
+            dry_run(cfg)
+        assert _stage(excinfo.value.report, "inputs").detail == "inputs invalid"
+
+    def test_cli_shows_paths_relative_to_the_working_directory(
+        self, tmp_path, monkeypatch
+    ):
+        cfg = _unbound_config(tmp_path)
+        (tmp_path / "data.nc").unlink()
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["run", cfg, "--dry-run"])
+        assert "[inputs.data] data.nc" in result.output
+        assert str(tmp_path) not in result.output.split("\n", 1)[1]
+
     def test_final_vars_that_need_no_unbound_input_pass(self, tmp_path):
         """Driving the DAG from Python: check only what will be executed."""
         with xra.enabled(True):

@@ -7,6 +7,7 @@ a handler that prints the library's progress logging as a run reaches it.
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Annotated
 
@@ -151,11 +152,13 @@ def _echo_report(report: DryRunReport) -> None:
         "skipped": typer.style("-", dim=True),
         "failed": typer.style("✗", fg=typer.colors.RED),
     }
+    # Library messages carry absolute paths; show them relative to the cwd.
+    cwd = f"{Path.cwd()}{os.sep}"
     typer.echo(f"Dry run for {report.config_file}")
     for stage in report.stages:
         typer.echo(f"  {glyphs[stage.status]} {stage.detail}")
         for error in stage.errors:
-            error = error.replace("\n", "\n        ")
+            error = error.replace(cwd, "").replace("\n", "\n        ")
             typer.echo(f"      {typer.style('✗', fg=typer.colors.RED)} {error}")
         for finding in stage.findings:
             typer.echo(f"      {typer.style('!', fg=typer.colors.YELLOW)} {finding}")

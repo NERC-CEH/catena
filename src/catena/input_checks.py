@@ -11,6 +11,7 @@ contract instead, not a check.
 """
 
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
@@ -223,9 +224,16 @@ def run_input_checks(
 
     if failures:
         lines = [
-            f"  - check '{spec.check}' over {spec.inputs}: {exc}"
+            f"  - check '{spec.check}' over {spec.inputs}: {_name_inputs(exc, spec)}"
             for spec, exc in failures
         ]
         raise InputCheckError(
             f"{len(failures)} input check(s) failed:\n" + "\n".join(lines)
         )
+
+
+def _name_inputs(exc: Exception, spec: CheckSpec) -> str:
+    """Replace the checks' positional "dataset N" with the input section label."""
+    return re.sub(
+        r"dataset (\d+)", lambda m: f"[inputs.{spec.inputs[int(m[1])]}]", str(exc)
+    )

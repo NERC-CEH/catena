@@ -180,7 +180,7 @@ class TestThroughTheConfig:
 
     def test_unknown_section_says_none_are_registered(self, registry):
         registry()
-        with pytest.raises(CatenaValueError, match="none is installed here"):
+        with pytest.raises(CatenaValueError, match="no installed package registers"):
             Config({"mystery": {}}).parse()
 
     def test_unknown_section_lists_the_registered_names(self, registry):

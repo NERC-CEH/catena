@@ -14,6 +14,7 @@ import xarray as xr
 import xarray_annotated as xra
 from hamilton.function_modifiers import tag
 
+from .errors import CatenaValueError
 from .importing import import_user_module
 from .specs import NodeSpec
 
@@ -88,7 +89,14 @@ def make_node_module(
             source.splitlines(keepends=True),
             filename,
         )
-        exec(compile(source, filename, "exec"), ns)
+        try:
+            code = compile(source, filename, "exec")
+        except SyntaxError as exc:
+            raise CatenaValueError(
+                f"[[node]] '{spec.name}' expression {spec.expression!r} is not "
+                f"valid Python: {exc.msg}"
+            ) from exc
+        exec(code, ns)
         fn = _decorate(ns[spec.name], spec)
         fn.__module__ = mod.__name__
         setattr(mod, spec.name, fn)
