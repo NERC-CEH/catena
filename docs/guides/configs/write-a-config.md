@@ -51,6 +51,10 @@ Two escape hatches:
 - `suffix = ""` on an input section gives bare node names, useful for a static file that feeds everything.
 - The mapping form of `vars`, `vars = {temperature_daily = "t2m"}`, gives a file variable a different node name.
 
+`vars` can also name a coordinate, so per-site metadata needs no `[[node]]` to extract it.
+`vars = { latitude = "lat", elevation = "altitude" }` binds the `lat` and `altitude` coordinates of a station file as nodes, units included.
+Coordinates are only bound when named: a section that omits `vars` binds data variables only.
+
 To see what actually connected to what, draw it with [`catena graph config.toml --pdf`](../validate/visualise-the-graph.md).
 
 ## The edits you will actually make
