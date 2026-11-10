@@ -185,6 +185,28 @@ class TestGetOutputs:
             daily_results["gpp_daily"].values,
         )
 
+    @pytest.mark.parametrize("order", [["a", "b"], ["b", "a"]])
+    def test_dataset_attrs_not_inherited_from_vars(self, order):
+        """Variable attrs stay on the variables, never leak onto the Dataset (#31)."""
+        time = xr.DataArray([0, 1], dims="time", attrs={"units": "days"})
+        results = {
+            "a": xr.DataArray(
+                [1.0, 2.0],
+                dims="time",
+                coords={"time": time},
+                attrs={"units": "mm d-1", "long_name": "A"},
+            ),
+            "b": xr.DataArray(
+                [3.0, 4.0], dims="time", coords={"time": time}, attrs={"units": "mm"}
+            ),
+        }
+        spec = IOSpec(path="out.nc", vars=order, suffix="")
+        ds = get_outputs(results, {"out": spec})["out"]
+        assert ds.attrs == {}
+        assert ds["a"].attrs == {"units": "mm d-1", "long_name": "A"}
+        assert ds["b"].attrs == {"units": "mm"}
+        assert ds["time"].attrs == {"units": "days"}
+
 
 # ---------------------------------------------------------------------------
 # get_final_vars
