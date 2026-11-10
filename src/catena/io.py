@@ -314,7 +314,9 @@ def get_outputs(
             for node, file_var in var_mapping(label, spec).items()
         ]
         # Explicit, so differing coordinates keep raising if xarray's defaults change.
-        out[label] = transform(xr.merge(arrays, compat="no_conflicts", join="outer"))
+        merged = xr.merge(arrays, compat="no_conflicts", join="outer")
+        # merge copies the first array's attrs onto the Dataset (#31).
+        out[label] = transform(merged.drop_attrs(deep=False))
     return out
 
 
