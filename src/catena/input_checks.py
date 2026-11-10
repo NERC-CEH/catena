@@ -234,6 +234,9 @@ def run_input_checks(
 
 def _name_inputs(exc: Exception, spec: CheckSpec) -> str:
     """Replace the checks' positional "dataset N" with the input section label."""
+    # WARNING: relies on every check wording its message as "dataset N". A check
+    # that words it differently keeps its index. Revisit: pass labels into the
+    # checks instead.
     return re.sub(
         r"dataset (\d+)", lambda m: f"[inputs.{spec.inputs[int(m[1])]}]", str(exc)
     )
