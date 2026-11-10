@@ -119,7 +119,10 @@ class Config:
         """Load a TOML file; relative paths resolve against its directory."""
         path = Path(path).resolve()
         with open(path, "rb") as f:
-            data = tomllib.load(f)
+            try:
+                data = tomllib.load(f)
+            except tomllib.TOMLDecodeError as exc:
+                raise CatenaValueError(f"{path} is not valid TOML: {exc}") from exc
         return cls(data, base=path.parent)
 
     @classmethod
@@ -455,23 +458,13 @@ def _merge_params(
 
 def _no_module_for(section_label: str) -> str:
     """Explain a section that names no module catena can find."""
-    give_one = (
-        "Give an '_import_path', naming either an installed module "
-        "('_import_path = \"pkg.module\"') or a .py file beside the config "
-        "('_import_path = \"nodes.py\"')."
-    )
-    known = discover_registered_modules()
-    if not known:
-        return (
-            f"Section [{section_label}] is missing '_import_path'. {give_one} A "
-            f"bare section name works only when an installed package registers a "
-            f"module under it, and none is installed here."
-        )
-    listed = ", ".join(
-        f"{name} (from {mod.distribution})" for name, mod in sorted(known.items())
-    )
-    return (
+    message = (
         f"Section [{section_label}] is missing '_import_path', and no installed "
-        f"package registers a module by that name. Registered names are: {listed}. "
-        f"{give_one}"
+        f"package registers a module by that name."
     )
+    if known := discover_registered_modules():
+        listed = ", ".join(
+            f"{name} (from {mod.distribution})" for name, mod in sorted(known.items())
+        )
+        message += f" Registered names are: {listed}."
+    return message

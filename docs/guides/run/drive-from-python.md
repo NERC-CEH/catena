@@ -27,7 +27,7 @@ A [`RunReport`](../../reference/modules/catena.pipeline.md#catena.pipeline.RunRe
 Take paths from `written` rather than from the config, because a `[subset]` run adds a suffix to them.
 A run from a `ParsedConfig` has no config text, so its outputs carry no [provenance stamp](../../reference/data-formats.md#output-provenance).
 
-`catena.dry_run` runs the same checks without executing anything and returns a [`DryRunReport`](../../reference/modules/catena.pipeline.md#catena.pipeline.DryRunReport), and `catena.build_graph` returns the graph as a `graphviz.Digraph`.
+`catena.dry_run` runs the same checks without executing anything and returns a [`DryRunReport`](../../reference/modules/catena.pipeline.md#catena.pipeline.DryRunReport), or raises `DryRunError` carrying one if any stage found a fault, and `catena.build_graph` returns the graph as a `graphviz.Digraph`.
 
 Progress is logged to the `catena.pipeline` logger at `INFO`.
 The library installs no handler, so to see it:

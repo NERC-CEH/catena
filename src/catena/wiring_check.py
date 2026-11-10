@@ -49,6 +49,25 @@ def _required_external_inputs(
     return all_external & required, all_external
 
 
+def terminal_nodes(dr: driver.Driver) -> list[str]:
+    """Return the computed nodes no other node depends on, sorted by name.
+
+    These are the targets that cover the whole DAG, for checking the wiring of a
+    config that requests no outputs.
+    """
+    hg = graph_types.HamiltonGraph.from_graph(dr.graph)
+    consumed = {
+        dep
+        for node in hg.nodes
+        for dep in (*node.required_dependencies, *node.optional_dependencies)
+    }
+    return sorted(
+        node.name
+        for node in hg.nodes
+        if not node.is_external_input and node.name not in consumed
+    )
+
+
 def check_wiring(
     dr: driver.Driver,
     final_vars: list[str],
@@ -84,20 +103,18 @@ def check_wiring(
     required_external, all_external = _required_external_inputs(dr, final_vars)
     loaded = set(inputs)
 
-    unbound = required_external - loaded - set(dr.graph.config)
-    if unbound:
-        raise CatenaValueError(
-            f"unbound pipeline input(s): {sorted(unbound)}. These are required by "
-            f"the DAG but were neither loaded nor set in the config. Check for a "
-            f"naming mismatch between [inputs.*] vars/suffix and the consuming "
-            f"function's parameter names."
-        )
-
+    # Warn before raising, so an unbound input does not hide an unused one.
     unused = loaded - all_external - set(exempt)
     if unused:
         warnings.warn(
-            f"loaded input(s) consumed by no node: {sorted(unused)}. They will be "
-            f"ignored — check for a suffix/alias mismatch if this is unexpected.",
+            f"loaded input(s) consumed by no node: {sorted(unused)}",
             WiringWarning,
             stacklevel=2,
+        )
+
+    unbound = required_external - loaded - set(dr.graph.config)
+    if unbound:
+        raise CatenaValueError(
+            f"unbound pipeline input(s): {sorted(unbound)}, required by the DAG "
+            f"but neither loaded nor set in the config"
         )

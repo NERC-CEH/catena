@@ -595,7 +595,7 @@ class TestSubsetErrors:
     ):
         specs = _output_specs(tmp_path / "missing.zarr")
         spec = SubsetSpec(0, 2, dim="pixel")
-        with pytest.raises(FileNotFoundError, match="create-store"):
+        with pytest.raises(FileNotFoundError, match="does not exist"):
             save_outputs(
                 _execute(pipeline_driver, pipeline_config, spec, specs),
                 specs,

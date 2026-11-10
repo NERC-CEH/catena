@@ -535,7 +535,7 @@ class TestDryRunEndToEnd:
         # The consumer declares weekly; the loaded input is daily. Nothing executes
         # and nothing is written — the mis-declaration surfaces before any compute.
         result = self._invoke(register, tmp_path, Freq("7D"), "fq_cli_bad")
-        assert result.exit_code != 0
-        assert isinstance(result.exception, CatenaValueError)
-        assert "frequency mismatch" in str(result.exception)
+        assert result.exit_code == 1
+        assert "frequency mismatch" in result.output
+        assert "Dry run failed" in result.output
         assert not (tmp_path / "out.nc").exists()

@@ -252,3 +252,9 @@ class TestNodeUnits:
     def test_xra_is_refused_as_a_node_name(self):
         with pytest.raises(ValueError, match="reserved"):
             NodeSpec.from_config({"name": "xra", "inputs": [], "expression": "0"})
+
+
+def test_expression_syntax_error_names_the_node():
+    spec = NodeSpec.from_config({"name": "bad", "inputs": ["t"], "expression": "t +"})
+    with pytest.raises(CatenaValueError, match=r"\[\[node\]\] 'bad' expression 't \+'"):
+        make_node_module([spec])

@@ -74,9 +74,7 @@ def resolve_file_form(import_path: str, base: Path | None) -> Path:
     if base is None:
         raise CatenaValueError(
             f"'_import_path = {import_path!r}' is a relative path, but this config "
-            f"has no file to resolve it against. Give an absolute path, use a "
-            f"dotted module name for an installed package, or load the config from "
-            f"a file with Config.load()."
+            f"has no file to resolve it against."
         )
     return base / path
 
@@ -124,10 +122,7 @@ def _load_from_file(path: Path, import_path: str) -> ModuleType:
         del sys.modules[name]
         raise CatenaValueError(
             f"{resolved} imports {exc.name!r}, which is not installed. A module "
-            f"named by a file path is loaded on its own, so it can import "
-            f"installed packages but not another loose .py file beside it. Either "
-            f"install {exc.name!r}, or make your own code an installed package and "
-            f"name it with a dotted '_import_path'."
+            f"loaded from a file path cannot import other .py files beside it."
         ) from exc
     except Exception:
         del sys.modules[name]
@@ -164,18 +159,12 @@ def import_user_module(
     except ModuleNotFoundError as exc:
         if registered_by is not None:
             raise CatenaValueError(
-                f"Could not import {import_path!r}, which {registered_by!r} "
-                f"registers as a catena module. The config does not name it "
-                f"directly, so this is a problem with the installed "
-                f"{registered_by!r} package rather than with the config. Try "
-                f"reinstalling it, or name a module yourself with an "
-                f"'_import_path'."
+                f"Could not import {import_path!r}, which the installed package "
+                f"{registered_by!r} registers as a catena module."
             ) from exc
         raise CatenaValueError(
             f"Could not import {import_path!r}, named by an '_import_path' in the "
-            f"config. A dotted name must be importable from this environment, so "
-            f"the package has to be installed. To point at a .py file instead, "
-            f"give its path: '_import_path = \"nodes.py\"', relative to the config."
+            f"config."
         ) from exc
 
 
@@ -285,7 +274,6 @@ def registered_module(section: str) -> RegisteredModule | None:
         paths = " and ".join(mod.import_path for mod in clash)
         raise CatenaValueError(
             f"Packages {names} both register a catena module named {section!r} "
-            f"({paths}). Uninstall one, or name the module you want with an "
-            f"explicit '_import_path' in [{section}]."
+            f"({paths})."
         )
     return found.get(section)

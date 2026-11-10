@@ -902,3 +902,10 @@ class TestAStrayTopLevelKey:
     def test_is_a_catena_error(self):
         with pytest.raises(CatenaValueError):
             Config({"point_dims": "pixel"}).parse()
+
+
+def test_invalid_toml_names_the_file(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text("[inputs.data\npath = 1\n")
+    with pytest.raises(CatenaValueError, match=r"config\.toml is not valid TOML"):
+        load_config(path)

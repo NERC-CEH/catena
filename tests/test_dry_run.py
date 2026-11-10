@@ -15,6 +15,7 @@ import os
 import sys
 import types
 
+import pandas as pd
 import pytest
 import xarray as xr
 import xarray_annotated as xra
@@ -25,9 +26,9 @@ from catena.build import build_driver
 from catena.cli.app import app
 from catena.config import IOSpec, NodeSpec, ResampleSpec, SubsetSpec, load_config
 from catena.contract_check import check_input_contracts
-from catena.errors import CatenaValueError
-from catena.input_checks import InputCheckError
+from catena.errors import CatenaError, CatenaValueError
 from catena.io import assert_output_paths_writable
+from catena.pipeline import DryRunError
 
 runner = CliRunner()
 
@@ -291,10 +292,13 @@ def _stage(report, name: str):
 class TestDryRunReport:
     """`dry_run` returns the outcome as data; only the CLI turns it into text."""
 
-    def test_no_outputs_skips_the_output_stages(self, tmp_path, synthetic_data_dir):
+    def test_no_outputs_checks_the_plan_for_every_terminal_node(
+        self, tmp_path, synthetic_data_dir
+    ):
         report = dry_run(_config(tmp_path, synthetic_data_dir))
         assert _stage(report, "config").status == "ok"
-        assert _stage(report, "plan").status == "skipped"
+        assert _stage(report, "plan").status == "ok"
+        assert "1 terminal node(s)" in _stage(report, "plan").detail
         assert _stage(report, "outputs").status == "skipped"
 
     def test_passes_and_writes_nothing(self, tmp_path, synthetic_data_dir):
@@ -307,28 +311,37 @@ class TestDryRunReport:
         # The dry run must not execute or save anything.
         assert not out.exists()
 
-    def test_output_blocked_by_a_file_raises(self, tmp_path, synthetic_data_dir):
+    def test_output_blocked_by_a_file_fails_the_outputs_stage(
+        self, tmp_path, synthetic_data_dir
+    ):
         blocker = tmp_path / "blocker"
         blocker.write_text("")
         out = blocker / "out.nc"
         outputs = f'[outputs.daily]\npath = "{out}"\nvars = ["temperature"]\n'
         cfg = _config(tmp_path, synthetic_data_dir, outputs)
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(DryRunError) as excinfo:
             dry_run(cfg)
+        assert [s.name for s in excinfo.value.report.failed] == ["outputs"]
 
     def test_missing_input_file_is_a_catena_error(self, tmp_path):
         """The CLI shows a CatenaError without a traceback, so this must be one."""
-        from catena.errors import CatenaFileNotFoundError
-
         cfg = _config(tmp_path, tmp_path / "no_such_dir")
-        with pytest.raises(CatenaFileNotFoundError, match=r"\[inputs\.daily\]"):
+        with pytest.raises(CatenaError, match=r"\[inputs\.daily\]") as excinfo:
             dry_run(cfg)
+        assert isinstance(excinfo.value, DryRunError)
+        report = excinfo.value.report
+        assert _stage(report, "inputs").status == "failed"
+        # The DAG does not depend on the inputs, so it is still checked.
+        assert _stage(report, "dag").status == "ok"
+        assert _stage(report, "plan").status == "skipped"
+        assert _stage(report, "contracts").status == "skipped"
+        assert "inputs unavailable" in _stage(report, "plan").detail
 
     def test_unreachable_output_var_raises(self, tmp_path, synthetic_data_dir):
         out = tmp_path / "out.nc"
         outputs = f'[outputs.daily]\npath = "{out}"\nvars = ["not_a_real_variable"]\n'
         cfg = _config(tmp_path, synthetic_data_dir, outputs)
-        with pytest.raises(ValueError, match="Unknown nodes"):
+        with pytest.raises(DryRunError, match="not_a_real_variable"):
             dry_run(cfg)
         assert not out.exists()
 
@@ -352,6 +365,143 @@ class TestDryRunReport:
         report = dry_run(_config(tmp_path, synthetic_data_dir, outputs))
         findings = _stage(report, "plan").findings
         assert any("consumed by no node" in f for f in findings)
+
+
+_TOTAL_MODULE = """\
+from typing import Annotated
+
+import xarray as xr
+from xarray_annotated import Unit, check_annotations
+
+
+@check_annotations
+def total(
+    temperature: Annotated[xr.DataArray, Unit("degC")],
+    offset: Annotated[xr.DataArray, Unit("degC")],
+) -> Annotated[xr.DataArray, Unit("degC")]:
+    return temperature + offset
+"""
+
+
+def _unbound_config(tmp_path, units: str = "degC", outputs: bool = False) -> str:
+    """The issue #26 reproduction: nothing provides ``total``'s ``offset``."""
+    (tmp_path / "nodes.py").write_text(_TOTAL_MODULE)
+    xr.Dataset(
+        {"t": ("time", [0.0, 1.0, 2.0], {"units": "degC"})},
+        coords={"time": pd.date_range("2000-01-01", periods=3)},
+    ).to_netcdf(tmp_path / "data.nc")
+    content = f"""\
+[model]
+_import_path = "nodes.py"
+
+[inputs.data]
+path = "data.nc"
+suffix = ""
+vars = ["t"]
+
+[[node]]
+name = "temperature"
+inputs = ["t"]
+expression = "t"
+units = "{units}"
+"""
+    if outputs:
+        content += '\n[outputs.out]\npath = "out.nc"\nsuffix = ""\nvars = ["total"]\n'
+    p = tmp_path / "config.toml"
+    p.write_text(content)
+    return str(p)
+
+
+class TestEveryFaultInOneRun:
+    """A dry run reports every fault it can reach, not just the first."""
+
+    def test_unbound_input_without_outputs_is_a_fault(self, tmp_path):
+        with xra.enabled(True), pytest.raises(DryRunError) as excinfo:
+            dry_run(_unbound_config(tmp_path))
+        report = excinfo.value.report
+        assert [s.name for s in report.failed] == ["plan"]
+        assert "'offset'" in _stage(report, "plan").errors[0]
+
+    def test_unbound_input_with_outputs_is_a_fault(self, tmp_path):
+        with xra.enabled(True), pytest.raises(DryRunError, match="'offset'"):
+            dry_run(_unbound_config(tmp_path, outputs=True))
+
+    def test_contract_mismatch_does_not_hide_the_wiring_fault(self, tmp_path):
+        with xra.enabled(True), pytest.raises(DryRunError) as excinfo:
+            dry_run(_unbound_config(tmp_path, units="K", outputs=True))
+        report = excinfo.value.report
+        assert [s.name for s in report.failed] == ["dag", "plan"]
+        assert "'temperature'" in _stage(report, "dag").errors[0]
+        assert "'offset'" in _stage(report, "plan").errors[0]
+        assert _stage(report, "outputs").status == "ok"
+
+    def test_an_unbound_input_does_not_hide_an_unused_one(
+        self, tmp_path, synthetic_data_dir
+    ):
+        cfg = _unbound_config(tmp_path)
+        with open(cfg, "a") as f:
+            f.write(
+                f'\n[inputs.extra]\npath = "{synthetic_data_dir / "daily.nc"}"\n'
+                'vars = ["humidity"]\n'
+            )
+        with xra.enabled(True), pytest.raises(DryRunError) as excinfo:
+            dry_run(cfg)
+        plan = _stage(excinfo.value.report, "plan")
+        assert "'offset'" in plan.errors[0]
+        assert any("humidity_extra" in f for f in plan.findings)
+
+    def test_a_failed_blocking_dim_labels_the_inputs_invalid(
+        self, tmp_path, synthetic_data_dir
+    ):
+        cfg = _config(
+            tmp_path, synthetic_data_dir, '[blocking]\nblock_size = 2\ndim = "x"\n'
+        )
+        with pytest.raises(DryRunError) as excinfo:
+            dry_run(cfg)
+        assert _stage(excinfo.value.report, "inputs").detail == "inputs invalid"
+
+    def test_cli_shows_paths_relative_to_the_working_directory(
+        self, tmp_path, monkeypatch
+    ):
+        cfg = _unbound_config(tmp_path)
+        (tmp_path / "data.nc").unlink()
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["run", cfg, "--dry-run"])
+        assert "[inputs.data] data.nc" in result.output
+        assert str(tmp_path) not in result.output.split("\n", 1)[1]
+
+    def test_final_vars_that_need_no_unbound_input_pass(self, tmp_path):
+        """Driving the DAG from Python: check only what will be executed."""
+        with xra.enabled(True):
+            report = dry_run(_unbound_config(tmp_path), final_vars=["temperature"])
+        assert "1 requested node(s)" in _stage(report, "plan").detail
+
+    def test_final_vars_replace_the_configured_outputs(self, tmp_path):
+        cfg = _unbound_config(tmp_path, outputs=True)
+        with xra.enabled(True):
+            report = dry_run(cfg, final_vars=["temperature"])
+        assert _stage(report, "plan").status == "ok"
+
+    def test_final_vars_that_need_an_unbound_input_fail(self, tmp_path):
+        with xra.enabled(True), pytest.raises(DryRunError, match="'offset'"):
+            dry_run(_unbound_config(tmp_path), final_vars=["total"])
+
+    def test_unknown_final_vars_are_named(self, tmp_path):
+        with (
+            xra.enabled(True),
+            pytest.raises(DryRunError, match=r"final_vars requests.*'nope'"),
+        ):
+            dry_run(_unbound_config(tmp_path), final_vars=["nope"])
+
+    def test_cli_renders_every_fault_and_exits_non_zero(self, tmp_path):
+        cfg = _unbound_config(tmp_path, units="K", outputs=True)
+        with xra.enabled(True):
+            result = runner.invoke(app, ["run", cfg, "--dry-run"])
+        assert result.exit_code == 1
+        assert "'offset'" in result.output
+        assert "'temperature'" in result.output
+        assert "Dry run failed: 2 stage(s)" in result.output
+        assert "Dry run passed." not in result.output
 
 
 class TestSwitchedOff:
@@ -479,8 +629,9 @@ class TestDryRunInputChecks:
             '{ check = "time_equal", inputs = ["daily", "other"] }',
             second_var="pressure",
         )
-        with pytest.raises(InputCheckError, match="time_equal"):
+        with pytest.raises(DryRunError, match="time_equal") as excinfo:
             dry_run(cfg)
+        assert _stage(excinfo.value.report, "checks").status == "failed"
 
     def test_no_checks_configured_reported(self, tmp_path, synthetic_data_dir):
         report = dry_run(_config(tmp_path, synthetic_data_dir))

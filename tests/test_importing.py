@@ -109,8 +109,8 @@ class TestSiblingImportsAreUnsupported:
         with pytest.raises(CatenaValueError, match="'helpers'"):
             import_user_module("nodes.py", base=pipeline_with_sibling)
 
-    def test_error_points_at_packaging(self, pipeline_with_sibling):
-        with pytest.raises(CatenaValueError, match="installed package"):
+    def test_error_says_sibling_files_cannot_be_imported(self, pipeline_with_sibling):
+        with pytest.raises(CatenaValueError, match=r"cannot import other \.py files"):
             import_user_module("nodes.py", base=pipeline_with_sibling)
 
     def test_failed_module_is_not_left_in_sys_modules(self, pipeline_with_sibling):
@@ -129,8 +129,8 @@ class TestDottedForm:
     def test_importable_module_loads(self):
         assert import_user_module("catena.transforms").resample is not None
 
-    def test_missing_module_suggests_the_file_form(self):
-        with pytest.raises(CatenaValueError, match="give its path"):
+    def test_missing_module_is_named(self):
+        with pytest.raises(CatenaValueError, match="'no_such_package_anywhere'"):
             import_user_module("no_such_package_anywhere")
 
 

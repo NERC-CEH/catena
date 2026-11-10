@@ -15,13 +15,14 @@ import time
 import warnings
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import xarray as xr
 
 from .blocking import execute_blocked
 from .build import build_driver
 from .config import load_config
+from .errors import CatenaError, CatenaValueError
 from .io import (
     assert_dim_in_inputs,
     assert_output_paths_writable,
@@ -32,9 +33,17 @@ from .io import (
     save_outputs,
 )
 from .specs import CacheSpec, ParsedConfig
-from .wiring_check import check_wiring
+from .wiring_check import check_wiring, terminal_nodes
 
-__all__ = ["DryRunReport", "RunReport", "Stage", "WrittenOutput", "dry_run", "run"]
+__all__ = [
+    "DryRunError",
+    "DryRunReport",
+    "RunReport",
+    "Stage",
+    "WrittenOutput",
+    "dry_run",
+    "run",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -215,49 +224,85 @@ class Stage:
     """One step of a dry run, and what it found.
 
     ``detail`` is a complete phrase, e.g. "inputs loaded: 18 variable(s) from 4
-    source(s)".
+    source(s)". A ``failed`` stage carries each fault it found in ``errors``;
+    ``findings`` are soft issues, such as an input no node consumes, and do not fail
+    the stage.
     """
 
     name: str
-    status: Literal["ok", "skipped"]
+    status: Literal["ok", "skipped", "failed"]
     # A whole phrase, never a fragment for the caller to assemble: the wording of a
     # stage is fixed here so every renderer (the CLI, a CI script, a test) words it
     # the same way.
     detail: str
     findings: tuple[str, ...] = ()
+    errors: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class DryRunReport:
-    """The outcome of a dry run.
-
-    A hard failure raises out of `dry_run`, so a report exists only for a pipeline
-    that passed. ``findings`` on the individual stages are soft issues, such as an
-    input no node consumes.
-    """
+    """The outcome of a dry run: what each stage checked and found."""
 
     #: The config's path, or ``None`` when `dry_run` was given a `ParsedConfig`.
     config_file: Path | None
     stages: tuple[Stage, ...] = ()
 
+    @property
+    def failed(self) -> tuple[Stage, ...]:
+        """The stages that found a fault."""
+        return tuple(stage for stage in self.stages if stage.status == "failed")
 
-def dry_run(config: ConfigSource, *, allow_overrides: bool = False) -> DryRunReport:
+
+class DryRunError(CatenaValueError):
+    """A dry run found at least one fault.
+
+    The message lists every fault; ``report`` holds the full `DryRunReport`,
+    passing stages included.
+    """
+
+    def __init__(self, report: DryRunReport) -> None:
+        self.report = report
+        lines = [
+            f"[{stage.name}] {error}"
+            for stage in report.failed
+            for error in stage.errors
+        ]
+        super().__init__(f"dry run found {len(lines)} fault(s):\n" + "\n".join(lines))
+
+
+def dry_run(
+    config: ConfigSource,
+    *,
+    allow_overrides: bool = False,
+    final_vars: list[str] | None = None,
+) -> DryRunReport:
     """Validate everything a real run depends on, without executing it.
 
     Runs the same setup as `run` up to (but excluding) execution: parse the
     config, load inputs (lazily — file metadata only), run the input checks, build
-    the driver (which runs the build-time contract check), validate the execution
-    plan, validate the loaded inputs' contracts (units + dims/coords/dtype + freq)
-    against what the DAG declares, and confirm the output destinations are
-    writable.
+    the driver and check the contracts declared across it, check the wiring and
+    the execution plan, validate the loaded inputs' contracts (units +
+    dims/coords/dtype + freq) against what the DAG declares, and confirm the
+    output destinations are writable.
 
-    Hard failures raise; soft issues are collected into `Stage.findings`. Contract
-    stages report ``skipped`` when `xarray-annotated` is switched off. No model runs
-    and nothing is written.
+    The wiring and execution plan are checked for ``final_vars`` if given, the
+    nodes you will pass to ``Driver.execute`` when driving the DAG yourself.
+    Otherwise they are checked for the nodes the ``[outputs.*]`` sections request
+    or, with no outputs configured, for every terminal node of the DAG.
+
+    A stage that finds a fault is marked ``failed`` with the fault in
+    `Stage.errors`, and the dry run carries on through every later stage that does
+    not depend on it, so one run reports every fault it can reach. A stage that
+    cannot run because one it depends on failed is ``skipped``. If any stage
+    failed, `DryRunError` is raised at the end, carrying the report. A config
+    that fails to parse raises its own error at once, as nothing else can run.
+
+    Contract stages report ``skipped`` when `xarray-annotated` is switched off. No
+    model runs and nothing is written.
     """
     from xarray_annotated import resolve_enabled
 
-    from .contract_check import check_input_contracts
+    from .contract_check import check_dag_contracts, check_input_contracts
 
     parsed, config_file = prepare_config(config)
     # Reported in `detail` rather than `findings`: a finding renders as a warning,
@@ -267,98 +312,97 @@ def dry_run(config: ConfigSource, *, allow_overrides: bool = False) -> DryRunRep
         Stage("config", "ok", "; ".join(("config parsed", *sources)))
     ]
 
-    inputs = load_inputs(
-        parsed.input_specs,
-        subset_spec=parsed.subset_spec,
-    )
-    if parsed.blocking_spec is not None:
-        assert_dim_in_inputs(inputs, parsed.blocking_spec.dim, "blocking")
-    stages.append(
-        Stage(
-            "inputs",
-            "ok",
-            f"inputs loaded: {len(inputs)} variable(s) "
-            f"from {len(parsed.input_specs)} source(s)",
+    inputs: dict[str, Any] | None
+    try:
+        inputs = load_inputs(
+            parsed.input_specs,
+            subset_spec=parsed.subset_spec,
         )
-    )
+    except CatenaError as exc:
+        inputs = None
+        stages.append(_failed("inputs", "inputs failed to load", exc))
+    else:
+        detail = (
+            f"inputs loaded: {len(inputs)} variable(s) "
+            f"from {len(parsed.input_specs)} source(s)"
+        )
+        try:
+            if parsed.blocking_spec is not None:
+                assert_dim_in_inputs(inputs, parsed.blocking_spec.dim, "blocking")
+        except CatenaError as exc:
+            stages.append(_failed("inputs", "inputs invalid", exc))
+        else:
+            stages.append(Stage("inputs", "ok", detail))
 
-    if parsed.checks:
-        n_checks = _run_input_checks(parsed)
-        if n_checks:
-            stages.append(Stage("checks", "ok", f"input checks passed ({n_checks})"))
+    stages.append(_checks_stage(parsed, inputs_loaded=inputs is not None))
+
+    checking = resolve_enabled()
+    # Caching is an execution-time adapter; disable it so the dry run creates no
+    # cache directory. The graph structure and unit checks are unaffected.
+    try:
+        dr = build_driver(
+            modules=parsed.modules,
+            config=parsed.driver_config,
+            node_specs=parsed.node_specs,
+            allow_module_overrides=allow_overrides,
+            cache=None,
+            base=parsed.base,
+            registered=parsed.registered_modules,
+            check_contracts=False,
+        )
+    except CatenaError as exc:
+        dr = None
+        stages.append(_failed("dag", "DAG failed to build", exc))
+    else:
+        try:
+            check_dag_contracts(dr)
+        except CatenaError as exc:
+            stages.append(
+                _failed("dag", "DAG built; static contract check failed", exc)
+            )
         else:
             stages.append(
                 Stage(
-                    "checks",
-                    "skipped",
-                    "input checks: skipped (running under [subset])",
+                    "dag",
+                    "ok",
+                    "DAG built (static contract check passed)"
+                    if checking
+                    else "DAG built (contract checks switched off)",
                 )
             )
-    else:
-        stages.append(Stage("checks", "skipped", "input checks: none configured"))
 
-    # Caching is an execution-time adapter; disable it so the dry run creates no
-    # cache directory. The graph structure and unit checks are unaffected.
-    dr = build_driver(
-        modules=parsed.modules,
-        config=parsed.driver_config,
-        node_specs=parsed.node_specs,
-        allow_module_overrides=allow_overrides,
-        cache=None,
-        base=parsed.base,
-        registered=parsed.registered_modules,
-    )
-    checking = resolve_enabled()
-    stages.append(
-        Stage(
-            "dag",
-            "ok",
-            "DAG built (static contract check passed)"
-            if checking
-            else "DAG built (contract checks switched off)",
-        )
-    )
-
-    if parsed.output_specs:
-        target_vars = get_final_vars(parsed.output_specs)
-        # Wiring check first: an unbound input raises here with a clearer message
-        # than Hamilton's; an unused input surfaces as a finding below.
-        with warnings.catch_warnings(record=True) as wiring_warnings:
-            warnings.simplefilter("always")
-            check_wiring(dr, target_vars, inputs, exempt=auxiliary_input_names(inputs))
-        dr.validate_execution(target_vars, inputs=inputs)  # type: ignore[reportArgumentType]
-        stages.append(
-            Stage(
-                "plan",
-                "ok",
-                f"execution plan valid: {len(target_vars)} output node(s) reachable",
-                tuple(str(w.message) for w in wiring_warnings),
-            )
-        )
+    if dr is None or inputs is None:
+        stages.append(_skipped("plan", "execution plan", dr, inputs))
     else:
-        stages.append(
-            Stage(
-                "plan", "skipped", "execution plan: skipped (no [outputs.*] configured)"
-            )
-        )
+        stages.append(_plan_stage(dr, inputs, parsed, final_vars))
 
-    if checking:
-        check_input_contracts(dr, inputs)
-        stages.append(Stage("contracts", "ok", "input contracts validated"))
-    else:
+    if not checking:
         stages.append(
             Stage("contracts", "skipped", "input contracts: skipped (switched off)")
         )
+    elif dr is None or inputs is None:
+        stages.append(_skipped("contracts", "input contracts", dr, inputs))
+    else:
+        try:
+            check_input_contracts(dr, inputs)
+        except CatenaError as exc:
+            stages.append(_failed("contracts", "input contracts invalid", exc))
+        else:
+            stages.append(Stage("contracts", "ok", "input contracts validated"))
 
     if parsed.output_specs:
-        assert_output_paths_writable(parsed.output_specs, parsed.subset_spec)
-        stages.append(
-            Stage(
-                "outputs",
-                "ok",
-                f"output paths writable: {len(parsed.output_specs)} destination(s)",
+        try:
+            assert_output_paths_writable(parsed.output_specs, parsed.subset_spec)
+        except CatenaError as exc:
+            stages.append(_failed("outputs", "output paths not writable", exc))
+        else:
+            stages.append(
+                Stage(
+                    "outputs",
+                    "ok",
+                    f"output paths writable: {len(parsed.output_specs)} destination(s)",
+                )
             )
-        )
     else:
         stages.append(
             Stage(
@@ -368,7 +412,85 @@ def dry_run(config: ConfigSource, *, allow_overrides: bool = False) -> DryRunRep
             )
         )
 
-    return DryRunReport(config_file=config_file, stages=tuple(stages))
+    report = DryRunReport(config_file=config_file, stages=tuple(stages))
+    if report.failed:
+        raise DryRunError(report)
+    return report
+
+
+def _failed(name: str, detail: str, exc: Exception) -> Stage:
+    return Stage(name, "failed", detail, errors=(str(exc),))
+
+
+def _skipped(name: str, what: str, dr: object, inputs: object) -> Stage:
+    """Report a stage that cannot run because the DAG or the inputs did not load."""
+    missing = " and ".join(
+        part
+        for part, absent in (("DAG", dr is None), ("inputs", inputs is None))
+        if absent
+    )
+    return Stage(name, "skipped", f"{what}: skipped ({missing} unavailable)")
+
+
+def _checks_stage(parsed: ParsedConfig, *, inputs_loaded: bool) -> Stage:
+    if not parsed.checks:
+        return Stage("checks", "skipped", "input checks: none configured")
+    if not inputs_loaded:
+        return Stage("checks", "skipped", "input checks: skipped (inputs unavailable)")
+    try:
+        n_checks = _run_input_checks(parsed)
+    except CatenaError as exc:
+        return _failed("checks", "input checks failed", exc)
+    if not n_checks:
+        return Stage(
+            "checks", "skipped", "input checks: skipped (running under [subset])"
+        )
+    return Stage("checks", "ok", f"input checks passed ({n_checks})")
+
+
+def _plan_stage(
+    dr: Any,
+    inputs: dict[str, Any],
+    parsed: ParsedConfig,
+    final_vars: list[str] | None,
+) -> Stage:
+    """Check the wiring and execution plan for the requested or terminal nodes."""
+    if final_vars is not None:
+        requested, what, source = list(final_vars), "requested node(s)", "final_vars"
+    elif parsed.output_specs:
+        requested = get_final_vars(parsed.output_specs)
+        what, source = "output node(s)", "[outputs.*]"
+    else:
+        requested, what, source = terminal_nodes(dr), "terminal node(s)", ""
+    known = set(dr.graph.nodes)
+    targets = [var for var in requested if var in known]
+    errors: list[str] = []
+    if unknown := [var for var in requested if var not in known]:
+        errors.append(f"{source} requests node(s) the DAG does not define: {unknown}")
+    with warnings.catch_warnings(record=True) as wiring_warnings:
+        warnings.simplefilter("always")
+        try:
+            # Before Hamilton's own validation: an unbound input reads more
+            # clearly here, and an unused one surfaces as a finding.
+            check_wiring(dr, targets, inputs, exempt=auxiliary_input_names(inputs))
+        except CatenaError as exc:
+            errors.append(str(exc))
+    findings = tuple(str(w.message) for w in wiring_warnings)
+    if not errors:
+        try:
+            dr.validate_execution(targets, inputs=inputs)
+        except ValueError as exc:  # Hamilton's, naming a fault in the config
+            errors.append(str(exc))
+    if errors:
+        return Stage(
+            "plan", "failed", "execution plan invalid", findings, tuple(errors)
+        )
+    return Stage(
+        "plan",
+        "ok",
+        f"execution plan valid: {len(targets)} {what} reachable",
+        findings,
+    )
 
 
 def _registered_sources(parsed: ParsedConfig) -> tuple[str, ...]:
