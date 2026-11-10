@@ -103,15 +103,7 @@ def check_wiring(
     required_external, all_external = _required_external_inputs(dr, final_vars)
     loaded = set(inputs)
 
-    unbound = required_external - loaded - set(dr.graph.config)
-    if unbound:
-        raise CatenaValueError(
-            f"unbound pipeline input(s): {sorted(unbound)}. These are required by "
-            f"the DAG but were neither loaded nor set in the config. Check for a "
-            f"naming mismatch between [inputs.*] vars/suffix and the consuming "
-            f"function's parameter names."
-        )
-
+    # Warn before raising, so an unbound input does not hide an unused one.
     unused = loaded - all_external - set(exempt)
     if unused:
         warnings.warn(
@@ -119,4 +111,13 @@ def check_wiring(
             f"ignored — check for a suffix/alias mismatch if this is unexpected.",
             WiringWarning,
             stacklevel=2,
+        )
+
+    unbound = required_external - loaded - set(dr.graph.config)
+    if unbound:
+        raise CatenaValueError(
+            f"unbound pipeline input(s): {sorted(unbound)}. These are required by "
+            f"the DAG but were neither loaded nor set in the config. Check for a "
+            f"naming mismatch between [inputs.*] vars/suffix and the consuming "
+            f"function's parameter names."
         )

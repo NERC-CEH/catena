@@ -435,6 +435,21 @@ class TestEveryFaultInOneRun:
         assert "'offset'" in _stage(report, "plan").errors[0]
         assert _stage(report, "outputs").status == "ok"
 
+    def test_an_unbound_input_does_not_hide_an_unused_one(
+        self, tmp_path, synthetic_data_dir
+    ):
+        cfg = _unbound_config(tmp_path)
+        with open(cfg, "a") as f:
+            f.write(
+                f'\n[inputs.extra]\npath = "{synthetic_data_dir / "daily.nc"}"\n'
+                'vars = ["humidity"]\n'
+            )
+        with xra.enabled(True), pytest.raises(DryRunError) as excinfo:
+            dry_run(cfg)
+        plan = _stage(excinfo.value.report, "plan")
+        assert "'offset'" in plan.errors[0]
+        assert any("humidity_extra" in f for f in plan.findings)
+
     def test_final_vars_that_need_no_unbound_input_pass(self, tmp_path):
         """Driving the DAG from Python: check only what will be executed."""
         with xra.enabled(True):
