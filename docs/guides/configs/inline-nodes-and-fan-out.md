@@ -108,4 +108,7 @@ freq = "1D"
 aggfunc = "max"
 ```
 
+`from = ""` reads bare names, for inputs loaded with `suffix = ""`: with `vars = ["temperature"]` and `to = "weekly"`, it reads `temperature` and writes `temperature_weekly`.
+`to` cannot be empty, since the result would take its source's name.
+
 Every key is in the [configuration reference](../../reference/configuration.md#nodes).

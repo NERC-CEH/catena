@@ -432,6 +432,26 @@ class TestResamplePropagation:
         ):
             build_driver(["pt_prod", "node", "pt_cons"], {}, node_specs=specs)
 
+    def test_resample_from_a_bare_name_propagates_the_unit(self, register):
+        class _P(TypedDict):
+            gpp: Annotated[xr.DataArray, xra.Unit("g m-2 d-1")]
+
+        @extract_fields()
+        @xra.check_annotations
+        def prod() -> _P:  # type: ignore[valid-type]
+            return {"gpp": _da()}
+
+        register("bare_prod", prod)
+        register("bare_cons", _consumer("kg", in_name="gpp_weekly"))
+        specs = _resample_node_specs(
+            ResampleSpec(vars=["gpp"], source="", target="weekly", freq="7D")
+        )
+        with (
+            xra.enabled(True),
+            pytest.raises(ValueError, match=r"units from gpp\b"),
+        ):
+            build_driver(["bare_prod", "node", "bare_cons"], {}, node_specs=specs)
+
     def test_chained_resample_propagates_through_multiple_hops(self, register):
         """The unit must propagate across a *chain* of resamples
         (daily -> weekly -> monthly), exercising the fixpoint loop, so a

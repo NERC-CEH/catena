@@ -69,12 +69,13 @@ def resample_to_node_entry(spec: ResampleSpec) -> dict:
     """Desugar a `ResampleSpec` into a fan-out passthrough ``[[node]]`` entry.
 
     Each variable ``v`` becomes a node ``{v}_{target}`` applying
-    `catena.transforms.resample` to ``{v}_{source}``. The node is a **passthrough**
+    `catena.transforms.resample` to ``{v}_{source}``, or to ``{v}`` when ``source``
+    is empty. The node is a **passthrough**
     but declares its own ``freq`` — the one facet a resample does not preserve — so
     every resample carries a checkable output-frequency contract, anchor included (a
     fat-fingered ``W-WED`` is caught at build time). See `catena.contract_check`.
     """
-    src = f"{{var}}_{spec.source}"
+    src = f"{{var}}_{spec.source}" if spec.source else "{var}"
     return {
         "for_each": list(spec.vars),
         "name": f"{{var}}_{spec.target}",

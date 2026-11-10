@@ -74,7 +74,8 @@ class ResampleSpec:
     ``source`` and ``target`` (TOML ``from`` / ``to``) are **node-name suffixes**, not
     frequencies: ``from = "daily"`` reads ``{var}_daily``, ``to = "weekly"`` writes
     ``{var}_weekly``, and nothing is inferred from either (see `catena.io.load_inputs`
-    on inert labels). ``freq`` alone says what happens to the time axis.
+    on inert labels). ``from = ""`` reads the bare name ``{var}``; ``to`` must not be
+    empty. ``freq`` alone says what happens to the time axis.
 
     Desugared to fan-out passthrough nodes by
     `catena.config.resample_to_node_entry`.
@@ -101,6 +102,13 @@ class ResampleSpec:
                 f"entry needs 'vars', 'from' and 'to' (the node-name suffixes to read "
                 f"from and write to) and 'freq' (the target pandas offset alias, e.g. "
                 f"'7D', '1ME', 'W-SUN')."
+            )
+
+        if entry["to"] == "":
+            raise CatenaValueError(
+                f"[[resample]] of {entry['vars']} has to = '', which would write "
+                f"each result over its own source name. Give 'to' a suffix, e.g. "
+                f"to = 'weekly' writes '{{var}}_weekly'."
             )
 
         from xarray_annotated.temporal import Freq, assert_valid_freq
