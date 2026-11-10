@@ -169,7 +169,7 @@ checks = [{{ check = "time_equal", inputs = ["daily", "weekly"] }}]
             out,
             extra='\n[subset]\nstart = 0\nstop = 2\ndim = "pixel"\n',
         )
-        with pytest.raises(FileNotFoundError, match="create-store"):
+        with pytest.raises(FileNotFoundError, match="does not exist"):
             run(cfg)
         assert not out.exists()
 

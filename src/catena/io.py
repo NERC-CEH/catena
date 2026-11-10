@@ -216,8 +216,7 @@ def load_inputs(
         if len(tdims) > 1:
             raise CatenaValueError(
                 f"[inputs.{label}] has multiple time dimensions {sorted(tdims)}; "
-                f"catena requires at most one time dimension per input dataset. "
-                f"Merge, select, or rename the extra datetime axis before loading."
+                f"catena requires at most one time dimension per input dataset."
             )
 
     if geospatial is None:
@@ -232,8 +231,7 @@ def load_inputs(
             if node_name in inputs:
                 raise CatenaValueError(
                     f"input node name {node_name!r} (from [inputs.{label}]) collides "
-                    f"with an already-loaded input. Use distinct suffixes or an "
-                    f"explicit {{node_name = file_var}} mapping to disambiguate."
+                    f"with an already-loaded input."
                 )
             inputs[node_name] = ds[file_var]
 
@@ -398,9 +396,7 @@ def assert_output_paths_writable(
             if fmt.needs_store:
                 if not Path(spec.path).exists():
                     raise CatenaFileNotFoundError(
-                        f"Zarr store {spec.path!r} for output {label!r} does not "
-                        f"exist. Create it once before subset runs with "
-                        f"`catena gridded create-store <config>`."
+                        f"Zarr store {spec.path!r} for output {label!r} does not exist."
                     )
                 continue  # store exists; the region write targets it directly
             from .gridded.io import subset_path  # lazy: geo extra
@@ -458,8 +454,7 @@ def get_final_vars(output_specs: dict[str, IOSpec]) -> list[str]:
             if node in seen:
                 raise CatenaValueError(
                     f"output node name {node!r} (from [outputs.{label}]) is requested "
-                    f"by more than one output section. Give each output a distinct "
-                    f"node name (suffix or explicit mapping)."
+                    f"by more than one output section."
                 )
             seen.add(node)
             names.append(node)

@@ -107,8 +107,7 @@ def check_wiring(
     unused = loaded - all_external - set(exempt)
     if unused:
         warnings.warn(
-            f"loaded input(s) consumed by no node: {sorted(unused)}. They will be "
-            f"ignored — check for a suffix/alias mismatch if this is unexpected.",
+            f"loaded input(s) consumed by no node: {sorted(unused)}",
             WiringWarning,
             stacklevel=2,
         )
@@ -116,8 +115,6 @@ def check_wiring(
     unbound = required_external - loaded - set(dr.graph.config)
     if unbound:
         raise CatenaValueError(
-            f"unbound pipeline input(s): {sorted(unbound)}. These are required by "
-            f"the DAG but were neither loaded nor set in the config. Check for a "
-            f"naming mismatch between [inputs.*] vars/suffix and the consuming "
-            f"function's parameter names."
+            f"unbound pipeline input(s): {sorted(unbound)}, required by the DAG "
+            f"but neither loaded nor set in the config"
         )
