@@ -16,9 +16,12 @@ import pytest
 import xarray as xr
 
 from catena import build_graph
+from catena.build import build_driver
 from catena.config import load_config
 from catena.graph import (
+    _config_inputs,
     _import_style_function,
+    _node_maps,
     assign_freq_colors,
     cluster_nodes_by_frequency,
     color_edges_by_frequency,
@@ -33,6 +36,7 @@ from catena.graph_style import (
     GraphvizSpec,
     load_graphviz_spec,
 )
+from catena.pipeline import prepare_config
 
 requires_dot = pytest.mark.skipif(
     not shutil.which("dot"), reason="graphviz not installed"
@@ -387,6 +391,191 @@ class TestConfigInputs:
         digraph = SimpleNamespace(body=list(body))
         separate_config_inputs(digraph, {})  # type: ignore[arg-type]
         assert digraph.body == body
+
+
+_VIEWS_MODULE = """\
+from typing import Annotated
+
+import xarray as xr
+from xarray_annotated import Freq, Unit
+
+DailyK = Annotated[xr.DataArray, Unit("K"), Freq("D")]
+DailyC = Annotated[xr.DataArray, Unit("degC"), Freq("D")]
+Rain = Annotated[xr.DataArray, Unit("mm"), Freq("D")]
+
+
+def daily_a(temperature: DailyK, precipitation: Rain, *, offset: float = 0.0) -> DailyC:
+    return temperature - 273.15 + offset
+
+
+def daily_b(temperature: DailyK, precipitation: Rain, *, offset: float = 0.0) -> DailyC:
+    return temperature - 273.15 + offset
+
+
+def combine(daily_a: DailyC) -> Annotated[xr.DataArray, Unit("degC")]:
+    return daily_a
+
+
+def weekly(
+    combine: Annotated[xr.DataArray, Unit("degC")],
+) -> Annotated[xr.DataArray, Unit("degC"), Freq("7D")]:
+    return combine.resample(time="7D").mean()
+
+
+def unrelated(precipitation: Rain) -> Rain:
+    return precipitation
+"""
+
+
+def _styled(dr, view: str, *args, outputs=(), **kwargs):
+    """Draw ``view`` with catena's styling, as `build_graph` applies it.
+
+    A stand-in for the composable styling layer: it repeats `build_graph`'s
+    steps around an arbitrary Hamilton display method.
+    """
+    spec = GraphvizSpec()
+    unit_map, freq_map = _node_maps(dr)
+    colors = assign_freq_colors(freq_map, spec.palette)
+    style = make_style_function(spec, set(outputs), freq_map, colors)
+    digraph = getattr(dr, view)(*args, custom_style_function=style, **kwargs)
+    separate_config_inputs(digraph, _config_inputs(dr, dr.graph.config))
+    freq_map = infer_frequencies(digraph, freq_map)
+    relabel_with_units(digraph, unit_map)
+    color_edges_by_frequency(digraph, freq_map, colors)
+    cluster_nodes_by_frequency(digraph, freq_map, colors)
+    return digraph
+
+
+def _node_line(source: str, node_id: str) -> str:
+    return next(
+        line for line in source.splitlines() if line.strip().startswith(f"{node_id} [")
+    )
+
+
+def _cluster(source: str, freq: str) -> str:
+    """Return the body of the cluster for ``freq``, or ``""`` if there is none."""
+    _, found, rest = source.partition(f"subgraph cluster_{freq} {{")
+    return rest.split("\t}", 1)[0] if found else ""
+
+
+@pytest.fixture(scope="module")
+def views_driver(tmp_path_factory):
+    tmp_path = tmp_path_factory.mktemp("views")
+    (tmp_path / "views.py").write_text(_VIEWS_MODULE)
+    config = tmp_path / "config.toml"
+    config.write_text('[views]\n_import_path = "views.py"\n')
+    parsed, _ = prepare_config(config)
+    return build_driver(
+        modules=parsed.modules,
+        config=parsed.driver_config,
+        node_specs=parsed.node_specs,
+        base=parsed.base,
+        registered=parsed.registered_modules,
+    )
+
+
+@pytest.fixture(scope="module")
+def upstream(views_driver) -> str:
+    return _styled(
+        views_driver, "display_upstream_of", "weekly", outputs=["weekly"]
+    ).source
+
+
+@pytest.fixture(scope="module")
+def path(views_driver) -> str:
+    return _styled(views_driver, "visualize_path_between", "daily_a", "weekly").source
+
+
+@requires_dot
+class TestHamiltonViews:
+    """catena's styling applied to Hamilton's other display methods.
+
+    Hamilton's views share one renderer, so the body surgery should hold for a
+    pruned or path view as it does for the whole DAG.
+    """
+
+    def test_upstream_view_draws_only_what_the_node_needs(self, upstream):
+        assert "weekly [" in upstream
+        assert "daily_a [" in upstream
+        assert "daily_b [label" not in upstream
+        assert "unrelated" not in upstream
+
+    @pytest.mark.xfail(strict=True, reason="config tables cover the whole DAG")
+    def test_upstream_view_omits_config_of_undrawn_nodes(self, upstream):
+        # The dangling edge would make Graphviz draw a bare `daily_b` node.
+        assert "daily_b" not in upstream
+
+    def test_upstream_view_keeps_units(self, upstream):
+        assert "<i>degC</i>" in _node_line(upstream, "daily_a")
+        inputs = _node_line(upstream, "_daily_a_inputs")
+        assert "<td>temperature</td><td>K</td>" in inputs
+        assert "<td>precipitation</td><td>mm</td>" in inputs
+
+    def test_upstream_view_separates_config(self, upstream):
+        assert "offset" not in _node_line(upstream, "_daily_a_inputs")
+        assert "<td>offset</td><td>0.0</td>" in _node_line(upstream, "_daily_a_config")
+
+    def test_upstream_view_clusters_and_outlines_outputs(self, upstream):
+        assert "daily_a [" in _cluster(upstream, "D")
+        assert "weekly [" in _cluster(upstream, "7D")
+        assert DEFAULT_PALETTE["output"] in _node_line(upstream, "weekly")
+
+    def test_upstream_view_renders(self, views_driver):
+        digraph = _styled(views_driver, "display_upstream_of", "weekly")
+        assert digraph.pipe(format="svg")
+
+    def test_path_view_keeps_hamiltons_path_colour(self, path):
+        edge = next(ln for ln in path.splitlines() if "daily_a -> combine" in ln)
+        # catena's frequency colour is there, but Hamilton's red comes last and wins
+        assert edge.rstrip().endswith("color=red]")
+        assert "color=red" in _node_line(path, "combine")
+
+    def test_path_view_renders(self, views_driver):
+        digraph = _styled(views_driver, "visualize_path_between", "daily_a", "weekly")
+        assert digraph.pipe(format="svg")
+
+    def test_deduplicated_inputs_keep_each_nodes_config(self, views_driver):
+        source = _styled(
+            views_driver, "display_all_functions", deduplicate_inputs=True
+        ).source
+        tables = [
+            ln for ln in source.splitlines() if "_inputs [" in ln and "<table" in ln
+        ]
+        shared = [ln for ln in tables if "<td>temperature</td>" in ln]
+        assert len(shared) == 1, "Hamilton should draw one shared input table"
+        assert "offset" not in shared[0]
+        assert "<td>offset</td>" in _node_line(source, "_daily_a_config")
+        assert "<td>offset</td>" in _node_line(source, "_daily_b_config")
+        assert "_daily_a_config -> daily_a" in source
+        assert "_daily_b_config -> daily_b" in source
+
+    @pytest.mark.xfail(strict=True, reason="frequency inference reads the drawn view")
+    def test_cluster_does_not_depend_on_the_view(self, views_driver):
+        # `combine` bridges D and 7D, so in the whole DAG it joins neither.
+        whole = _styled(views_driver, "display_all_functions").source
+        assert "combine [" not in _cluster(whole, "D")
+        pruned = _styled(views_driver, "display_upstream_of", "combine").source
+        assert "combine [" not in _cluster(pruned, "D")
+
+    @pytest.mark.xfail(strict=True, reason="config tables ignore hide_inputs")
+    def test_hide_inputs_hides_config_tables(self, views_driver):
+        source = _styled(views_driver, "display_all_functions", hide_inputs=True).source
+        assert "_inputs [" not in source
+        assert "_config [" not in source
+
+    @pytest.mark.xfail(
+        strict=True, reason="Hamilton keeps the last output's style for the legend"
+    )
+    def test_output_legend_swatch_has_no_frequency_fill(self, views_driver):
+        source = _styled(
+            views_driver, "display_all_functions", outputs=["daily_a", "weekly"]
+        ).source
+        legend = source.split("cluster__legend", 1)[1]
+        swatch = next(
+            ln for ln in legend.splitlines() if ln.strip().startswith("output [")
+        )
+        assert FREQ_COLOR_CYCLE[0] not in swatch
+        assert FREQ_COLOR_CYCLE[1] not in swatch
 
 
 class TestGraphvizSpec:
