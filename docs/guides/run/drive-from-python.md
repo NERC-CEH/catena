@@ -90,7 +90,7 @@ The resulting `ParsedConfig` holds one spec per config section; see [its referen
 
 `build_driver()` constructs a Hamilton `Driver` and runs the contract check.
 Pass `node_specs` whenever the config has `[[node]]` or `[[resample]]` entries.
-The driver can be inspected with Hamilton's own methods, such as `dr.display_all_functions()` or `dr.visualize_path_between(...)`.
+The driver can be inspected with Hamilton's own methods, such as `dr.display_all_functions()` or `dr.visualize_path_between(...)`; [`GraphStyle`](../../reference/modules/catena.graph.md#catena.graph.GraphStyle) adds catena's styling to them.
 
 ### 3. Load inputs
 

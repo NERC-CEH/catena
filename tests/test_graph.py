@@ -1,7 +1,7 @@
 """Tests for `catena.build_graph` and the styling it applies.
 
-The heavy post-processing (`relabel_with_units`, `color_edges_by_frequency`,
-`cluster_nodes_by_frequency`) pattern-matches Hamilton's rendered Graphviz body,
+The heavy post-processing (`separate_config_inputs`, `relabel_with_units`,
+`color_edges_by_frequency`) pattern-matches Hamilton's rendered Graphviz body,
 so most of these are canaries: if Hamilton changes how it renders, the patterns
 stop matching and every feature **silently degrades to a no-op**. Testing them
 against `build_graph` rather than through the CLI keeps them pointed at the
@@ -9,6 +9,7 @@ library, where the behaviour lives.
 """
 
 import shutil
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -16,13 +17,16 @@ import pytest
 import xarray as xr
 
 from catena import build_graph
+from catena.build import build_driver
 from catena.config import load_config
+from catena.errors import CatenaValueError
 from catena.graph import (
-    _import_style_function,
+    GraphStyle,
+    _import_function,
     assign_freq_colors,
-    cluster_nodes_by_frequency,
     color_edges_by_frequency,
-    infer_frequencies,
+    compose_styles,
+    link_style,
     make_style_function,
     relabel_with_units,
     separate_config_inputs,
@@ -33,6 +37,7 @@ from catena.graph_style import (
     GraphvizSpec,
     load_graphviz_spec,
 )
+from catena.pipeline import prepare_config
 
 requires_dot = pytest.mark.skipif(
     not shutil.which("dot"), reason="graphviz not installed"
@@ -81,18 +86,6 @@ class TestGraphvizBodySurgery:
         for line in dot_source.splitlines():
             if line.strip().startswith("mean_temperature_weekly "):
                 assert "DataArray" not in line
-
-    @requires_dot
-    def test_dot_contains_freq_clusters(self, dot_source):
-        # One cluster per distinct declared frequency; the config declares 7D.
-        assert "subgraph cluster_7D {" in dot_source
-        assert 'label="7D"' in dot_source
-
-    @requires_dot
-    def test_dot_edges_coloured(self, dot_source):
-        edges = [ln for ln in dot_source.splitlines() if " -> " in ln]
-        assert edges, "no edges rendered at all"
-        assert any("color=" in ln for ln in edges)
 
 
 class TestFreqColorAssignment:
@@ -241,80 +234,6 @@ expression = "precipitation * 2"
         # edges from unknown-frequency sources are untouched
         assert "color=" not in digraph.body[1]
 
-    def test_infer_frequencies_by_neighbour_consensus(self):
-        # mymodel: weekly in, weekly out -> weekly; its input table follows it.
-        digraph = SimpleNamespace(
-            body=[
-                "\ttemperature_weekly -> mymodel\n",
-                "\tmymodel -> gpp_weekly\n",
-                "\t_mymodel_inputs -> mymodel\n",
-            ]
-        )
-        freq = infer_frequencies(
-            digraph,  # type: ignore[arg-type]
-            {"temperature_weekly": "weekly", "gpp_weekly": "weekly"},
-        )
-        assert freq["mymodel"] == "weekly"
-        assert freq["_mymodel_inputs"] == "weekly"
-
-    def test_infer_frequencies_conflict_stays_unresolved(self):
-        # a node bridging daily and monthly has no consensus -> not assigned.
-        digraph = SimpleNamespace(
-            body=[
-                "\ttemperature_daily -> bridge\n",
-                "\tbridge -> soc_monthly\n",
-            ]
-        )
-        freq = infer_frequencies(
-            digraph,  # type: ignore[arg-type]
-            {"temperature_daily": "daily", "soc_monthly": "monthly"},
-        )
-        assert "bridge" not in freq
-
-    def test_cluster_groups_nodes_by_frequency(self):
-        digraph = SimpleNamespace(
-            body=[
-                "\tgpp_weekly [label=<<b>gpp_weekly</b>>]\n",
-                "\ttemperature_daily [label=<<b>temperature_daily</b>>]\n",
-                "\tsurface_type [label=<<b>surface_type</b>>]\n",  # ungrouped
-                "\t_gpp_weekly_inputs [label=<<table></table>>]\n",  # joins 7D
-                "\ttemperature_daily -> gpp_weekly\n",
-                "\t_gpp_weekly_inputs -> gpp_weekly\n",
-            ]
-        )
-        cluster_nodes_by_frequency(
-            digraph,  # type: ignore[arg-type]
-            {"gpp_weekly": "7D", "temperature_daily": "1D"},
-            {"7D": "#8da0cb", "1D": "#fc8d62", "1ME": "#a6d854"},
-        )
-        source = "".join(digraph.body)
-        assert "subgraph cluster_7D {" in source
-        assert "subgraph cluster_1D {" in source
-        # a frequency with no members emits no empty cluster
-        assert "cluster_1ME" not in source
-        # the input table joins the cluster of the node it feeds
-        weekly = source.split("cluster_7D {", 1)[1].split("}", 1)[0]
-        assert "_gpp_weekly_inputs" in weekly
-        assert "gpp_weekly [label" in weekly
-        # ungrouped nodes stay outside any cluster
-        plant_idx = source.index("surface_type [label")
-        assert plant_idx > source.index("}")  # after the last cluster brace
-        # every node is declared before any edge (clustering pitfall guard)
-        assert source.index("gpp_weekly [label") < source.index(" -> ")
-
-    def test_cluster_id_is_sanitised_and_label_quoted(self):
-        # An anchored offset alias contains a hyphen, which Graphviz will not accept
-        # in a bare cluster id.
-        digraph = SimpleNamespace(body=["\tgpp [label=<<b>gpp</b>>]\n"])
-        cluster_nodes_by_frequency(
-            digraph,  # type: ignore[arg-type]
-            {"gpp": "W-SUN"},
-            {"W-SUN": "#8da0cb"},
-        )
-        source = "".join(digraph.body)
-        assert "subgraph cluster_W_SUN {" in source
-        assert 'label="W-SUN"' in source
-
 
 class TestConfigInputs:
     """A node's config inputs get a table of their own, apart from its data."""
@@ -389,19 +308,378 @@ class TestConfigInputs:
         assert digraph.body == body
 
 
+_VIEWS_MODULE = """\
+from typing import Annotated
+
+import xarray as xr
+from xarray_annotated import Freq, Unit
+
+DailyK = Annotated[xr.DataArray, Unit("K"), Freq("D")]
+DailyC = Annotated[xr.DataArray, Unit("degC"), Freq("D")]
+Rain = Annotated[xr.DataArray, Unit("mm"), Freq("D")]
+
+
+def daily_a(temperature: DailyK, precipitation: Rain, *, offset: float = 0.0) -> DailyC:
+    return temperature - 273.15 + offset
+
+
+def daily_b(temperature: DailyK, precipitation: Rain, *, offset: float = 0.0) -> DailyC:
+    return temperature - 273.15 + offset
+
+
+def combine(daily_a: DailyC) -> Annotated[xr.DataArray, Unit("degC")]:
+    return daily_a
+
+
+def weekly(
+    combine: Annotated[xr.DataArray, Unit("degC")],
+) -> Annotated[xr.DataArray, Unit("degC"), Freq("7D")]:
+    return combine.resample(time="7D").mean()
+
+
+def unrelated(precipitation: Rain) -> Rain:
+    return precipitation
+"""
+
+
+def _styled(dr, view: str, *args, outputs=(), **kwargs):
+    """Draw ``view`` with catena's styling."""
+    style = GraphStyle.from_driver(dr, outputs=outputs)
+    return style.apply(getattr(dr, view)(*args, **style.hamilton_kwargs(), **kwargs))
+
+
+def _node_line(source: str, node_id: str) -> str:
+    return next(
+        line for line in source.splitlines() if line.strip().startswith(f"{node_id} [")
+    )
+
+
+@pytest.fixture(scope="module")
+def views_driver(tmp_path_factory):
+    tmp_path = tmp_path_factory.mktemp("views")
+    (tmp_path / "views.py").write_text(_VIEWS_MODULE)
+    config = tmp_path / "config.toml"
+    config.write_text('[views]\n_import_path = "views.py"\n')
+    parsed, _ = prepare_config(config)
+    return build_driver(
+        modules=parsed.modules,
+        config=parsed.driver_config,
+        node_specs=parsed.node_specs,
+        base=parsed.base,
+        registered=parsed.registered_modules,
+    )
+
+
+@pytest.fixture(scope="module")
+def upstream(views_driver) -> str:
+    return _styled(
+        views_driver, "display_upstream_of", "weekly", outputs=["weekly"]
+    ).source
+
+
+@pytest.fixture(scope="module")
+def path(views_driver) -> str:
+    return _styled(views_driver, "visualize_path_between", "daily_a", "weekly").source
+
+
+@requires_dot
+class TestHamiltonViews:
+    """catena's styling applied to Hamilton's other display methods.
+
+    Hamilton's views share one renderer, so the body surgery should hold for a
+    pruned or path view as it does for the whole DAG.
+    """
+
+    def test_upstream_view_draws_only_what_the_node_needs(self, upstream):
+        assert "weekly [" in upstream
+        assert "daily_a [" in upstream
+        assert "daily_b [label" not in upstream
+        assert "unrelated" not in upstream
+
+    def test_upstream_view_omits_config_of_undrawn_nodes(self, upstream):
+        # The dangling edge would make Graphviz draw a bare `daily_b` node.
+        assert "daily_b" not in upstream
+
+    def test_upstream_view_keeps_units(self, upstream):
+        assert "<i>degC</i>" in _node_line(upstream, "daily_a")
+        inputs = _node_line(upstream, "_daily_a_inputs")
+        assert "<td>temperature</td><td>K</td>" in inputs
+        assert "<td>precipitation</td><td>mm</td>" in inputs
+
+    def test_upstream_view_separates_config(self, upstream):
+        assert "offset" not in _node_line(upstream, "_daily_a_inputs")
+        assert "<td>offset</td><td>0.0</td>" in _node_line(upstream, "_daily_a_config")
+
+    def test_upstream_view_fills_by_frequency_and_outlines_outputs(self, upstream):
+        assert FREQ_COLOR_CYCLE[0] in _node_line(upstream, "daily_a")
+        assert DEFAULT_PALETTE["output"] in _node_line(upstream, "weekly")
+
+    def test_upstream_view_colours_edges_by_declared_frequency(self, upstream):
+        edge = next(ln for ln in upstream.splitlines() if "daily_a -> combine" in ln)
+        assert f'color="{FREQ_COLOR_CYCLE[0]}"' in edge
+
+    def test_upstream_view_renders(self, views_driver):
+        digraph = _styled(views_driver, "display_upstream_of", "weekly")
+        assert digraph.pipe(format="svg")
+
+    def test_path_view_keeps_hamiltons_path_colour(self, path):
+        edge = next(ln for ln in path.splitlines() if "daily_a -> combine" in ln)
+        # catena's frequency colour is there, but Hamilton's red comes last and wins
+        assert edge.rstrip().endswith("color=red]")
+        assert "color=red" in _node_line(path, "combine")
+
+    def test_path_view_renders(self, views_driver):
+        digraph = _styled(views_driver, "visualize_path_between", "daily_a", "weekly")
+        assert digraph.pipe(format="svg")
+
+    def test_deduplicated_inputs_keep_each_nodes_config(self, views_driver):
+        source = _styled(
+            views_driver, "display_all_functions", deduplicate_inputs=True
+        ).source
+        tables = [
+            ln for ln in source.splitlines() if "_inputs [" in ln and "<table" in ln
+        ]
+        shared = [ln for ln in tables if "<td>temperature</td>" in ln]
+        assert len(shared) == 1, "Hamilton should draw one shared input table"
+        assert "offset" not in shared[0]
+        assert "<td>offset</td>" in _node_line(source, "_daily_a_config")
+        assert "<td>offset</td>" in _node_line(source, "_daily_b_config")
+        assert "_daily_a_config -> daily_a" in source
+        assert "_daily_b_config -> daily_b" in source
+
+    def test_undeclared_frequency_is_not_inferred(self, views_driver):
+        # `combine` declares no frequency, so neither it nor its edge is coloured,
+        # in any view.
+        for source in (
+            _styled(views_driver, "display_all_functions").source,
+            _styled(views_driver, "display_upstream_of", "combine").source,
+        ):
+            assert "subgraph cluster_" not in source.replace("cluster__legend", "")
+            assert 'fillcolor="#b4d8e4"' in _node_line(source, "combine")
+        whole = _styled(views_driver, "display_all_functions").source
+        edge = next(ln for ln in whole.splitlines() if "combine -> weekly" in ln)
+        assert "color=" not in edge
+
+    def test_hide_inputs_hides_config_tables(self, views_driver):
+        source = _styled(views_driver, "display_all_functions", hide_inputs=True).source
+        assert "_inputs [" not in source
+        assert "_config [" not in source
+
+    def test_output_legend_swatch_has_no_frequency_fill(self, views_driver):
+        source = _styled(
+            views_driver, "display_all_functions", outputs=["daily_a", "weekly"]
+        ).source
+        legend = source.split("cluster__legend", 1)[1]
+        swatch = next(
+            ln for ln in legend.splitlines() if ln.strip().startswith("output [")
+        )
+        assert FREQ_COLOR_CYCLE[0] not in swatch
+        assert FREQ_COLOR_CYCLE[1] not in swatch
+
+
+class TestComposeStyles:
+    @staticmethod
+    def _fn(attrs, legend=None):
+        return lambda *, node, node_class: (dict(attrs), node_class, legend)
+
+    def test_later_attributes_win(self):
+        composed = compose_styles(
+            self._fn({"fillcolor": "red", "color": "blue"}),
+            self._fn({"fillcolor": "green"}),
+        )
+        style, base, legend = composed(node=None, node_class="function")
+        assert style == {"fillcolor": "green", "color": "blue"}
+        assert (base, legend) == ("function", None)
+
+    def test_last_named_legend_wins(self):
+        composed = compose_styles(
+            self._fn({}, legend="7D"), self._fn({}, legend="output"), self._fn({})
+        )
+        _, _, legend = composed(node=None, node_class="function")
+        assert legend == "output"
+
+
+_LINKS_MODULE = '''\
+from typing import TypedDict
+
+import xarray as xr
+from hamilton.function_modifiers import config, extract_fields
+
+
+class Parts(TypedDict):
+    left: xr.DataArray
+    right: xr.DataArray
+
+
+@extract_fields({"left": xr.DataArray, "right": xr.DataArray})
+def split(whole: xr.DataArray) -> Parts:
+    """Split the whole in two.
+
+    Longer description that the tooltip leaves out.
+    """
+    return {"left": whole, "right": whole}
+
+
+@config.when(method="equilibrate")
+def start__equilibrate(left: xr.DataArray) -> xr.DataArray:
+    """Spin up to equilibrium."""
+    return left
+
+
+def undocumented(right: xr.DataArray) -> xr.DataArray:
+    return right
+'''
+
+
+def _url(fn) -> str:
+    return f"api.html#{fn.__qualname__}"
+
+
+@pytest.fixture(scope="module")
+def links_driver(tmp_path_factory):
+    tmp_path = tmp_path_factory.mktemp("links")
+    (tmp_path / "links.py").write_text(_LINKS_MODULE)
+    config = tmp_path / "config.toml"
+    config.write_text('[links]\n_import_path = "links.py"\nmethod = "equilibrate"\n')
+    parsed, _ = prepare_config(config)
+    return build_driver(
+        modules=parsed.modules,
+        config=parsed.driver_config,
+        base=parsed.base,
+        registered=parsed.registered_modules,
+    )
+
+
+@pytest.fixture(scope="module")
+def links_source(links_driver) -> str:
+    style = GraphStyle.from_driver(links_driver, link=_url, outputs=["split"])
+    return style.apply(
+        links_driver.display_all_functions(**style.hamilton_kwargs())
+    ).source
+
+
+@requires_dot
+class TestLinks:
+    def test_function_node_links_to_its_function(self, links_source):
+        assert 'URL="api.html#split"' in _node_line(links_source, "split")
+
+    def test_tooltip_is_the_first_docstring_paragraph(self, links_source):
+        line = _node_line(links_source, "split")
+        assert 'tooltip="Split the whole in two."' in line
+
+    def test_field_nodes_are_not_linked(self, links_source):
+        assert "URL=" not in _node_line(links_source, "left")
+        assert "URL=" not in _node_line(links_source, "right")
+
+    def test_config_when_node_links_by_qualname(self, links_source):
+        assert 'URL="api.html#start__equilibrate"' in _node_line(links_source, "start")
+
+    def test_undocumented_function_gets_no_tooltip(self, links_source):
+        line = _node_line(links_source, "undocumented")
+        assert "URL=" in line
+        assert "tooltip=" not in line
+
+    def test_legend_entries_carry_no_links(self, links_source):
+        legend = links_source.split("cluster__legend", 1)[1]
+        assert "URL=" not in legend
+        assert "tooltip=" not in legend
+
+    def test_inputs_are_not_linked(self, links_source):
+        assert "URL=" not in _node_line(links_source, "_split_inputs")
+
+    def test_link_returning_none_draws_no_link(self, links_driver):
+        style = GraphStyle.from_driver(
+            links_driver, link=lambda fn: None if fn.__name__ == "split" else "x"
+        )
+        source = links_driver.display_all_functions(**style.hamilton_kwargs()).source
+        assert "URL=" not in _node_line(source, "split")
+        assert "URL=" in _node_line(source, "undocumented")
+
+    def test_link_style_composes_with_hamilton_directly(self, links_driver):
+        links = link_style(links_driver, _url, tooltip=False)
+        source = links_driver.display_upstream_of(
+            "start", custom_style_function=links
+        ).source
+        line = _node_line(source, "start")
+        assert "URL=" in line
+        assert "tooltip=" not in line
+
+    def test_style_file_names_a_link_function(self, tmp_path, monkeypatch):
+        (tmp_path / "docs_links.py").write_text(
+            "def api_url(fn):\n    return 'docs/' + fn.__name__\n"
+        )
+        (tmp_path / "links.py").write_text(_LINKS_MODULE)
+        monkeypatch.syspath_prepend(str(tmp_path))
+        style = tmp_path / "style.toml"
+        style.write_text('link_function = "docs_links:api_url"\nlink_tooltip = false\n')
+        config = tmp_path / "config.toml"
+        config.write_text(
+            '[links]\n_import_path = "links.py"\nmethod = "equilibrate"\n'
+        )
+        source = build_graph(config, style=style).source
+        line = _node_line(source, "split")
+        assert 'URL="docs/split"' in line
+        assert "tooltip=" not in line
+
+    def test_style_function_is_composed_over_the_builtin(self, tmp_path, monkeypatch):
+        (tmp_path / "my_style.py").write_text(
+            "def style(*, node, node_class):\n"
+            "    return {'fontcolor': 'navy'}, node_class, None\n"
+        )
+        monkeypatch.syspath_prepend(str(tmp_path))
+        style = tmp_path / "style.toml"
+        style.write_text('style_function = "my_style:style"\n')
+        (tmp_path / "views.py").write_text(_VIEWS_MODULE)
+        config = tmp_path / "config.toml"
+        config.write_text('[views]\n_import_path = "views.py"\n')
+        source = build_graph(config, style=style).source
+        line = _node_line(source, "weekly")
+        assert "fontcolor=navy" in line
+        # the built-in frequency fill is still there underneath
+        assert FREQ_COLOR_CYCLE[1] in line or FREQ_COLOR_CYCLE[0] in line
+
+
+@requires_dot
+class TestOutputsOnly:
+    """`build_graph` draws only what the outputs need unless asked for more."""
+
+    @staticmethod
+    def _config(tmp_path, outputs: str = "") -> Path:
+        (tmp_path / "views.py").write_text(_VIEWS_MODULE)
+        config = tmp_path / "config.toml"
+        config.write_text('[views]\n_import_path = "views.py"\n' + outputs)
+        return config
+
+    _WEEKLY = '[outputs.products]\npath = "out.nc"\nvars = {weekly = "weekly"}\n'
+
+    def test_draws_only_what_the_outputs_need(self, tmp_path):
+        source = build_graph(self._config(tmp_path, self._WEEKLY)).source
+        assert "weekly [label" in source
+        assert "daily_b" not in source
+        assert "unrelated" not in source
+
+    def test_outputs_only_false_draws_every_node(self, tmp_path):
+        config = self._config(tmp_path, self._WEEKLY)
+        source = build_graph(config, outputs_only=False).source
+        assert "daily_b [label" in source
+        assert "unrelated [label" in source
+
+    def test_no_outputs_draws_every_node(self, tmp_path):
+        source = build_graph(self._config(tmp_path)).source
+        assert "unrelated [label" in source
+
+    def test_unknown_output_is_a_user_error(self, tmp_path):
+        outputs = '[outputs.products]\npath = "out.nc"\nvars = {nonexistent = "x"}\n'
+        with pytest.raises(CatenaValueError, match="nonexistent"):
+            build_graph(self._config(tmp_path, outputs))
+
+
 class TestGraphvizSpec:
     def test_none_returns_defaults(self):
         spec = load_graphviz_spec(None)
         assert spec.palette == DEFAULT_PALETTE
         assert spec.style_function is None
         assert spec.show_legend is True
-        assert spec.cluster_by_frequency is True
-
-    def test_cluster_by_frequency_can_be_disabled(self, tmp_path):
-        f = tmp_path / "style.toml"
-        f.write_text("cluster_by_frequency = false\n")
-        spec = load_graphviz_spec(f)
-        assert spec.cluster_by_frequency is False
 
     def test_partial_palette_is_deep_merged(self, tmp_path):
         f = tmp_path / "style.toml"
@@ -428,11 +706,11 @@ class TestImportStyleFunction:
     def test_imports_module_function(self):
         import os.path
 
-        assert _import_style_function("os.path:join") is os.path.join
+        assert _import_function("os.path:join", "style_function") is os.path.join
 
     def test_rejects_malformed_path(self):
         with pytest.raises(ValueError, match="module:function"):
-            _import_style_function("not_a_reference")
+            _import_function("not_a_reference", "style_function")
 
 
 class TestStrayGraphvizSection:

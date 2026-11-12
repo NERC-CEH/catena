@@ -35,7 +35,7 @@ Keyword-only parameters share a single flat namespace too, so [their names must 
 catena infers no frequency, ordering or meaning from them: a pipeline whose sections are called `raw` and `smoothed` behaves exactly like one using `daily` and `weekly`.
 
 Where frequency matters, it comes from a declared `Freq` contract.
-That is what the contract check compares and what `catena graph` clusters on.
+That is what the contract check compares and what `catena graph` colours by.
 So a `[[resample]]` takes both a label pair and a `freq`: the labels say which nodes to read and write, and `freq` says what the time axis becomes.
 A mislabelled section gives confusing node names; a mis-declared `Freq` fails the check.
 

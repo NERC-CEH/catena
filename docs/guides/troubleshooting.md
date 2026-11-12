@@ -95,10 +95,12 @@ Check that the `[outputs.*]` `vars` name nodes that exist, that the output's dir
 
 ### The graph is too large to read
 
-Pass `catena graph` a `--style` file with Graphviz sizing attributes, or draw part of the DAG in Python:
+`catena graph` draws only what the `[outputs.*]` sections need, so check that you have not passed `--all-nodes`.
+To draw less, pass a `--style` file with Graphviz sizing attributes, or draw part of the DAG with one of Hamilton's views, styled by catena:
 
 ```python
 from catena import build_driver, load_config
+from catena.graph import GraphStyle
 
 parsed = load_config("config.toml")
 dr = build_driver(
@@ -106,5 +108,12 @@ dr = build_driver(
     config=parsed.driver_config,
     node_specs=parsed.node_specs,
 )
-dr.visualize_path_between("temperature_daily", "aridity_index_daily")
+style = GraphStyle.from_driver(dr)
+style.apply(
+    dr.visualize_path_between(
+        "temperature_daily", "aridity_index_daily", **style.hamilton_kwargs()
+    )
+)
 ```
+
+See [Styling Hamilton's other views](validate/visualise-the-graph.md#styling-hamiltons-other-views).

@@ -66,7 +66,7 @@ Everything that touches a Hamilton `Driver` or graph object.
 | Module | Contents |
 | --- | --- |
 | [`catena.pipeline`](modules/catena.pipeline.md) | `run` and `dry_run`, and the reports they return. |
-| [`catena.graph`](modules/catena.graph.md) | `build_graph`, and the frequency clustering and colouring it applies. |
+| [`catena.graph`](modules/catena.graph.md) | `build_graph`; `GraphStyle`, which applies the same styling to any Hamilton view; `compose_styles` and `link_style`. |
 | [`catena.graph_style`](modules/catena.graph_style.md) | The `GraphvizSpec` defaults, and the TOML override `catena graph --style` reads. |
 
 ### Gridded
