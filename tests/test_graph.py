@@ -20,11 +20,13 @@ from catena.build import build_driver
 from catena.config import load_config
 from catena.graph import (
     GraphStyle,
-    _import_style_function,
+    _import_function,
     assign_freq_colors,
     cluster_nodes_by_frequency,
     color_edges_by_frequency,
+    compose_styles,
     infer_frequencies,
+    link_style,
     make_style_function,
     relabel_with_units,
     separate_config_inputs,
@@ -549,6 +551,163 @@ class TestHamiltonViews:
         assert FREQ_COLOR_CYCLE[1] not in swatch
 
 
+class TestComposeStyles:
+    @staticmethod
+    def _fn(attrs, legend=None):
+        return lambda *, node, node_class: (dict(attrs), node_class, legend)
+
+    def test_later_attributes_win(self):
+        composed = compose_styles(
+            self._fn({"fillcolor": "red", "color": "blue"}),
+            self._fn({"fillcolor": "green"}),
+        )
+        style, base, legend = composed(node=None, node_class="function")
+        assert style == {"fillcolor": "green", "color": "blue"}
+        assert (base, legend) == ("function", None)
+
+    def test_last_named_legend_wins(self):
+        composed = compose_styles(
+            self._fn({}, legend="7D"), self._fn({}, legend="output"), self._fn({})
+        )
+        _, _, legend = composed(node=None, node_class="function")
+        assert legend == "output"
+
+
+_LINKS_MODULE = '''\
+from typing import TypedDict
+
+import xarray as xr
+from hamilton.function_modifiers import config, extract_fields
+
+
+class Parts(TypedDict):
+    left: xr.DataArray
+    right: xr.DataArray
+
+
+@extract_fields({"left": xr.DataArray, "right": xr.DataArray})
+def split(whole: xr.DataArray) -> Parts:
+    """Split the whole in two.
+
+    Longer description that the tooltip leaves out.
+    """
+    return {"left": whole, "right": whole}
+
+
+@config.when(method="equilibrate")
+def start__equilibrate(left: xr.DataArray) -> xr.DataArray:
+    """Spin up to equilibrium."""
+    return left
+
+
+def undocumented(right: xr.DataArray) -> xr.DataArray:
+    return right
+'''
+
+
+def _url(fn) -> str:
+    return f"api.html#{fn.__qualname__}"
+
+
+@pytest.fixture(scope="module")
+def links_driver(tmp_path_factory):
+    tmp_path = tmp_path_factory.mktemp("links")
+    (tmp_path / "links.py").write_text(_LINKS_MODULE)
+    config = tmp_path / "config.toml"
+    config.write_text('[links]\n_import_path = "links.py"\nmethod = "equilibrate"\n')
+    parsed, _ = prepare_config(config)
+    return build_driver(
+        modules=parsed.modules,
+        config=parsed.driver_config,
+        base=parsed.base,
+        registered=parsed.registered_modules,
+    )
+
+
+@pytest.fixture(scope="module")
+def links_source(links_driver) -> str:
+    style = GraphStyle.from_driver(links_driver, link=_url)
+    return style.apply(
+        links_driver.display_all_functions(**style.hamilton_kwargs())
+    ).source
+
+
+@requires_dot
+class TestLinks:
+    def test_function_node_links_to_its_function(self, links_source):
+        assert 'URL="api.html#split"' in _node_line(links_source, "split")
+
+    def test_tooltip_is_the_first_docstring_paragraph(self, links_source):
+        line = _node_line(links_source, "split")
+        assert 'tooltip="Split the whole in two."' in line
+
+    def test_field_nodes_are_not_linked(self, links_source):
+        assert "URL=" not in _node_line(links_source, "left")
+        assert "URL=" not in _node_line(links_source, "right")
+
+    def test_config_when_node_links_by_qualname(self, links_source):
+        assert 'URL="api.html#start__equilibrate"' in _node_line(links_source, "start")
+
+    def test_undocumented_function_gets_no_tooltip(self, links_source):
+        line = _node_line(links_source, "undocumented")
+        assert "URL=" in line
+        assert "tooltip=" not in line
+
+    def test_inputs_are_not_linked(self, links_source):
+        assert "URL=" not in _node_line(links_source, "_split_inputs")
+
+    def test_link_returning_none_draws_no_link(self, links_driver):
+        style = GraphStyle.from_driver(
+            links_driver, link=lambda fn: None if fn.__name__ == "split" else "x"
+        )
+        source = links_driver.display_all_functions(**style.hamilton_kwargs()).source
+        assert "URL=" not in _node_line(source, "split")
+        assert "URL=" in _node_line(source, "undocumented")
+
+    def test_link_style_composes_with_hamilton_directly(self, links_driver):
+        links = link_style(links_driver, _url, tooltip=False)
+        source = links_driver.display_upstream_of(
+            "start", custom_style_function=links
+        ).source
+        line = _node_line(source, "start")
+        assert "URL=" in line
+        assert "tooltip=" not in line
+
+    def test_style_file_names_a_link_function(self, tmp_path, monkeypatch):
+        (tmp_path / "docs_links.py").write_text(
+            "def api_url(fn):\n    return 'docs/' + fn.__name__\n"
+        )
+        (tmp_path / "links.py").write_text(_LINKS_MODULE)
+        monkeypatch.syspath_prepend(str(tmp_path))
+        style = tmp_path / "style.toml"
+        style.write_text('link_function = "docs_links:api_url"\nlink_tooltip = false\n')
+        config = tmp_path / "config.toml"
+        config.write_text(
+            '[links]\n_import_path = "links.py"\nmethod = "equilibrate"\n'
+        )
+        source = build_graph(config, style=style).source
+        line = _node_line(source, "split")
+        assert 'URL="docs/split"' in line
+        assert "tooltip=" not in line
+
+    def test_style_function_is_composed_over_the_builtin(self, tmp_path, monkeypatch):
+        (tmp_path / "my_style.py").write_text(
+            "def style(*, node, node_class):\n"
+            "    return {'fontcolor': 'navy'}, node_class, None\n"
+        )
+        monkeypatch.syspath_prepend(str(tmp_path))
+        style = tmp_path / "style.toml"
+        style.write_text('style_function = "my_style:style"\n')
+        (tmp_path / "views.py").write_text(_VIEWS_MODULE)
+        config = tmp_path / "config.toml"
+        config.write_text('[views]\n_import_path = "views.py"\n')
+        source = build_graph(config, style=style).source
+        line = _node_line(source, "weekly")
+        assert "fontcolor=navy" in line
+        # the built-in frequency fill is still there underneath
+        assert FREQ_COLOR_CYCLE[1] in line or FREQ_COLOR_CYCLE[0] in line
+
+
 class TestGraphvizSpec:
     def test_none_returns_defaults(self):
         spec = load_graphviz_spec(None)
@@ -588,11 +747,11 @@ class TestImportStyleFunction:
     def test_imports_module_function(self):
         import os.path
 
-        assert _import_style_function("os.path:join") is os.path.join
+        assert _import_function("os.path:join", "style_function") is os.path.join
 
     def test_rejects_malformed_path(self):
         with pytest.raises(ValueError, match="module:function"):
-            _import_style_function("not_a_reference")
+            _import_function("not_a_reference", "style_function")
 
 
 class TestStrayGraphvizSection:

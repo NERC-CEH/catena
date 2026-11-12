@@ -12,6 +12,16 @@ show_legend = true
 # colouring them (default: true). Set false for a flat, un-clustered layout.
 cluster_by_frequency = true
 
+# Your own Hamilton `custom_style_function`, as "module:function". It is
+# composed over the built-in frequency styling: attributes it returns win.
+# style_function = "my_package.styling:my_style"
+
+# Link each node to its API documentation. The function receives the node's
+# originating Python function and returns a URL, or None for no link; SVG output
+# then has clickable nodes. Field nodes from @extract_fields are not linked.
+# link_function = "my_package.docs:api_url"
+# link_tooltip = true   # show the docstring's first paragraph on hover
+
 # Colours.
 #
 # Nodes are grouped by their *declared* frequency contract — the `freq` on a
@@ -33,8 +43,3 @@ rankdir = "LR"   # "TB" for a top-to-bottom layout
 
 [node_attr]
 fontname = "Helvetica"
-
-# Full control: point at your own Hamilton `custom_style_function` as
-# "module:function". When set it replaces the built-in frequency styling; unit
-# labels and frequency-coloured edges are still applied on top.
-# style_function = "my_package.styling:my_style"

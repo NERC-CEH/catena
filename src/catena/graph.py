@@ -21,8 +21,8 @@ input is one the driver config sets, or a keyword-only parameter of the node's
 function; its table shows the value in use, from the config or else the default.
 
 Styling defaults live in `catena.graph_style`; a ``--style`` TOML file is
-deep-merged over them, and may name its own ``style_function`` to replace the
-built-in one entirely.
+deep-merged over them, and may name a ``style_function`` composed over the
+built-in one, and a ``link_function`` that links nodes to their documentation.
 """
 
 import html
@@ -50,7 +50,7 @@ if TYPE_CHECKING:
     # `import catena` fail for anyone who did not install that extra.
     import graphviz
 
-__all__ = ["GraphStyle", "build_graph"]
+__all__ = ["GraphStyle", "build_graph", "compose_styles", "link_style"]
 
 StyleFunction = Callable[..., tuple[dict, str | None, str | None]]
 
@@ -90,12 +90,127 @@ def make_style_function(
     return custom_style
 
 
-def _import_style_function(path: str) -> StyleFunction:
-    """Import a ``"module:function"`` style function reference."""
+def compose_styles(*style_functions: StyleFunction) -> StyleFunction:
+    r"""Combine Hamilton ``custom_style_function``\ s into one.
+
+    Hamilton's display methods take a single style function. Each node's style
+    dicts are merged left to right, so a later function overrides an earlier
+    one's attributes. The legend entry comes from the last function that names
+    one.
+    """
+
+    def composed(
+        *, node: graph_types.HamiltonNode, node_class: str
+    ) -> tuple[dict, str | None, str | None]:
+        style: dict = {}
+        base: str | None = node_class
+        legend: str | None = None
+        for function in style_functions:
+            attrs, fn_base, fn_legend = function(node=node, node_class=node_class)
+            style.update(attrs)
+            if fn_legend is not None:
+                base, legend = fn_base, fn_legend
+        return style, base, legend
+
+    return composed
+
+
+LinkFunction = Callable[[Callable], str | None]
+
+
+def _own_functions(dr: Driver) -> dict[str, Callable]:
+    """Return ``node -> function`` for the nodes a function itself defines.
+
+    A field node (one per ``@extract_fields`` output) shares its originating
+    function with the node it depends on, so it is left out; external inputs,
+    which Hamilton gives the consuming function as their originating function,
+    are left out too.
+    """
+    own: dict[str, Callable] = {}
+    for n in dr.graph.nodes.values():
+        if n.user_defined or not n.originating_functions:
+            continue
+        fn = n.originating_functions[0]
+        if any(
+            not dep.user_defined
+            and dep.originating_functions
+            and dep.originating_functions[0] is fn
+            for dep in n.dependencies
+        ):
+            continue
+        own[n.name] = fn
+    return own
+
+
+def _summary(fn: Callable) -> str | None:
+    """Return the first paragraph of ``fn``'s docstring, on one line."""
+    doc = inspect.getdoc(fn)
+    if not doc:
+        return None
+    return " ".join(doc.split("\n\n", 1)[0].split())
+
+
+def _link_style(
+    own: Mapping[str, Callable], link: LinkFunction, *, tooltip: bool
+) -> StyleFunction:
+    def style(
+        *, node: graph_types.HamiltonNode, node_class: str
+    ) -> tuple[dict, str | None, str | None]:
+        fn = own.get(node.name)
+        url = link(fn) if fn is not None else None
+        if fn is None or url is None:
+            return {}, node_class, None
+        attrs = {"URL": url}
+        if tooltip and (summary := _summary(fn)) is not None:
+            attrs["tooltip"] = summary
+        return attrs, node_class, None
+
+    return style
+
+
+def link_style(
+    dr: Driver, link: LinkFunction, *, tooltip: bool = True
+) -> StyleFunction:
+    """Build a Hamilton ``custom_style_function`` that links nodes to their docs.
+
+    Each node a function defines gets ``URL`` set to ``link(function)``, which
+    Graphviz renders as a link in SVG output. Field nodes from
+    ``@extract_fields`` share their parent's function and get no link, nor do
+    inputs and config.
+
+    Parameters
+    ----------
+    dr
+        The driver whose DAG will be drawn.
+    link
+        Receives a node's originating function and returns its URL, or ``None``
+        for no link. ``function.__module__`` and ``function.__qualname__`` give
+        the dotted path that most API documentation tools anchor on.
+    tooltip
+        Also set ``tooltip`` to the first paragraph of the function's docstring.
+
+    Examples
+    --------
+    Compose it with catena's own styling::
+
+        style = GraphStyle.from_driver(dr)
+        links = link_style(dr, lambda fn: f"api.html#{fn.__module__}.{fn.__qualname__}")
+        digraph = dr.display_all_functions(
+            **{
+                **style.hamilton_kwargs(),
+                "custom_style_function": compose_styles(style.node_style, links),
+            }
+        )
+    """
+    return _link_style(_own_functions(dr), link, tooltip=tooltip)
+
+
+def _import_function(path: str, key: str) -> Callable:
+    """Import a ``"module:function"`` reference given under ``key``."""
     module_name, _, attr = path.partition(":")
     if not module_name or not attr:
         raise CatenaValueError(
-            f"style_function must be of the form 'module:function', got {path!r}."
+            f"{key} must be of the form 'module:function', got {path!r}."
         )
     module = importlib.import_module(module_name)
     return getattr(module, attr)
@@ -549,6 +664,8 @@ class GraphStyle:
         freqs: dict[str, str],
         freq_colors: dict[str, str],
         config_inputs: dict[str, dict[str, str]],
+        own_functions: dict[str, Callable],
+        link: LinkFunction | None,
     ) -> None:
         self.spec = spec
         self.outputs = outputs
@@ -557,6 +674,8 @@ class GraphStyle:
         self._freqs = freqs
         self._freq_colors = freq_colors
         self._config_inputs = config_inputs
+        self._own_functions = own_functions
+        self._link = link
 
     @classmethod
     def from_driver(
@@ -565,6 +684,7 @@ class GraphStyle:
         *,
         outputs: Iterable[str] = (),
         spec: GraphvizSpec | None = None,
+        link: LinkFunction | None = None,
     ) -> "GraphStyle":
         """Read the styling off ``dr``'s DAG.
 
@@ -576,8 +696,13 @@ class GraphStyle:
             Node names to outline as the pipeline's end products.
         spec
             Styling options; the defaults when omitted. See `catena.graph_style`.
+        link
+            Link each node to its documentation; see `link_style`. Overrides the
+            spec's ``link_function``.
         """
         spec = spec if spec is not None else GraphvizSpec()
+        if link is None and spec.link_function is not None:
+            link = _import_function(spec.link_function, "link_function")
         units, declared = _node_maps(dr)
         return cls(
             spec=spec,
@@ -587,16 +712,31 @@ class GraphStyle:
             freqs=infer_frequencies(_dag_edges(dr), declared),
             freq_colors=assign_freq_colors(declared, spec.palette),
             config_inputs=_config_inputs(dr, dr.graph.config),
+            own_functions=_own_functions(dr),
+            link=link,
         )
 
     @property
     def node_style(self) -> StyleFunction:
-        """The Hamilton ``custom_style_function``: frequency fill, output outline."""
+        """The Hamilton ``custom_style_function`` for this DAG.
+
+        catena's frequency fill and output outline, then the spec's
+        ``style_function`` and the links, each composed over the last.
+        """
+        styles = [
+            make_style_function(
+                self.spec, set(self.outputs), self._declared_freqs, self._freq_colors
+            )
+        ]
         if self.spec.style_function is not None:
-            return _import_style_function(self.spec.style_function)
-        return make_style_function(
-            self.spec, set(self.outputs), self._declared_freqs, self._freq_colors
-        )
+            styles.append(_import_function(self.spec.style_function, "style_function"))
+        if self._link is not None:
+            styles.append(
+                _link_style(
+                    self._own_functions, self._link, tooltip=self.spec.link_tooltip
+                )
+            )
+        return compose_styles(*styles)
 
     def hamilton_kwargs(self) -> dict[str, Any]:
         """Keyword arguments for any of Hamilton's ``Driver`` display methods."""
@@ -632,6 +772,7 @@ def build_graph(
     *,
     style: str | Path | None = None,
     allow_overrides: bool = False,
+    link: LinkFunction | None = None,
 ) -> "graphviz.Digraph":
     """Build a styled visualisation of the DAG a config describes.
 
@@ -647,6 +788,8 @@ def build_graph(
         `catena.graph_style`.
     allow_overrides
         Allow a later module to override a node defined by an earlier one.
+    link
+        Link each node to its documentation; see `link_style`.
 
     Returns
     -------
@@ -673,6 +816,7 @@ def build_graph(
         dr,
         outputs=get_final_vars(parsed.output_specs),
         spec=load_graphviz_spec(Path(style) if style is not None else None),
+        link=link,
     )
 
     digraph = dr.display_all_functions(**graph_style.hamilton_kwargs())
