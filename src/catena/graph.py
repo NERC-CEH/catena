@@ -9,12 +9,10 @@ methods, such as ``visualize_path_between`` or ``display_downstream_of``: pass
 digraph it returns.
 
 **Everything shown is read off the built DAG's contracts.**
-Section labels in a config are inert, so node fills, edge colours and the
-frequency clusters all come from declared `xarray_annotated.temporal.Freq`
-contracts via `_node_maps`, and node labels carry each node's declared unit in
-place of the near-universal ``DataArray`` type text. A pipeline whose resample
-targets are called ``raw``/``smoothed`` is therefore grouped exactly as well as
-one using ``daily``/``weekly``.
+Node fills and edge colours come from declared `xarray_annotated.temporal.Freq`
+contracts, and node labels carry each node's declared unit in place of the
+near-universal ``DataArray`` type text. A node with no declared frequency is
+left uncoloured.
 
 Each node's data inputs and config inputs are drawn as separate tables. A config
 input is one the driver config sets, or a keyword-only parameter of the node's
@@ -515,168 +513,6 @@ def color_edges_by_frequency(
             digraph.body[i] = line.rstrip("\n") + f' [color="{color}"]\n'
 
 
-def _edges(digraph: "graphviz.Digraph") -> list[tuple[str, str]]:
-    """Return ``(source, target)`` id pairs for every edge in the digraph body."""
-    pairs: list[tuple[str, str]] = []
-    for line in digraph.body:
-        if " -> " not in line:
-            continue
-        src, _, dst = line.strip().partition(" -> ")
-        src = src.strip().strip('"')
-        dst = dst.split(None, 1)[0].strip().strip('"')
-        pairs.append((src, dst))
-    return pairs
-
-
-def _dag_edges(dr: Driver) -> list[tuple[str, str]]:
-    """Return ``(dependency, node)`` name pairs for every edge in the DAG."""
-    return [
-        (dep.name, n.name) for n in dr.graph.nodes.values() for dep in n.dependencies
-    ]
-
-
-def infer_frequencies(
-    edges: Iterable[tuple[str, str]], freq_map: Mapping[str, str]
-) -> dict[str, str]:
-    """Extend ``freq_map`` to undeclared nodes by neighbour consensus.
-
-    Only nodes that *declare* a `Freq` contract start out with a frequency, so
-    multi-output model nodes and undeclared derived outputs have none, yet they
-    sit *between* same-frequency nodes and, left ungrouped, would straddle the
-    cluster boundaries and break the left-to-right flow.
-
-    Here a node inherits a frequency when *every* one of its already-resolved
-    neighbours (predecessors and successors) agrees on a single one, iterated to
-    a fixpoint.  A node bridging two frequencies has conflicting neighbours and
-    stays unresolved, so a frequency never spreads across a genuine boundary.
-    The returned map is a superset of ``freq_map`` (the input is not mutated).
-
-    `GraphStyle` passes the edges of the whole DAG, so a node's frequency does
-    not depend on which part of the DAG is drawn.
-    """
-    neighbours: dict[str, set[str]] = {}
-    for src, dst in edges:
-        neighbours.setdefault(src, set()).add(dst)
-        neighbours.setdefault(dst, set()).add(src)
-
-    freq = dict(freq_map)
-    changed = True
-    while changed:
-        changed = False
-        for node, adjacent in neighbours.items():
-            if node in freq:
-                continue
-            resolved = {freq[m] for m in adjacent if m in freq}
-            if len(resolved) == 1:
-                freq[node] = next(iter(resolved))
-                changed = True
-    return freq
-
-
-def _table_frequencies(
-    digraph: "graphviz.Digraph", freq_map: Mapping[str, str]
-) -> dict[str, str]:
-    """Give each drawn input or config table the frequency of the node it feeds.
-
-    A table shared by several nodes (Hamilton's ``deduplicate_inputs``) takes a
-    frequency only when every node it feeds agrees.
-    """
-    targets: dict[str, set[str | None]] = {}
-    for src, dst in _edges(digraph):
-        if src.startswith("_") and src.endswith(("_inputs", "_config")):
-            targets.setdefault(src, set()).add(freq_map.get(dst))
-    return {
-        table: freq
-        for table, freqs in targets.items()
-        if len(freqs) == 1 and (freq := next(iter(freqs))) is not None
-    }
-
-
-def cluster_nodes_by_frequency(
-    digraph: "graphviz.Digraph", freq_map: dict[str, str], freq_colors: dict[str, str]
-) -> None:
-    """Box nodes into one subgraph cluster per declared frequency, in-place.
-
-    Graphviz draws a labelled, coloured boundary around each ``subgraph cluster_*``
-    and tries to lay its members out together, giving the frequency bands a clear
-    spatial grouping on top of the existing colour coding.  The clusters are the
-    frequencies actually declared in this DAG (``freq_colors``' keys), in first-seen
-    order — there is no fixed vocabulary.  Nodes whose frequency is unknown (config
-    params, static inputs) are left ungrouped; pass a ``freq_map`` widened by
-    :func:`infer_frequencies` so the model-bundle nodes that sit between
-    same-frequency nodes are enclosed too.  Input tables (``_<fn>_inputs``) join the
-    cluster of the node they feed.
-
-    """
-    legend: list[str] = []
-    rest: list[str] = []
-    in_legend = False
-    for line in digraph.body:
-        if "subgraph cluster__legend" in line:
-            in_legend = True
-        if in_legend:
-            legend.append(line)
-            if line.strip() == "}":
-                in_legend = False
-            continue
-        rest.append(line)
-
-    node_defs: dict[str, str] = {}
-    edges: list[str] = []
-    other: list[str] = []
-    for line in rest:
-        if " -> " in line:
-            edges.append(line)
-        elif "[label=" in line:
-            node_id = line.split("[label=", 1)[0].strip().strip('"')
-            node_defs[node_id] = line
-        else:
-            other.append(line)
-
-    # Map each input table to the node it feeds so it can share its cluster.
-    input_target: dict[str, str] = {}
-    for line in edges:
-        src, _, dst = line.strip().partition(" -> ")
-        src = src.strip().strip('"')
-        dst = dst.split(None, 1)[0].strip().strip('"')
-        if src.startswith("_") and src.endswith("_inputs"):
-            input_target[src] = dst
-
-    groups: dict[str, list[str]] = {freq: [] for freq in freq_colors}
-    ungrouped: list[str] = []
-    for node_id, line in node_defs.items():
-        freq = freq_map.get(node_id)
-        if freq is None and node_id in input_target:
-            freq = freq_map.get(input_target[node_id])
-        if freq in groups:
-            groups[freq].append(line)
-        else:
-            ungrouped.append(line)
-
-    # Every node definition (clustered or not) must precede every edge: an edge
-    # naming a node not yet defined implicitly creates it at the top level, before
-    # the cluster can claim it. That is the usual Graphviz clustering pitfall, and
-    # it is why ``edges`` is appended only once all groups have been emitted.
-    new_body: list[str] = list(other)
-    for freq, lines in groups.items():
-        if not lines:
-            continue
-        # An offset alias may contain characters Graphviz will not accept in a bare
-        # ID (``W-SUN``), so the cluster id is sanitised and the label quoted.
-        cluster_id = re.sub(r"\W", "_", freq)
-        new_body.append(f"\tsubgraph cluster_{cluster_id} {{\n")
-        new_body.append(
-            f'\t\tgraph [label="{freq}" labeljust=l style=dashed '
-            f'color="{freq_colors[freq]}" fontname=Helvetica penwidth=2]\n'
-        )
-        new_body.extend(lines)
-        new_body.append("\t}\n")
-    new_body.extend(ungrouped)
-    new_body.extend(edges)
-    new_body.extend(legend)
-    digraph.body[:] = new_body
-
-
 class GraphStyle:
     """catena's styling for a driver's DAG, applicable to any Hamilton view.
 
@@ -699,7 +535,6 @@ class GraphStyle:
         spec: GraphvizSpec,
         outputs: frozenset[str],
         units: dict[str, str],
-        declared_freqs: dict[str, str],
         freqs: dict[str, str],
         freq_colors: dict[str, str],
         config_inputs: dict[str, dict[str, str]],
@@ -709,7 +544,6 @@ class GraphStyle:
         self.spec = spec
         self.outputs = outputs
         self._units = units
-        self._declared_freqs = declared_freqs
         self._freqs = freqs
         self._freq_colors = freq_colors
         self._config_inputs = config_inputs
@@ -742,14 +576,13 @@ class GraphStyle:
         spec = spec if spec is not None else GraphvizSpec()
         if link is None and spec.link_function is not None:
             link = _import_function(spec.link_function, "link_function")
-        units, declared = _node_maps(dr)
+        units, freqs = _node_maps(dr)
         return cls(
             spec=spec,
             outputs=frozenset(outputs),
             units=units,
-            declared_freqs=declared,
-            freqs=infer_frequencies(_dag_edges(dr), declared),
-            freq_colors=assign_freq_colors(declared, spec.palette),
+            freqs=freqs,
+            freq_colors=assign_freq_colors(freqs, spec.palette),
             config_inputs=_config_inputs(dr, dr.graph.config),
             own_functions=_own_functions(dr),
             link=link,
@@ -764,7 +597,7 @@ class GraphStyle:
         """
         styles = [
             make_style_function(
-                self.spec, set(self.outputs), self._declared_freqs, self._freq_colors
+                self.spec, set(self.outputs), self._freqs, self._freq_colors
             )
         ]
         if self.spec.style_function is not None:
@@ -789,9 +622,9 @@ class GraphStyle:
         """Style a digraph Hamilton drew from this DAG, in place.
 
         Separates config inputs into their own tables, puts each declared unit
-        in place of the ``DataArray`` type, colours edges by frequency, clusters
-        nodes by frequency if the spec asks, and strips per-node attributes from
-        the legend.
+        in place of the ``DataArray`` type, colours each edge by its source
+        node's declared frequency, and strips per-node attributes from the
+        legend.
 
         Returns
         -------
@@ -799,11 +632,8 @@ class GraphStyle:
             ``digraph`` itself, for chaining.
         """
         separate_config_inputs(digraph, self._config_inputs)
-        freqs = {**self._freqs, **_table_frequencies(digraph, self._freqs)}
         relabel_with_units(digraph, self._units)
-        color_edges_by_frequency(digraph, freqs, self._freq_colors)
-        if self.spec.cluster_by_frequency:
-            cluster_nodes_by_frequency(digraph, freqs, self._freq_colors)
+        color_edges_by_frequency(digraph, self._freqs, self._freq_colors)
         clean_legend(digraph)
         return digraph
 
@@ -819,7 +649,7 @@ def build_graph(
     """Build a styled visualisation of the DAG a config describes.
 
     Each node shows its declared unit, requested outputs are highlighted, and
-    edges are coloured (and optionally clustered) by declared temporal frequency.
+    nodes and edges are coloured by declared temporal frequency.
 
     By default only what the ``[outputs.*]`` sections need is drawn; a config
     with no outputs draws the whole DAG.

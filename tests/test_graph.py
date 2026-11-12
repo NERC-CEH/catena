@@ -1,7 +1,7 @@
 """Tests for `catena.build_graph` and the styling it applies.
 
-The heavy post-processing (`relabel_with_units`, `color_edges_by_frequency`,
-`cluster_nodes_by_frequency`) pattern-matches Hamilton's rendered Graphviz body,
+The heavy post-processing (`separate_config_inputs`, `relabel_with_units`,
+`color_edges_by_frequency`) pattern-matches Hamilton's rendered Graphviz body,
 so most of these are canaries: if Hamilton changes how it renders, the patterns
 stop matching and every feature **silently degrades to a no-op**. Testing them
 against `build_graph` rather than through the CLI keeps them pointed at the
@@ -24,10 +24,8 @@ from catena.graph import (
     GraphStyle,
     _import_function,
     assign_freq_colors,
-    cluster_nodes_by_frequency,
     color_edges_by_frequency,
     compose_styles,
-    infer_frequencies,
     link_style,
     make_style_function,
     relabel_with_units,
@@ -88,18 +86,6 @@ class TestGraphvizBodySurgery:
         for line in dot_source.splitlines():
             if line.strip().startswith("mean_temperature_weekly "):
                 assert "DataArray" not in line
-
-    @requires_dot
-    def test_dot_contains_freq_clusters(self, dot_source):
-        # One cluster per distinct declared frequency; the config declares 7D.
-        assert "subgraph cluster_7D {" in dot_source
-        assert 'label="7D"' in dot_source
-
-    @requires_dot
-    def test_dot_edges_coloured(self, dot_source):
-        edges = [ln for ln in dot_source.splitlines() if " -> " in ln]
-        assert edges, "no edges rendered at all"
-        assert any("color=" in ln for ln in edges)
 
 
 class TestFreqColorAssignment:
@@ -248,66 +234,6 @@ expression = "precipitation * 2"
         # edges from unknown-frequency sources are untouched
         assert "color=" not in digraph.body[1]
 
-    def test_infer_frequencies_by_neighbour_consensus(self):
-        # mymodel: weekly in, weekly out -> weekly.
-        edges = [("temperature_weekly", "mymodel"), ("mymodel", "gpp_weekly")]
-        freq = infer_frequencies(
-            edges, {"temperature_weekly": "weekly", "gpp_weekly": "weekly"}
-        )
-        assert freq["mymodel"] == "weekly"
-
-    def test_infer_frequencies_conflict_stays_unresolved(self):
-        # a node bridging daily and monthly has no consensus -> not assigned.
-        edges = [("temperature_daily", "bridge"), ("bridge", "soc_monthly")]
-        freq = infer_frequencies(
-            edges, {"temperature_daily": "daily", "soc_monthly": "monthly"}
-        )
-        assert "bridge" not in freq
-
-    def test_cluster_groups_nodes_by_frequency(self):
-        digraph = SimpleNamespace(
-            body=[
-                "\tgpp_weekly [label=<<b>gpp_weekly</b>>]\n",
-                "\ttemperature_daily [label=<<b>temperature_daily</b>>]\n",
-                "\tsurface_type [label=<<b>surface_type</b>>]\n",  # ungrouped
-                "\t_gpp_weekly_inputs [label=<<table></table>>]\n",  # joins 7D
-                "\ttemperature_daily -> gpp_weekly\n",
-                "\t_gpp_weekly_inputs -> gpp_weekly\n",
-            ]
-        )
-        cluster_nodes_by_frequency(
-            digraph,  # type: ignore[arg-type]
-            {"gpp_weekly": "7D", "temperature_daily": "1D"},
-            {"7D": "#8da0cb", "1D": "#fc8d62", "1ME": "#a6d854"},
-        )
-        source = "".join(digraph.body)
-        assert "subgraph cluster_7D {" in source
-        assert "subgraph cluster_1D {" in source
-        # a frequency with no members emits no empty cluster
-        assert "cluster_1ME" not in source
-        # the input table joins the cluster of the node it feeds
-        weekly = source.split("cluster_7D {", 1)[1].split("}", 1)[0]
-        assert "_gpp_weekly_inputs" in weekly
-        assert "gpp_weekly [label" in weekly
-        # ungrouped nodes stay outside any cluster
-        plant_idx = source.index("surface_type [label")
-        assert plant_idx > source.index("}")  # after the last cluster brace
-        # every node is declared before any edge (clustering pitfall guard)
-        assert source.index("gpp_weekly [label") < source.index(" -> ")
-
-    def test_cluster_id_is_sanitised_and_label_quoted(self):
-        # An anchored offset alias contains a hyphen, which Graphviz will not accept
-        # in a bare cluster id.
-        digraph = SimpleNamespace(body=["\tgpp [label=<<b>gpp</b>>]\n"])
-        cluster_nodes_by_frequency(
-            digraph,  # type: ignore[arg-type]
-            {"gpp": "W-SUN"},
-            {"W-SUN": "#8da0cb"},
-        )
-        source = "".join(digraph.body)
-        assert "subgraph cluster_W_SUN {" in source
-        assert 'label="W-SUN"' in source
-
 
 class TestConfigInputs:
     """A node's config inputs get a table of their own, apart from its data."""
@@ -428,12 +354,6 @@ def _node_line(source: str, node_id: str) -> str:
     )
 
 
-def _cluster(source: str, freq: str) -> str:
-    """Return the body of the cluster for ``freq``, or ``""`` if there is none."""
-    _, found, rest = source.partition(f"subgraph cluster_{freq} {{")
-    return rest.split("\t}", 1)[0] if found else ""
-
-
 @pytest.fixture(scope="module")
 def views_driver(tmp_path_factory):
     tmp_path = tmp_path_factory.mktemp("views")
@@ -490,10 +410,13 @@ class TestHamiltonViews:
         assert "offset" not in _node_line(upstream, "_daily_a_inputs")
         assert "<td>offset</td><td>0.0</td>" in _node_line(upstream, "_daily_a_config")
 
-    def test_upstream_view_clusters_and_outlines_outputs(self, upstream):
-        assert "daily_a [" in _cluster(upstream, "D")
-        assert "weekly [" in _cluster(upstream, "7D")
+    def test_upstream_view_fills_by_frequency_and_outlines_outputs(self, upstream):
+        assert FREQ_COLOR_CYCLE[0] in _node_line(upstream, "daily_a")
         assert DEFAULT_PALETTE["output"] in _node_line(upstream, "weekly")
+
+    def test_upstream_view_colours_edges_by_declared_frequency(self, upstream):
+        edge = next(ln for ln in upstream.splitlines() if "daily_a -> combine" in ln)
+        assert f'color="{FREQ_COLOR_CYCLE[0]}"' in edge
 
     def test_upstream_view_renders(self, views_driver):
         digraph = _styled(views_driver, "display_upstream_of", "weekly")
@@ -524,12 +447,18 @@ class TestHamiltonViews:
         assert "_daily_a_config -> daily_a" in source
         assert "_daily_b_config -> daily_b" in source
 
-    def test_cluster_does_not_depend_on_the_view(self, views_driver):
-        # `combine` bridges D and 7D, so in the whole DAG it joins neither.
+    def test_undeclared_frequency_is_not_inferred(self, views_driver):
+        # `combine` declares no frequency, so neither it nor its edge is coloured,
+        # in any view.
+        for source in (
+            _styled(views_driver, "display_all_functions").source,
+            _styled(views_driver, "display_upstream_of", "combine").source,
+        ):
+            assert "subgraph cluster_" not in source.replace("cluster__legend", "")
+            assert 'fillcolor="#b4d8e4"' in _node_line(source, "combine")
         whole = _styled(views_driver, "display_all_functions").source
-        assert "combine [" not in _cluster(whole, "D")
-        pruned = _styled(views_driver, "display_upstream_of", "combine").source
-        assert "combine [" not in _cluster(pruned, "D")
+        edge = next(ln for ln in whole.splitlines() if "combine -> weekly" in ln)
+        assert "color=" not in edge
 
     def test_hide_inputs_hides_config_tables(self, views_driver):
         source = _styled(views_driver, "display_all_functions", hide_inputs=True).source
@@ -751,13 +680,6 @@ class TestGraphvizSpec:
         assert spec.palette == DEFAULT_PALETTE
         assert spec.style_function is None
         assert spec.show_legend is True
-        assert spec.cluster_by_frequency is True
-
-    def test_cluster_by_frequency_can_be_disabled(self, tmp_path):
-        f = tmp_path / "style.toml"
-        f.write_text("cluster_by_frequency = false\n")
-        spec = load_graphviz_spec(f)
-        assert spec.cluster_by_frequency is False
 
     def test_partial_palette_is_deep_merged(self, tmp_path):
         f = tmp_path / "style.toml"

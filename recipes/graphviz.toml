@@ -8,10 +8,6 @@
 # Draw the colour legend (default: true).
 show_legend = true
 
-# Box nodes into one subgraph cluster per declared frequency, in addition to
-# colouring them (default: true). Set false for a flat, un-clustered layout.
-cluster_by_frequency = true
-
 # Your own Hamilton `custom_style_function`, as "module:function". It is
 # composed over the built-in frequency styling: attributes it returns win.
 # style_function = "my_package.styling:my_style"
@@ -24,7 +20,7 @@ cluster_by_frequency = true
 
 # Colours.
 #
-# Nodes are grouped by their *declared* frequency contract — the `freq` on a
+# Nodes are coloured by their *declared* frequency contract — the `freq` on a
 # `[[node]]` or `[[resample]]` ("7D", "1ME", "W-SUN") — not by their name. Since
 # frequencies are arbitrary pandas offset aliases rather than a fixed vocabulary,
 # colours are assigned automatically from a qualitative cycle in first-seen order.

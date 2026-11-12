@@ -15,7 +15,7 @@ This writes `pipeline.pdf` (and the `.dot` source).
 It draws what the `[outputs.*]` sections need; pass `--all-nodes` to draw every node the config's modules define.
 A config with no outputs draws every node.
 Each node shows its declared unit, and requested outputs are highlighted.
-Nodes are coloured and clustered by their declared `freq` contract, never by section label; a node with no declared frequency joins its neighbours' cluster when they all agree.
+Nodes, and the edges leaving them, are coloured by their declared `freq` contract, never by section label; a node with no declared frequency is left uncoloured.
 A node's data inputs and its config are drawn as separate tables, and the config table shows each value in use: the config's, or else the function's default.
 [Pipeline 101](../../recipes/pipeline-101.md#the-graph-catena-builds) shows both.
 
@@ -28,7 +28,7 @@ Structural mistakes that a config file hides are obvious in the graph:
 
 - With `--all-nodes`, a node with no downstream consumer: nothing you asked for uses it.
 - Two chains that should have met but did not, usually because a name differs by a suffix.
-- A node in the wrong cluster: a `freq` contract says something you did not intend.
+- A node in the wrong colour: a `freq` contract says something you did not intend.
 
 `catena graph` builds the driver, so it also runs the contract check: if the config draws, its declared edges agree.
 
@@ -67,7 +67,7 @@ import catena
 
 catena.build_graph("config.toml")
 catena.build_graph("config.toml", outputs_only=False)  # every node
-catena.build_graph("config.toml", link=api_url)        # link to the docs
+catena.build_graph("config.toml", link=api_url)  # link to the docs
 ```
 
 ### Styling Hamilton's other views
@@ -103,8 +103,10 @@ Hamilton's display methods take a single `custom_style_function`.
 ```python
 from catena.graph import compose_styles, link_style
 
+
 def mine(*, node, node_class):
     return {"fontcolor": "navy"}, node_class, None
+
 
 kwargs = style.hamilton_kwargs()
 kwargs["custom_style_function"] = compose_styles(
