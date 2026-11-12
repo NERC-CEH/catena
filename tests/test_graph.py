@@ -19,9 +19,8 @@ from catena import build_graph
 from catena.build import build_driver
 from catena.config import load_config
 from catena.graph import (
-    _config_inputs,
+    GraphStyle,
     _import_style_function,
-    _node_maps,
     assign_freq_colors,
     cluster_nodes_by_frequency,
     color_edges_by_frequency,
@@ -246,32 +245,18 @@ expression = "precipitation * 2"
         assert "color=" not in digraph.body[1]
 
     def test_infer_frequencies_by_neighbour_consensus(self):
-        # mymodel: weekly in, weekly out -> weekly; its input table follows it.
-        digraph = SimpleNamespace(
-            body=[
-                "\ttemperature_weekly -> mymodel\n",
-                "\tmymodel -> gpp_weekly\n",
-                "\t_mymodel_inputs -> mymodel\n",
-            ]
-        )
+        # mymodel: weekly in, weekly out -> weekly.
+        edges = [("temperature_weekly", "mymodel"), ("mymodel", "gpp_weekly")]
         freq = infer_frequencies(
-            digraph,  # type: ignore[arg-type]
-            {"temperature_weekly": "weekly", "gpp_weekly": "weekly"},
+            edges, {"temperature_weekly": "weekly", "gpp_weekly": "weekly"}
         )
         assert freq["mymodel"] == "weekly"
-        assert freq["_mymodel_inputs"] == "weekly"
 
     def test_infer_frequencies_conflict_stays_unresolved(self):
         # a node bridging daily and monthly has no consensus -> not assigned.
-        digraph = SimpleNamespace(
-            body=[
-                "\ttemperature_daily -> bridge\n",
-                "\tbridge -> soc_monthly\n",
-            ]
-        )
+        edges = [("temperature_daily", "bridge"), ("bridge", "soc_monthly")]
         freq = infer_frequencies(
-            digraph,  # type: ignore[arg-type]
-            {"temperature_daily": "daily", "soc_monthly": "monthly"},
+            edges, {"temperature_daily": "daily", "soc_monthly": "monthly"}
         )
         assert "bridge" not in freq
 
@@ -428,22 +413,9 @@ def unrelated(precipitation: Rain) -> Rain:
 
 
 def _styled(dr, view: str, *args, outputs=(), **kwargs):
-    """Draw ``view`` with catena's styling, as `build_graph` applies it.
-
-    A stand-in for the composable styling layer: it repeats `build_graph`'s
-    steps around an arbitrary Hamilton display method.
-    """
-    spec = GraphvizSpec()
-    unit_map, freq_map = _node_maps(dr)
-    colors = assign_freq_colors(freq_map, spec.palette)
-    style = make_style_function(spec, set(outputs), freq_map, colors)
-    digraph = getattr(dr, view)(*args, custom_style_function=style, **kwargs)
-    separate_config_inputs(digraph, _config_inputs(dr, dr.graph.config))
-    freq_map = infer_frequencies(digraph, freq_map)
-    relabel_with_units(digraph, unit_map)
-    color_edges_by_frequency(digraph, freq_map, colors)
-    cluster_nodes_by_frequency(digraph, freq_map, colors)
-    return digraph
+    """Draw ``view`` with catena's styling."""
+    style = GraphStyle.from_driver(dr, outputs=outputs)
+    return style.apply(getattr(dr, view)(*args, **style.hamilton_kwargs(), **kwargs))
 
 
 def _node_line(source: str, node_id: str) -> str:
@@ -549,7 +521,6 @@ class TestHamiltonViews:
         assert "_daily_a_config -> daily_a" in source
         assert "_daily_b_config -> daily_b" in source
 
-    @pytest.mark.xfail(strict=True, reason="frequency inference reads the drawn view")
     def test_cluster_does_not_depend_on_the_view(self, views_driver):
         # `combine` bridges D and 7D, so in the whole DAG it joins neither.
         whole = _styled(views_driver, "display_all_functions").source
