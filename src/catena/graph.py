@@ -367,12 +367,25 @@ def separate_config_inputs(
     table, so data and config read alike. Here the config rows leave that
     table for a ``_<fn>_config`` table in Hamilton's config style, which shows
     each value rather than its type. Hamilton's free-floating box for a config
-    key is dropped once a table shows it, as is the one for the Hamilton setting
-    `catena.build_driver` adds, and an input table left empty is removed along
-    with its edge.
+    key is dropped, as is the one for the Hamilton setting `catena.build_driver`
+    adds, and an input table left empty is removed along with its edge.
+
+    Only nodes in ``digraph`` get a config table, so a pruned view stays pruned.
+    If Hamilton drew no input tables at all (``hide_inputs=True``), no config
+    tables are drawn either, and the config boxes are left as Hamilton drew them.
     """
+    drawn = {
+        _node_id(line)
+        for line in digraph.body
+        if " -> " not in line and "[label=" in line
+    }
+    if any(node_id.endswith("_inputs") for node_id in drawn):
+        hidden = {key for keys in config_inputs.values() for key in keys}
+        config_inputs = {t: k for t, k in config_inputs.items() if t in drawn}
+    else:
+        hidden, config_inputs = set(), {}
+    hidden.add(ENABLE_POWER_USER_MODE)
     shown = {key for keys in config_inputs.values() for key in keys}
-    hidden = shown | {ENABLE_POWER_USER_MODE}
 
     # Strip the config rows first, so the edges of emptied tables are known
     # whichever order Hamilton wrote the definitions and edges in.
@@ -428,6 +441,32 @@ def separate_config_inputs(
         # Hamilton orders the legend config first, after the graph attributes.
         body.insert(legend_at + 2, _LEGEND_CONFIG)
     digraph.body[:] = body
+
+
+_LEGEND_ATTR_RE = re.compile(r'(?:URL|tooltip)="(?:[^"\\]|\\.)*" ?')
+_FILL_RE = re.compile(r'fillcolor=(?:"[^"]*"|\S+) ?')
+
+
+def clean_legend(digraph: "graphviz.Digraph") -> None:
+    """Strip per-node attributes from Hamilton's legend, in place.
+
+    Hamilton draws a legend entry with the style of the last node that named
+    it, so the ``output`` swatch would carry that node's frequency fill and any
+    entry its link. Links and tooltips are dropped from every entry, and the
+    ``output`` swatch keeps only its outline.
+    """
+    in_legend = False
+    for i, line in enumerate(digraph.body):
+        if "subgraph cluster__legend" in line:
+            in_legend = True
+        if not in_legend:
+            continue
+        if line.strip() == "}":
+            break
+        line = _LEGEND_ATTR_RE.sub("", line)
+        if line.strip().startswith("output ["):
+            line = _FILL_RE.sub("", line)
+        digraph.body[i] = line.replace(" ]", "]")
 
 
 def relabel_with_units(digraph: "graphviz.Digraph", unit_map: dict[str, str]) -> None:
@@ -750,8 +789,9 @@ class GraphStyle:
         """Style a digraph Hamilton drew from this DAG, in place.
 
         Separates config inputs into their own tables, puts each declared unit
-        in place of the ``DataArray`` type, colours edges by frequency and, if
-        the spec asks, clusters nodes by frequency.
+        in place of the ``DataArray`` type, colours edges by frequency, clusters
+        nodes by frequency if the spec asks, and strips per-node attributes from
+        the legend.
 
         Returns
         -------
@@ -764,6 +804,7 @@ class GraphStyle:
         color_edges_by_frequency(digraph, freqs, self._freq_colors)
         if self.spec.cluster_by_frequency:
             cluster_nodes_by_frequency(digraph, freqs, self._freq_colors)
+        clean_legend(digraph)
         return digraph
 
 

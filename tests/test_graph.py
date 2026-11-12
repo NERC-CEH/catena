@@ -474,7 +474,6 @@ class TestHamiltonViews:
         assert "daily_b [label" not in upstream
         assert "unrelated" not in upstream
 
-    @pytest.mark.xfail(strict=True, reason="config tables cover the whole DAG")
     def test_upstream_view_omits_config_of_undrawn_nodes(self, upstream):
         # The dangling edge would make Graphviz draw a bare `daily_b` node.
         assert "daily_b" not in upstream
@@ -530,15 +529,11 @@ class TestHamiltonViews:
         pruned = _styled(views_driver, "display_upstream_of", "combine").source
         assert "combine [" not in _cluster(pruned, "D")
 
-    @pytest.mark.xfail(strict=True, reason="config tables ignore hide_inputs")
     def test_hide_inputs_hides_config_tables(self, views_driver):
         source = _styled(views_driver, "display_all_functions", hide_inputs=True).source
         assert "_inputs [" not in source
         assert "_config [" not in source
 
-    @pytest.mark.xfail(
-        strict=True, reason="Hamilton keeps the last output's style for the legend"
-    )
     def test_output_legend_swatch_has_no_frequency_fill(self, views_driver):
         source = _styled(
             views_driver, "display_all_functions", outputs=["daily_a", "weekly"]
@@ -626,7 +621,7 @@ def links_driver(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def links_source(links_driver) -> str:
-    style = GraphStyle.from_driver(links_driver, link=_url)
+    style = GraphStyle.from_driver(links_driver, link=_url, outputs=["split"])
     return style.apply(
         links_driver.display_all_functions(**style.hamilton_kwargs())
     ).source
@@ -652,6 +647,11 @@ class TestLinks:
         line = _node_line(links_source, "undocumented")
         assert "URL=" in line
         assert "tooltip=" not in line
+
+    def test_legend_entries_carry_no_links(self, links_source):
+        legend = links_source.split("cluster__legend", 1)[1]
+        assert "URL=" not in legend
+        assert "tooltip=" not in legend
 
     def test_inputs_are_not_linked(self, links_source):
         assert "URL=" not in _node_line(links_source, "_split_inputs")
