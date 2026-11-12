@@ -9,6 +9,7 @@ library, where the behaviour lives.
 """
 
 import shutil
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -18,6 +19,7 @@ import xarray as xr
 from catena import build_graph
 from catena.build import build_driver
 from catena.config import load_config
+from catena.errors import CatenaValueError
 from catena.graph import (
     GraphStyle,
     _import_function,
@@ -706,6 +708,41 @@ class TestLinks:
         assert "fontcolor=navy" in line
         # the built-in frequency fill is still there underneath
         assert FREQ_COLOR_CYCLE[1] in line or FREQ_COLOR_CYCLE[0] in line
+
+
+@requires_dot
+class TestOutputsOnly:
+    """`build_graph` draws only what the outputs need unless asked for more."""
+
+    @staticmethod
+    def _config(tmp_path, outputs: str = "") -> Path:
+        (tmp_path / "views.py").write_text(_VIEWS_MODULE)
+        config = tmp_path / "config.toml"
+        config.write_text('[views]\n_import_path = "views.py"\n' + outputs)
+        return config
+
+    _WEEKLY = '[outputs.products]\npath = "out.nc"\nvars = {weekly = "weekly"}\n'
+
+    def test_draws_only_what_the_outputs_need(self, tmp_path):
+        source = build_graph(self._config(tmp_path, self._WEEKLY)).source
+        assert "weekly [label" in source
+        assert "daily_b" not in source
+        assert "unrelated" not in source
+
+    def test_outputs_only_false_draws_every_node(self, tmp_path):
+        config = self._config(tmp_path, self._WEEKLY)
+        source = build_graph(config, outputs_only=False).source
+        assert "daily_b [label" in source
+        assert "unrelated [label" in source
+
+    def test_no_outputs_draws_every_node(self, tmp_path):
+        source = build_graph(self._config(tmp_path)).source
+        assert "unrelated [label" in source
+
+    def test_unknown_output_is_a_user_error(self, tmp_path):
+        outputs = '[outputs.products]\npath = "out.nc"\nvars = {nonexistent = "x"}\n'
+        with pytest.raises(CatenaValueError, match="nonexistent"):
+            build_graph(self._config(tmp_path, outputs))
 
 
 class TestGraphvizSpec:

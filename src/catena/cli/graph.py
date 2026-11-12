@@ -48,20 +48,34 @@ def graph(
             help="Allow later modules to override earlier ones.",
         ),
     ] = False,
+    all_nodes: Annotated[
+        bool,
+        typer.Option(
+            "--all-nodes",
+            help="Draw every node the modules define, not only what the outputs need.",
+        ),
+    ] = False,
     png: Annotated[bool, typer.Option(help="Convert to PNG format")] = False,
     pdf: Annotated[bool, typer.Option(help="Convert to PDF format")] = False,
 ) -> None:
     """Visualise a pipeline defined in a configuration file.
 
-    Each node shows its declared unit; requested outputs are highlighted and
-    edges are coloured by temporal frequency.  Pass ``--style`` to override the
-    default styling (see ``catena.graph_style``).
+    Draws what the ``[outputs.*]`` sections need, or the whole DAG with
+    ``--all-nodes`` or when the config has no outputs. Each node shows its
+    declared unit; requested outputs are highlighted and edges are coloured by
+    temporal frequency.  Pass ``--style`` to override the default styling (see
+    ``catena.graph_style``).
 
     Attention
     ---------
     This requires graphviz to be installed.
     """
-    digraph = build_graph(config_file, style=style, allow_overrides=allow_overrides)
+    digraph = build_graph(
+        config_file,
+        style=style,
+        allow_overrides=allow_overrides,
+        outputs_only=not all_nodes,
+    )
 
     output_path = Path(output).with_suffix(".dot")
     output_path.write_text(digraph.source)

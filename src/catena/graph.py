@@ -814,11 +814,15 @@ def build_graph(
     style: str | Path | None = None,
     allow_overrides: bool = False,
     link: LinkFunction | None = None,
+    outputs_only: bool = True,
 ) -> "graphviz.Digraph":
     """Build a styled visualisation of the DAG a config describes.
 
     Each node shows its declared unit, requested outputs are highlighted, and
     edges are coloured (and optionally clustered) by declared temporal frequency.
+
+    By default only what the ``[outputs.*]`` sections need is drawn; a config
+    with no outputs draws the whole DAG.
 
     Parameters
     ----------
@@ -831,6 +835,9 @@ def build_graph(
         Allow a later module to override a node defined by an earlier one.
     link
         Link each node to its documentation; see `link_style`.
+    outputs_only
+        Draw only the nodes the requested outputs depend on. ``False`` draws
+        every node the config's modules define.
 
     Returns
     -------
@@ -853,14 +860,24 @@ def build_graph(
         base=parsed.base,
         registered=parsed.registered_modules,
     )
+    outputs = get_final_vars(parsed.output_specs)
     graph_style = GraphStyle.from_driver(
         dr,
-        outputs=get_final_vars(parsed.output_specs),
+        outputs=outputs,
         spec=load_graphviz_spec(Path(style) if style is not None else None),
         link=link,
     )
 
-    digraph = dr.display_all_functions(**graph_style.hamilton_kwargs())
+    if outputs_only and outputs:
+        missing = [repr(name) for name in outputs if name not in dr.graph.nodes]
+        if missing:
+            raise CatenaValueError(
+                f"Cannot draw the outputs: no node is called {', '.join(missing)}. "
+                "Check the [outputs.*] sections, or draw every node instead."
+            )
+        digraph = dr.display_upstream_of(*outputs, **graph_style.hamilton_kwargs())
+    else:
+        digraph = dr.display_all_functions(**graph_style.hamilton_kwargs())
     if digraph is None:
         raise CatenaValueError(
             "Failed to build the graph visualisation. Is graphviz installed? "

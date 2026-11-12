@@ -199,6 +199,22 @@ class TestGraphCommand:
         assert out.with_suffix(".dot").exists()
         assert "mean_temperature_weekly" in out.with_suffix(".dot").read_text()
 
+    @pytest.mark.skipif(not shutil.which("dot"), reason="graphviz not installed")
+    def test_all_nodes_draws_beyond_the_outputs(self, tmp_path):
+        config = tmp_path / "config.toml"
+        config.write_text(
+            '[[node]]\nname = "kept"\ninputs = ["x"]\nexpression = "x"\n'
+            '[[node]]\nname = "unused"\ninputs = ["x"]\nexpression = "x"\n'
+            '[outputs.products]\npath = "out.nc"\nvars = {kept = "kept"}\n'
+        )
+        out = tmp_path / "pipeline"
+        args = ["graph", str(config), "--output", str(out)]
+        assert runner.invoke(app, args).exit_code == 0
+        assert "unused" not in out.with_suffix(".dot").read_text()
+        result = runner.invoke(app, [*args, "--all-nodes"])
+        assert result.exit_code == 0, result.output
+        assert "unused" in out.with_suffix(".dot").read_text()
+
     def test_missing_config_fails(self, tmp_path):
         result = runner.invoke(app, ["graph", str(tmp_path / "no.toml")])
         assert result.exit_code != 0
