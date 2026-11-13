@@ -48,19 +48,20 @@ output frequency instead, making it an ordinary producer for that one facet.
 """
 
 from collections.abc import Iterable
-from dataclasses import replace
+from dataclasses import is_dataclass, replace
 from itertools import combinations
-from typing import Any
+from typing import Any, get_type_hints, is_typeddict
 
 import xarray as xr
 from hamilton import driver, graph_types
+from hamilton.node import Node
 from xarray_annotated import (
     Declared,
     Unit,
     assert_valid_declaration,
     declaration_conflicts,
+    declaration_from_hint,
     declaration_violations,
-    declarations_from_signature,
     resolve_enabled,
 )
 
@@ -77,16 +78,28 @@ _Consumed = dict[str, list[tuple[Declared, str]]]
 # ---------------------------------------------------------------------------
 
 
-def _originating_functions(hg: graph_types.HamiltonGraph) -> list[Any]:
-    """Return the unique originating functions across all nodes, first-seen order."""
-    seen: set[int] = set()
-    funcs: list[Any] = []
-    for node in hg.nodes:
-        for fn in node.originating_functions or ():
-            if id(fn) not in seen:
-                seen.add(id(fn))
-                funcs.append(fn)
-    return funcs
+def _label(node: Node) -> str:
+    """Name a node, with its originating function when that is named differently."""
+    fns = node.originating_functions or ()
+    fn_names = [getattr(fn, "__name__", repr(fn)) for fn in fns]
+    others = [name for name in dict.fromkeys(fn_names) if name != node.name]
+    return f"{node.name} ({', '.join(others)})" if others else node.name
+
+
+def _output_hint(node: Node) -> Any:
+    """Return the hint a node's output is declared with.
+
+    `@extract_fields` types each extracted node as the bare field type, so for a
+    node fed only by a ``TypedDict`` or dataclass the field's hint is read from
+    that type instead.
+    """
+    if declaration_from_hint(node.type) is None and len(node.input_types) == 1:
+        (parent_type, _) = next(iter(node.input_types.values()))
+        if is_typeddict(parent_type) or is_dataclass(parent_type):
+            hints = get_type_hints(parent_type, include_extras=True)
+            if node.name in hints:
+                return hints[node.name]
+    return node.type
 
 
 def _passthrough_edges(hg: graph_types.HamiltonGraph) -> dict[str, str]:
@@ -110,25 +123,30 @@ def _passthrough_edges(hg: graph_types.HamiltonGraph) -> dict[str, str]:
 def _collect_declarations(
     dr: driver.Driver,
 ) -> tuple[_Produced, _Consumed, dict[str, str]]:
-    """Read declared contracts off the built DAG's node signatures.
+    """Read declared contracts off the built DAG's nodes.
 
     Returns ``(produced, consumed, passthrough_edges)``, the shared source for both
     the build-time (`check_dag_contracts`) and runtime (`check_input_contracts`)
-    checks. Each node's contract is read once via `declarations_from_signature`.
+    checks. Declarations are keyed by node name, read from each node's output type
+    and from the hint on each of its dependencies, so nodes that a decorator renames
+    or rebinds (`@parameterize_sources`, `@parameterize`, `@subdag`) are checked on
+    their real edges.
     """
     hg = graph_types.HamiltonGraph.from_graph(dr.graph)
     produced: _Produced = {}
     consumed: _Consumed = {}
-    for fn in _originating_functions(hg):
-        fn_name = getattr(fn, "__name__", repr(fn))
-        ins, out = declarations_from_signature(fn)
-        if isinstance(out, dict):
-            for name, decl in out.items():
-                produced[name] = (decl, fn_name)
-        elif out is not None:
-            produced[fn_name] = (out, fn_name)
-        for name, decl in ins.items():
-            consumed.setdefault(name, []).append((decl, fn_name))
+    for node in dr.graph.get_nodes():
+        if node.user_defined:
+            # Hamilton types an external input with its consumer's hint.
+            continue
+        label = _label(node)
+        out = declaration_from_hint(_output_hint(node))
+        if out is not None:
+            produced[node.name] = (out, label)
+        for dep, (hint, _) in node.input_types.items():
+            decl = declaration_from_hint(hint)
+            if decl is not None:
+                consumed.setdefault(dep, []).append((decl, label))
     return produced, consumed, _passthrough_edges(hg)
 
 
