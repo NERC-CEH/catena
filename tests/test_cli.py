@@ -42,6 +42,11 @@ class TestVersionFlag:
         assert __version__ in result.output
 
 
+def test_help_keeps_bracketed_section_names():
+    result = runner.invoke(app, ["graph", "--help"], terminal_width=200)
+    assert "[outputs.*] sections" in result.output
+
+
 class TestGriddedGeoExtraGuard:
     """`catena gridded` fails fast with an install hint when `geo` is absent."""
 
