@@ -293,6 +293,27 @@ class TestResampleContracts:
             )
         assert out["temperature_weekly"].attrs["units"] == "K"
 
+    def test_a_summed_rate_is_relabelled_as_declared(self):
+        dr = self._driver(
+            aggfunc="sum",
+            units={"precipitation": "mm week-1"},
+            overwrite_units={"precipitation": True},
+        )
+        with xra.enabled(True):
+            out = dr.execute(
+                ["precipitation_weekly"],
+                inputs={"precipitation_daily": _labelled("mm d-1")},
+            )
+        assert out["precipitation_weekly"].attrs["units"] == "mm week-1"
+
+    def test_a_kept_label_contradicting_units_still_fails(self):
+        dr = self._driver(aggfunc="sum", units="mm week-1")
+        with xra.enabled(True), pytest.raises(xra.units.UnitError):
+            dr.execute(
+                ["precipitation_weekly"],
+                inputs={"precipitation_daily": _labelled("mm d-1")},
+            )
+
     def test_undeclared_units_are_not_checked(self):
         dr = self._driver()
         with xra.enabled(True):
@@ -303,7 +324,7 @@ class TestResampleContracts:
     @pytest.mark.parametrize(
         ("extra", "match"),
         [
-            ({"overwrite_units": True}, "overwrite_units cannot be set"),
+            ({"overwrite_units": True}, "needs a declared 'units'"),
             ({"passthrough": True}, r"unrecognised key.*passthrough"),
             ({"units": {"temperature": "K", "wind": "m s-1"}}, r"\['wind'\]"),
             ({"freq_table": {"temperature": "7D"}}, "unrecognised key"),
@@ -328,7 +349,7 @@ class TestResampleContracts:
         ("contract", "match"),
         [
             ({"freq": "D"}, r"unrecognised key.*freq"),
-            ({"overwrite_units": True, "units": "K"}, "overwrite_units cannot be set"),
+            ({"overwrite_units": "yes", "units": "K"}, "must be true or false"),
         ],
     )
     def test_spec_built_in_python_is_validated(self, contract, match):

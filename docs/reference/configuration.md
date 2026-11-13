@@ -189,10 +189,11 @@ aggfunc = "mean"
 | `freq` | **Required.** Target frequency: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), validated at parse time. A calendar step such as `"month"` is refused, as it does not say where to stamp the result. |
 | `aggfunc` | Aggregation: `mean` (default), `sum`, `max`, `min`, `first`, `last`. |
 | `units`, `dims`, `dtype`, `coords` | Each node's declared output contract, as on a `[[node]]`: one value for every variable, or a table keyed by variable. Optional; an undeclared facet is not checked. |
+| `overwrite_units` | `true` replaces the label each output kept from its input with `units`, as on a `[[node]]`. Needs `units`. Default `false`. |
 
 `from` and `to` are free-form labels, so `from = "raw"`, `to = "smoothed"` works just as well; `freq` alone sets the time axis, and becomes the node's declared output frequency.
 The time axis is detected from the data, so it need not be called `time`.
-`overwrite_units` is refused, since a resample does not convert its values, and any other key is an error.
+Any other key is an error.
 
 !!! warning "No check can catch a wrong `aggfunc`"
 

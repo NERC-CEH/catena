@@ -59,9 +59,10 @@ _NODE_KEYS: frozenset[str] = frozenset(
     {"name", "inputs", "expression", "_import_path", "function", "for_each"}
 ) | frozenset(CONTRACT_KEYS)
 
-# `freq` is the resample's own target, and a resample keeps its input's units label,
-# so `overwrite_units` would relabel values it never converted.
-_RESAMPLE_CONTRACT_KEYS: tuple[str, ...] = ("units", "dims", "dtype", "coords")
+# `freq` is the resample's own target.
+_RESAMPLE_CONTRACT_KEYS: tuple[str, ...] = tuple(
+    k for k in CONTRACT_KEYS if k != "freq"
+)
 _RESAMPLE_OWN_KEYS: frozenset[str] = frozenset(
     {"vars", "from", "to", "freq", "aggfunc"}
 )
@@ -137,9 +138,10 @@ class ResampleSpec:
     empty. ``freq`` alone says what happens to the time axis, and is each output's
     declared frequency.
 
-    ``contract`` holds the other declared output facets (``units``, ``dims``,
-    ``dtype``, ``coords``), each one value for every variable or a table keyed by
-    variable. A facet left undeclared is not checked.
+    ``contract`` holds the rest of each output's declared contract (``units``,
+    ``dims``, ``dtype``, ``coords``, ``overwrite_units``), as on a `NodeSpec`, each
+    one value for every variable or a table keyed by variable. A facet left
+    undeclared is not checked.
 
     Built into node specs by `catena.config.resample_node_specs`.
     """
@@ -160,11 +162,6 @@ class ResampleSpec:
                 f"[[resample]] 'vars' must be a list of names, got {self.vars!r}."
             )
         where = f"[[resample]] of {self.vars}"
-        if "overwrite_units" in self.contract:
-            raise CatenaValueError(
-                f"{where}: overwrite_units cannot be set, as a resample keeps its "
-                f"input's units label and does not convert the values."
-            )
         _assert_known_keys(
             self.contract, frozenset(_RESAMPLE_CONTRACT_KEYS), f"{where} contract"
         )
@@ -197,6 +194,7 @@ class ResampleSpec:
         )
         for var in self.vars:
             _assert_valid_contract(self.contract_for(var), f"{where}, '{var}'")
+            _assert_valid_overwrite_units(self.contract_for(var), f"{where}, '{var}'")
 
     def contract_for(self, var: str) -> dict[str, Any]:
         """Return the contract declared for one variable, tables resolved."""
@@ -212,11 +210,8 @@ class ResampleSpec:
     @classmethod
     def from_config(cls, entry: dict) -> Self:
         """Construct and validate from a raw [[resample]] TOML entry."""
-        # overwrite_units passes through to the contract for its own error.
         _assert_known_keys(
-            entry,
-            _RESAMPLE_KEYS | {"overwrite_units"},
-            f"[[resample]] of {entry.get('vars')}",
+            entry, _RESAMPLE_KEYS, f"[[resample]] of {entry.get('vars')}"
         )
         missing = [key for key in ("vars", "from", "to", "freq") if key not in entry]
         if missing:
@@ -287,18 +282,18 @@ def _assert_valid_contract(entry: dict, where: str) -> None:
         raise CatenaValueError(str(exc)) from exc
 
 
-def _assert_valid_overwrite_units(entry: dict, node_name: Any) -> None:
+def _assert_valid_overwrite_units(entry: dict, where: str) -> None:
     """Reject an ``overwrite_units`` the node cannot apply."""
     if "overwrite_units" not in entry:
         return
     value = entry["overwrite_units"]
     if not isinstance(value, bool):
         raise CatenaValueError(
-            f"node '{node_name}': overwrite_units must be true or false, not {value!r}."
+            f"{where}: overwrite_units must be true or false, not {value!r}."
         )
     if value and entry.get("units") is None:
         raise CatenaValueError(
-            f"node '{node_name}': overwrite_units = true needs a declared 'units' "
+            f"{where}: overwrite_units = true needs a declared 'units' "
             f"to overwrite with."
         )
 
@@ -356,7 +351,7 @@ class NodeSpec:
                 f"'_import_path' (the module) and 'function' (the name within it)."
             )
         _assert_valid_contract(entry, f"node '{name}'")
-        _assert_valid_overwrite_units(entry, name)
+        _assert_valid_overwrite_units(entry, f"node '{name}'")
         return cls(
             name=entry["name"],
             inputs=entry["inputs"],
