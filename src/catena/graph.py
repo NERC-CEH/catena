@@ -34,9 +34,9 @@ from typing import TYPE_CHECKING, Any
 from hamilton import graph_types
 from hamilton.driver import Driver
 from hamilton.settings import ENABLE_POWER_USER_MODE
-from xarray_annotated import declarations_from_signature
 
 from .build import build_driver
+from .contract_check import _collect_declarations
 from .errors import CatenaValueError
 from .graph_style import FREQ_COLOR_CYCLE, GraphvizSpec, load_graphviz_spec
 from .io import get_final_vars
@@ -217,49 +217,30 @@ def _import_function(path: str, key: str) -> Callable:
 def _node_maps(dr: Driver) -> tuple[dict[str, str], dict[str, str]]:
     """Return ``(name -> unit, name -> frequency)`` maps for the DAG's nodes.
 
-    Both are read off node *signatures* via
-    :func:`xarray_annotated.declarations_from_signature` — the same single source the
-    contract checks use — because ``@extract_fields`` model outputs (e.g.
-    ``gpp_weekly``) carry a bare ``DataArray`` node type whose declaration lives in
-    the parent ``TypedDict``.  A node's *produced* declaration takes precedence over a
-    *consumed* one (an input parameter's), so pure input nodes are covered too.
+    Both are read from the declarations the contract checks use. A node's
+    *produced* declaration takes precedence over a *consumed* one (an input
+    parameter's), so pure input nodes are covered too.
 
     The frequency map comes from **declared** `xarray_annotated.temporal.Freq`
     contracts (``"7D"``, ``"1ME"``), not from name suffixes. Section labels are inert
     (`catena.io.load_inputs`), so a pipeline whose resample targets are called
-    ``raw``/``smoothed`` is grouped exactly as well as one using ``daily``/``weekly``
-    — the information now lives in the DAG, so read it from there.
+    ``raw``/``smoothed`` is grouped exactly as well as one using ``daily``/``weekly``.
     """
-    hg = graph_types.HamiltonGraph.from_graph(dr.graph)
-
-    produced_units: dict[str, str] = {}
-    consumed_units: dict[str, str] = {}
-    produced_freq: dict[str, str] = {}
-    consumed_freq: dict[str, str] = {}
-    seen: set[int] = set()
-    for node in hg.nodes:
-        for fn in node.originating_functions or ():
-            if id(fn) in seen:
-                continue
-            seen.add(id(fn))
-            ins, out = declarations_from_signature(fn)
-            fn_name = getattr(fn, "__name__", "")
-            outs = out if isinstance(out, dict) else {fn_name: out} if out else {}
-            for name, decl in outs.items():
-                if decl.unit is not None:
-                    produced_units[name] = decl.unit.unit
-                if decl.freq is not None:
-                    produced_freq[name] = decl.freq.freq
-            for name, decl in ins.items():
-                if decl.unit is not None:
-                    consumed_units.setdefault(name, decl.unit.unit)
-                if decl.freq is not None:
-                    consumed_freq.setdefault(name, decl.freq.freq)
-
-    return (
-        {**consumed_units, **produced_units},
-        {**consumed_freq, **produced_freq},
-    )
+    produced, consumed, _ = _collect_declarations(dr)
+    units: dict[str, str] = {}
+    freqs: dict[str, str] = {}
+    for name, consumers in consumed.items():
+        for decl, _ in consumers:
+            if decl.unit is not None:
+                units.setdefault(name, decl.unit.unit)
+            if decl.freq is not None:
+                freqs.setdefault(name, decl.freq.freq)
+    for name, (decl, _) in produced.items():
+        if decl.unit is not None:
+            units[name] = decl.unit.unit
+        if decl.freq is not None:
+            freqs[name] = decl.freq.freq
+    return units, freqs
 
 
 def assign_freq_colors(

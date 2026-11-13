@@ -23,6 +23,7 @@ from catena.errors import CatenaValueError
 from catena.graph import (
     GraphStyle,
     _import_function,
+    _node_maps,
     assign_freq_colors,
     color_edges_by_frequency,
     compose_styles,
@@ -637,6 +638,66 @@ class TestLinks:
         assert "fontcolor=navy" in line
         # the built-in frequency fill is still there underneath
         assert FREQ_COLOR_CYCLE[1] in line or FREQ_COLOR_CYCLE[0] in line
+
+
+_RENAMED_MODULE = """
+from typing import Annotated
+
+import xarray as xr
+import xarray_annotated as xra
+from hamilton.function_modifiers import parameterize_sources
+
+
+def nee() -> Annotated[xr.DataArray, xra.Unit("umol m-2 s-1")]:
+    return xr.DataArray([1.0])
+
+
+def flux() -> xr.DataArray:
+    return xr.DataArray([1.0])
+
+
+@parameterize_sources(mass_nee={"flux": "nee"})
+def to_mass(
+    flux: Annotated[xr.DataArray, xra.Unit("umol m-2 s-1")],
+) -> Annotated[xr.DataArray, xra.Unit("g m-2 d-1")]:
+    return flux
+"""
+
+
+@pytest.fixture(scope="module")
+def renamed_driver(tmp_path_factory):
+    tmp_path = tmp_path_factory.mktemp("renamed")
+    (tmp_path / "renamed.py").write_text(_RENAMED_MODULE)
+    config = tmp_path / "config.toml"
+    config.write_text('[renamed]\n_import_path = "renamed.py"\n')
+    parsed, _ = prepare_config(config)
+    return build_driver(
+        modules=parsed.modules,
+        config=parsed.driver_config,
+        base=parsed.base,
+        registered=parsed.registered_modules,
+    )
+
+
+class TestRenamedNodes:
+    """Units on nodes that ``@parameterize_sources`` names, read off the nodes."""
+
+    def test_output_with_no_annotated_consumer_has_its_unit(self, renamed_driver):
+        units, _ = _node_maps(renamed_driver)
+        assert units["mass_nee"] == "g m-2 d-1"
+
+    def test_parameter_name_does_not_label_a_node(self, renamed_driver):
+        units, _ = _node_maps(renamed_driver)
+        assert "flux" not in units
+        assert "to_mass" not in units
+
+    @requires_dot
+    def test_drawn_label_shows_the_unit(self, renamed_driver):
+        style = GraphStyle.from_driver(renamed_driver)
+        source = style.apply(
+            renamed_driver.display_all_functions(**style.hamilton_kwargs())
+        ).source
+        assert "<i>g m-2 d-1</i>" in _node_line(source, "mass_nee")
 
 
 @requires_dot
