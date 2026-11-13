@@ -155,24 +155,29 @@ class TestCheckInputUnitsDirect:
 
 
 # ---------------------------------------------------------------------------
-# check_input_contracts — propagation through resample (covered) and derive (not)
+# check_input_contracts — through a declaring resample (covered) and derive (not)
 # ---------------------------------------------------------------------------
 
 
-class TestCheckInputUnitsPropagation:
-    def _resample_driver(self, register):
-        """External ``gpp_weekly`` -> passthrough resample -> ``gpp_monthly`` (rate)."""
-        from catena.config import expand_node_entries, resample_to_node_entry
+class TestCheckInputUnitsThroughNodes:
+    def _resample_driver(self, register, **contract):
+        """External ``gpp_weekly`` -> resample -> ``gpp_monthly`` (rate)."""
+        from catena.config import resample_node_specs
 
         register("rs_cons", _consumer("g m-2 d-1", in_name="gpp_monthly"))
-        entry = resample_to_node_entry(
-            ResampleSpec(vars=["gpp"], source="weekly", target="monthly", freq="1ME")
+        specs = resample_node_specs(
+            ResampleSpec(
+                vars=["gpp"],
+                source="weekly",
+                target="monthly",
+                freq="1ME",
+                contract=contract,
+            )
         )
-        specs = [NodeSpec.from_config(e) for e in expand_node_entries([entry])]
         return build_driver(["node", "rs_cons"], {}, node_specs=specs)
 
     def test_resample_routed_input_is_validated(self, register):
-        dr = self._resample_driver(register)
+        dr = self._resample_driver(register, units="g m-2 d-1")
         with (
             xra.enabled(True),
             pytest.raises(CatenaValueError, match="gpp_weekly"),
@@ -180,14 +185,18 @@ class TestCheckInputUnitsPropagation:
             check_input_contracts(dr, {"gpp_weekly": _input("kg")})
 
     def test_resample_routed_input_passes_when_correct(self, register):
-        dr = self._resample_driver(register)
+        dr = self._resample_driver(register, units="g m-2 d-1")
         with xra.enabled(True):
             check_input_contracts(dr, {"gpp_weekly": _input("g m-2 d-1")})
+
+    def test_undeclared_resample_routed_input_is_not_validated(self, register):
+        dr = self._resample_driver(register)
+        with xra.enabled(True):
+            check_input_contracts(dr, {"gpp_weekly": _input("kg")})
 
     def test_derive_routed_input_not_validated(self, register):
         """Documented limitation: an input feeding a [[node]] module before a
         declaring consumer is not validated, since a node can change units."""
-        from catena.config import NodeSpec
 
         register("dv_cons", _consumer("g m-2 d-1", in_name="flux"))
         specs = [

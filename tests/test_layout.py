@@ -23,7 +23,6 @@ import catena
 HAMILTON_IMPORTERS = frozenset(
     {
         "catena.build",
-        "catena.nodegen",
         "catena.caching",
         "catena.blocking",
         "catena.contract_check",

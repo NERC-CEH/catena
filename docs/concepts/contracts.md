@@ -27,7 +27,8 @@ An annotation on a node's return value makes it a **typed producer**, whose outp
 An annotation on a parameter declares what the node **requires**.
 An edge is checked wherever both ends declare the same facet.
 
-Nodes that change some facets and keep others, such as a resample, are **passthroughs**: the checker carries the upstream contract across them facet by facet, so an edge through a resample is still covered end to end.
+A node declaring nothing breaks the chain, since whether it keeps a facet depends on what it computes.
+A `[[resample]]` declares its output frequency, and whatever else its entry declares on both its input and its output, so an edge through it is checked at both ends.
 
 ## The layers, and when each runs
 

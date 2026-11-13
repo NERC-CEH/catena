@@ -19,9 +19,7 @@ def test_reserved_names_match_generated_namespace():
     assert set(_node_namespace()) == RESERVED_NODE_NAMES
 
 
-def _expr_spec(
-    name, inputs, expression, units=None, passthrough=False, overwrite_units=False
-):
+def _expr_spec(name, inputs, expression, units=None, overwrite_units=False):
     return NodeSpec(
         name=name,
         inputs=list(inputs),
@@ -30,7 +28,6 @@ def _expr_spec(
         function=None,
         units=units,
         overwrite_units=overwrite_units,
-        passthrough=passthrough,
     )
 
 
@@ -151,7 +148,7 @@ class TestMakeNodeModule:
 class TestNodeUnits:
     """A declared `units` makes the node a typed producer, checked when it runs."""
 
-    def test_no_units_is_plain_passthrough(self):
+    def test_no_units_declares_nothing(self):
         mod = make_node_module([_expr_spec("f", ["a"], "a")])
         # A bare DataArray return and no declared unit.
         assert mod.f.__annotations__["return"] is xr.DataArray
@@ -200,16 +197,14 @@ class TestNodeUnits:
             out = mod.f(xr.DataArray([1.0], attrs={"units": "g m-2 d-1"}))
         assert out.attrs["units"] == "g m-2"
 
-    def test_passthrough_is_not_stamped(self):
-        spec = _expr_spec("f", ["a"], "a", passthrough=True)
-        mod = make_node_module([spec])
+    def test_node_declaring_nothing_is_not_stamped(self):
+        mod = make_node_module([_expr_spec("f", ["a"], "a")])
         with xra.enabled(True):
             out = mod.f(xr.DataArray([1.0]))
         assert "units" not in out.attrs
 
-    @pytest.mark.parametrize("passthrough", [False, True])
-    def test_node_declaring_nothing_is_left_unwrapped(self, passthrough):
-        spec = _expr_spec("f", ["a"], "a", passthrough=passthrough)
+    def test_node_declaring_nothing_is_left_unwrapped(self):
+        spec = _expr_spec("f", ["a"], "a")
         assert not hasattr(make_node_module([spec]).f, "__wrapped__")
 
     def test_expression_states_a_changed_unit(self):
@@ -232,10 +227,6 @@ class TestNodeUnits:
         [
             ({"overwrite_units": "yes", "units": "mm"}, "true or false"),
             ({"overwrite_units": True}, "needs a declared 'units'"),
-            (
-                {"overwrite_units": True, "units": "mm", "passthrough": True},
-                "passthrough",
-            ),
         ],
     )
     def test_invalid_overwrite_units_is_refused(self, extra, match):

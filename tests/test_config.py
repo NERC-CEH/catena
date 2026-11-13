@@ -340,7 +340,7 @@ class TestResample:
         parsed = Config({}).parse()
         assert "node" not in parsed.modules
 
-    def test_resample_desugars_to_passthrough_node_specs(self):
+    def test_resample_desugars_to_node_specs(self):
         config = Config(
             {
                 "resample": [
@@ -357,7 +357,8 @@ class TestResample:
         by_name = {s.name: s for s in specs}
         assert set(by_name) == {"gpp_weekly", "npp_weekly"}
         assert by_name["gpp_weekly"].inputs == ["gpp_daily"]
-        assert by_name["gpp_weekly"].passthrough is True
+        assert by_name["gpp_weekly"].inputs_share_output is True
+        assert by_name["gpp_weekly"].units is None
         assert "freq='7D'" in (by_name["gpp_weekly"].expression or "")
 
     def test_from_and_to_are_bare_suffixes_not_frequencies(self):

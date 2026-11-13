@@ -8,6 +8,7 @@ time with a message naming the section, never later inside a DAG node.
 """
 
 import keyword
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Self
@@ -43,6 +44,63 @@ RECOGNISED_SECTIONS: frozenset[str] = frozenset(
     }
 )
 
+#: Keys declaring a generated node's output contract. Under fan-out, each may be a
+#: table keyed by variable instead of one value for every variable.
+CONTRACT_KEYS: tuple[str, ...] = (
+    "units",
+    "dims",
+    "dtype",
+    "coords",
+    "freq",
+    "overwrite_units",
+)
+
+_NODE_KEYS: frozenset[str] = frozenset(
+    {"name", "inputs", "expression", "_import_path", "function", "for_each"}
+) | frozenset(CONTRACT_KEYS)
+
+# `freq` is the resample's own target, and a resample keeps its input's units label,
+# so `overwrite_units` would relabel values it never converted.
+_RESAMPLE_CONTRACT_KEYS: tuple[str, ...] = ("units", "dims", "dtype", "coords")
+_RESAMPLE_KEYS: frozenset[str] = frozenset(
+    {"vars", "from", "to", "freq", "aggfunc"}
+) | frozenset(_RESAMPLE_CONTRACT_KEYS)
+
+
+def _assert_known_keys(entry: dict, allowed: frozenset[str], where: str) -> None:
+    """Reject keys a config entry does not recognise."""
+    unknown = sorted(set(entry) - allowed)
+    if unknown:
+        raise CatenaValueError(
+            f"{where} has unrecognised key(s) {unknown}. Recognised keys: "
+            f"{sorted(allowed)}."
+        )
+
+
+def _assert_valid_per_var_tables(
+    entry: dict, keys: Iterable[str], names: list[str], where: str
+) -> None:
+    """Reject a per-variable contract table naming a variable that is not fanned out.
+
+    A table value is ``{var = value}``. Only fan-out can resolve one, so a table on
+    an entry with no variables is rejected too.
+    """
+    for key in keys:
+        value = entry.get(key)
+        if not isinstance(value, dict):
+            continue
+        if not names:
+            raise CatenaValueError(
+                f"{where}: {key} is a table keyed by variable, which needs "
+                f"'for_each' to say what the variables are."
+            )
+        unknown = sorted(set(value) - set(names))
+        if unknown:
+            raise CatenaValueError(
+                f"{where}: {key} names {unknown}, which are not among the variables "
+                f"{names}."
+            )
+
 
 # ---------------------------------------------------------------------------
 # Spec dataclasses (the parsed data model)
@@ -75,10 +133,14 @@ class ResampleSpec:
     frequencies: ``from = "daily"`` reads ``{var}_daily``, ``to = "weekly"`` writes
     ``{var}_weekly``, and nothing is inferred from either (see `catena.io.load_inputs`
     on inert labels). ``from = ""`` reads the bare name ``{var}``; ``to`` must not be
-    empty. ``freq`` alone says what happens to the time axis.
+    empty. ``freq`` alone says what happens to the time axis, and is each output's
+    declared frequency.
 
-    Desugared to fan-out passthrough nodes by
-    `catena.config.resample_to_node_entry`.
+    ``contract`` holds the other declared output facets (``units``, ``dims``,
+    ``dtype``, ``coords``), each one value for every variable or a table keyed by
+    variable. A facet left undeclared is not checked.
+
+    Built into node specs by `catena.config.resample_node_specs`.
     """
 
     vars: list[str]
@@ -86,10 +148,20 @@ class ResampleSpec:
     target: str
     freq: str
     aggfunc: str = "mean"
+    contract: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_config(cls, entry: dict) -> Self:
         """Construct and validate from a raw [[resample]] TOML entry."""
+        if "overwrite_units" in entry:
+            raise CatenaValueError(
+                f"[[resample]] of {entry.get('vars')}: overwrite_units cannot be set, "
+                f"as a resample keeps its input's units label and does not convert "
+                f"the values."
+            )
+        _assert_known_keys(
+            entry, _RESAMPLE_KEYS, f"[[resample]] of {entry.get('vars')}"
+        )
         aggfunc = entry.get("aggfunc", "mean")
         if aggfunc not in _VALID_AGGFUNCS:
             raise CatenaValueError(
@@ -124,12 +196,19 @@ class ResampleSpec:
                 f"as {freq!r} says how often to sample but not where to stamp it. Use "
                 f"one such as '1ME' or 'YE'."
             )
+        _assert_valid_per_var_tables(
+            entry,
+            _RESAMPLE_CONTRACT_KEYS,
+            list(entry["vars"]),
+            f"[[resample]] of {entry['vars']}",
+        )
         return cls(
             vars=entry["vars"],
             source=entry["from"],
             target=entry["to"],
             freq=freq,
             aggfunc=aggfunc,
+            contract={k: entry[k] for k in _RESAMPLE_CONTRACT_KEYS if k in entry},
         )
 
 
@@ -198,11 +277,6 @@ def _assert_valid_overwrite_units(entry: dict, node_name: Any) -> None:
             f"node '{node_name}': overwrite_units = true needs a declared 'units' "
             f"to overwrite with."
         )
-    if value and entry.get("passthrough"):
-        raise CatenaValueError(
-            f"node '{node_name}': overwrite_units cannot be set on a passthrough "
-            f"node, which keeps its input's units."
-        )
 
 
 @dataclass
@@ -213,9 +287,9 @@ class NodeSpec:
     contract: validated at runtime, and read by the build-time check. An output with no
     ``units`` label is stamped with the declared unit; one that keeps its input's label
     still has to match, unless ``overwrite_units`` replaces it with the declared unit.
-    ``passthrough`` instead declares no fixed contract and tags the node so the check
-    propagates its input's declaration across it — per facet, so ``freq`` may still be
-    declared. See `catena.contract_check` for what propagation means.
+    A node declaring none of them is not checked. ``inputs_share_output`` declares
+    each input with the output's ``units`` and ``dims`` too, for a node that keeps
+    both; `catena.config` sets it on the nodes a ``[[resample]]`` generates.
     """
 
     name: str
@@ -229,12 +303,13 @@ class NodeSpec:
     coords: list[str] | None = None
     freq: str | None = None
     overwrite_units: bool = False
-    passthrough: bool = False
+    inputs_share_output: bool = False
 
     @classmethod
     def from_config(cls, entry: dict) -> Self:
         """Construct and validate from a raw (expanded) [[node]] TOML entry."""
         name = entry.get("name")
+        _assert_known_keys(entry, _NODE_KEYS - {"for_each"}, f"[[node]] '{name}'")
         _assert_node_identifier(name, "name", name)
         for inp in entry.get("inputs", []):
             _assert_node_identifier(inp, "inputs", name)
@@ -273,7 +348,6 @@ class NodeSpec:
             coords=entry.get("coords"),
             freq=entry.get("freq"),
             overwrite_units=entry.get("overwrite_units", False),
-            passthrough=bool(entry.get("passthrough", False)),
         )
 
 

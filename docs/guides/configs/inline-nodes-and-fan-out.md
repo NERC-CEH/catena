@@ -80,10 +80,18 @@ expression = "{var}_daily - {var}_daily.mean('time')"
 
 This expands to three nodes, `temperature_anomaly_daily`, `precipitation_anomaly_daily` and `humidity_anomaly_daily`, each wired to its own input.
 
+A contract key can be a table keyed by variable, giving each node its own value:
+
+```toml
+units = { temperature = "K", precipitation = "mm d-1", humidity = "%" }
+```
+
+A variable the table leaves out declares nothing for that key, and a table naming a variable not in `for_each` is an error.
+
 ## The `[[resample]]` preset
 
 `[[resample]]` aggregates to a coarser time frequency.
-It expands to one [passthrough](../nodes/contracts.md#contracts-across-a-passthrough-node) node per variable, each applying `catena.transforms.resample`.
+It expands to one node per variable, each applying `catena.transforms.resample`.
 
 ```toml
 [[resample]]
@@ -92,9 +100,11 @@ from = "daily"
 to = "weekly"
 freq = "7D"
 aggfunc = "mean"          # mean | sum | max | min | first | last (default: mean)
+units = { temperature = "K", precipitation = "mm d-1" }
 ```
 
-This produces `temperature_weekly` and `precipitation_weekly` from their daily counterparts, carrying each source's units and dims across, with `freq` as the declared output frequency.
+This produces `temperature_weekly` and `precipitation_weekly` from their daily counterparts, with `freq` as the declared output frequency.
+The values keep their units labels, and `units` declares them, so each is checked on the way into the resample and on the way out; see [Contracts on a resample](../nodes/contracts.md#contracts-on-a-resample).
 Choose `aggfunc` with care: [no check can tell a wrong one](../nodes/resampling-and-units.md).
 
 `from` and `to` are just the node-name suffixes to read and write; `freq` alone sets the frequency, so any pair of labels works:

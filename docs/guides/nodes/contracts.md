@@ -177,16 +177,26 @@ To tolerate something, correct or remove the declaration.
 To switch off all checking, including the whole-graph check, set `XARRAY_ANNOTATED_ENABLED=false`, or wrap the call in `with xarray_annotated.enabled(False):`.
 The block beats the variable, and covers only the current thread or async task, so use the variable to switch off worker threads.
 
-## Contracts across a passthrough node
+## Contracts on a resample
 
-Some nodes transform data while preserving most of its facets.
-Resampling is the usual case: `temperature_weekly` should inherit whatever `temperature_daily` declared.
-These nodes are **passthroughs**, and the checker carries the upstream contract across them, so an edge through a resample is still checked end to end.
-
-This works per facet.
-A resample preserves units but changes frequency, so a `[[resample]]` declares its own output frequency and is an ordinary typed producer for that facet.
+A `[[resample]]` declares its `freq` as each output's frequency.
 Declare `Freq("W-SUN")` downstream and a mistyped `W-WED` offset fails when the driver is built.
 
-Every `[[resample]]` is a passthrough, and an inline `[[node]]` can be marked as one with `passthrough = true`.
+A resample keeps its input's units label and dims, so `units` and `dims` on a `[[resample]]` are declared on each node's input as well as its output.
+The edge into the resample and the edge out of it are then both checked, when the driver is built and again when the node runs.
+`dtype` and `coords` are declared on the output only, since a mean can turn integers into floats.
+
+```toml
+[[resample]]
+vars = ["temperature", "precipitation"]
+from = "daily"
+to = "weekly"
+freq = "W-SUN"
+units = { temperature = "K", precipitation = "mm d-1" }
+dims = ["time", "site"]
+```
+
+Each of `units`, `dims`, `dtype` and `coords` takes one value for every variable, or a table keyed by variable, and a variable the table leaves out declares nothing for that key.
+A facet the entry does not declare is not checked across the resample.
 
 Contracts cannot catch anything that leaves units and shape unchanged, such as summing a rate you meant to average; see [Resampling and units](resampling-and-units.md).
