@@ -1,8 +1,7 @@
 """Reusable DAG transforms referenced from ``[[node]]``/preset config.
 
 A transform is a plain function applied to a node's inputs by a config-generated
-node (see `catena.nodegen`). The generated node declares what its config entry
-declares, and nothing more.
+node (see `catena.nodegen`), whose contract is the one its config entry declares.
 """
 
 import xarray as xr

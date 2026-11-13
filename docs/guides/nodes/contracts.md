@@ -182,9 +182,10 @@ The block beats the variable, and covers only the current thread or async task, 
 A `[[resample]]` declares its `freq` as each output's frequency.
 Declare `Freq("W-SUN")` downstream and a mistyped `W-WED` offset fails when the driver is built.
 
-A resample keeps its input's units label and dims, so `units` and `dims` on a `[[resample]]` are declared on each node's input as well as its output.
-The edge into the resample and the edge out of it are then both checked, when the driver is built and again when the node runs.
-`dtype` and `coords` are declared on the output only, since a mean can turn integers into floats.
+`units`, `dims`, `dtype` and `coords` declare each output's contract, exactly as on a `[[node]]`.
+The edge out of the resample is checked when the driver is built, and the output is checked again when the node runs.
+The edge into it is not checked before compute.
+A resample keeps its input's units label, so an input labelled other than the declared `units` fails when the node runs, and an unlabelled input is stamped with them.
 
 ```toml
 [[resample]]
@@ -197,6 +198,6 @@ dims = ["time", "site"]
 ```
 
 Each of `units`, `dims`, `dtype` and `coords` takes one value for every variable, or a table keyed by variable, and a variable the table leaves out declares nothing for that key.
-A facet the entry does not declare is not checked across the resample.
+A facet the entry does not declare is not checked on the edge out of the resample before compute.
 
 Contracts cannot catch anything that leaves units and shape unchanged, such as summing a rate you meant to average; see [Resampling and units](resampling-and-units.md).

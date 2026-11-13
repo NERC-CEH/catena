@@ -357,7 +357,6 @@ class TestResample:
         by_name = {s.name: s for s in specs}
         assert set(by_name) == {"gpp_weekly", "npp_weekly"}
         assert by_name["gpp_weekly"].inputs == ["gpp_daily"]
-        assert by_name["gpp_weekly"].inputs_share_output is True
         assert by_name["gpp_weekly"].units is None
         assert "freq='7D'" in (by_name["gpp_weekly"].expression or "")
 

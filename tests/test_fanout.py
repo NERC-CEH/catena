@@ -38,6 +38,12 @@ class TestForEachExpansion:
         assert entries[0]["expression"] == "a_in * 2"
         assert "for_each" not in entries[0]
 
+    def test_empty_for_each_is_rejected(self):
+        with pytest.raises(CatenaValueError, match=r"for_each = \[\]"):
+            expand_node_entries(
+                [{"name": "x", "inputs": [], "expression": "1", "for_each": []}]
+            )
+
     def test_entry_without_for_each_passes_through(self):
         entries = expand_node_entries([{"name": "x", "inputs": [], "expression": "1"}])
         assert len(entries) == 1

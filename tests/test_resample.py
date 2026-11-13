@@ -285,6 +285,14 @@ class TestResampleContracts:
                 ["temperature_weekly"], inputs={"temperature_daily": _labelled("K")}
             )
 
+    def test_declared_units_stamp_an_unlabelled_input(self):
+        dr = self._driver(units="K")
+        with xra.enabled(True):
+            out = dr.execute(
+                ["temperature_weekly"], inputs={"temperature_daily": _daily_da()}
+            )
+        assert out["temperature_weekly"].attrs["units"] == "K"
+
     def test_undeclared_units_are_not_checked(self):
         dr = self._driver()
         with xra.enabled(True):
@@ -304,3 +312,33 @@ class TestResampleContracts:
     def test_invalid_entry_is_refused(self, extra, match):
         with pytest.raises(CatenaValueError, match=match):
             Config({"resample": [{**_TWO_VARS, **extra}]}).parse()
+
+    @pytest.mark.parametrize(
+        ("extra", "match"),
+        [
+            ({"units": "notaunit"}, r"^\[\[resample\]\] of"),
+            ({"dtype": {"temperature": "flaot"}}, r"^\[\[resample\]\] of"),
+        ],
+    )
+    def test_invalid_contract_value_names_the_resample(self, extra, match):
+        with pytest.raises(CatenaValueError, match=match):
+            Config({"resample": [{**_TWO_VARS, **extra}]}).parse()
+
+    @pytest.mark.parametrize(
+        ("contract", "match"),
+        [
+            ({"freq": "D"}, r"unrecognised key.*freq"),
+            ({"overwrite_units": True, "units": "K"}, "overwrite_units cannot be set"),
+        ],
+    )
+    def test_spec_built_in_python_is_validated(self, contract, match):
+        from catena.specs import ResampleSpec
+
+        with pytest.raises(CatenaValueError, match=match):
+            ResampleSpec(
+                vars=["t"],
+                source="daily",
+                target="weekly",
+                freq="7D",
+                contract=contract,
+            )

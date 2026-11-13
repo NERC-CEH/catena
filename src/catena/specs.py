@@ -62,9 +62,10 @@ _NODE_KEYS: frozenset[str] = frozenset(
 # `freq` is the resample's own target, and a resample keeps its input's units label,
 # so `overwrite_units` would relabel values it never converted.
 _RESAMPLE_CONTRACT_KEYS: tuple[str, ...] = ("units", "dims", "dtype", "coords")
-_RESAMPLE_KEYS: frozenset[str] = frozenset(
+_RESAMPLE_OWN_KEYS: frozenset[str] = frozenset(
     {"vars", "from", "to", "freq", "aggfunc"}
-) | frozenset(_RESAMPLE_CONTRACT_KEYS)
+)
+_RESAMPLE_KEYS: frozenset[str] = _RESAMPLE_OWN_KEYS | frozenset(_RESAMPLE_CONTRACT_KEYS)
 
 
 def _assert_known_keys(entry: dict, allowed: frozenset[str], where: str) -> None:
@@ -150,23 +151,73 @@ class ResampleSpec:
     aggfunc: str = "mean"
     contract: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        """Validate the spec, however it was built."""
+        if not isinstance(self.vars, list) or not all(
+            isinstance(v, str) for v in self.vars
+        ):
+            raise CatenaValueError(
+                f"[[resample]] 'vars' must be a list of names, got {self.vars!r}."
+            )
+        where = f"[[resample]] of {self.vars}"
+        if "overwrite_units" in self.contract:
+            raise CatenaValueError(
+                f"{where}: overwrite_units cannot be set, as a resample keeps its "
+                f"input's units label and does not convert the values."
+            )
+        _assert_known_keys(
+            self.contract, frozenset(_RESAMPLE_CONTRACT_KEYS), f"{where} contract"
+        )
+        if self.aggfunc not in _VALID_AGGFUNCS:
+            raise CatenaValueError(
+                f"{where}: Unsupported aggfunc '{self.aggfunc}'. "
+                f"Supported: {sorted(_VALID_AGGFUNCS)}"
+            )
+        if self.target == "":
+            raise CatenaValueError(
+                f"{where} has to = '', which would write each result over its own "
+                f"source name. Give 'to' a suffix, e.g. to = 'weekly' writes "
+                f"'{{var}}_weekly'."
+            )
+
+        from xarray_annotated.temporal import Freq, assert_valid_freq
+
+        try:
+            assert_valid_freq(Freq(self.freq), f"[[resample]] to '{self.target}' freq")
+        except ValueError as exc:
+            raise CatenaValueError(str(exc)) from exc
+        if Freq(self.freq).any_day:
+            raise CatenaValueError(
+                f"[[resample]] to '{self.target}' freq must be a pandas offset "
+                f"alias, as {self.freq!r} says how often to sample but not where to "
+                f"stamp it. Use one such as '1ME' or 'YE'."
+            )
+        _assert_valid_per_var_tables(
+            self.contract, _RESAMPLE_CONTRACT_KEYS, self.vars, where
+        )
+        for var in self.vars:
+            _assert_valid_contract(self.contract_for(var), f"{where}, '{var}'")
+
+    def contract_for(self, var: str) -> dict[str, Any]:
+        """Return the contract declared for one variable, tables resolved."""
+        out: dict[str, Any] = {}
+        for key, value in self.contract.items():
+            if isinstance(value, dict):
+                if var not in value:
+                    continue
+                value = value[var]
+            out[key] = value
+        return out
+
     @classmethod
     def from_config(cls, entry: dict) -> Self:
         """Construct and validate from a raw [[resample]] TOML entry."""
-        if "overwrite_units" in entry:
-            raise CatenaValueError(
-                f"[[resample]] of {entry.get('vars')}: overwrite_units cannot be set, "
-                f"as a resample keeps its input's units label and does not convert "
-                f"the values."
-            )
+        # overwrite_units passes through to the contract for its own error.
         _assert_known_keys(
-            entry, _RESAMPLE_KEYS, f"[[resample]] of {entry.get('vars')}"
+            entry,
+            _RESAMPLE_KEYS | {"overwrite_units"},
+            f"[[resample]] of {entry.get('vars')}",
         )
-        aggfunc = entry.get("aggfunc", "mean")
-        if aggfunc not in _VALID_AGGFUNCS:
-            raise CatenaValueError(
-                f"Unsupported aggfunc '{aggfunc}'. Supported: {sorted(_VALID_AGGFUNCS)}"
-            )
         missing = [key for key in ("vars", "from", "to", "freq") if key not in entry]
         if missing:
             raise CatenaValueError(
@@ -175,40 +226,13 @@ class ResampleSpec:
                 f"from and write to) and 'freq' (the target pandas offset alias, e.g. "
                 f"'7D', '1ME', 'W-SUN')."
             )
-
-        if entry["to"] == "":
-            raise CatenaValueError(
-                f"[[resample]] of {entry['vars']} has to = '', which would write "
-                f"each result over its own source name. Give 'to' a suffix, e.g. "
-                f"to = 'weekly' writes '{{var}}_weekly'."
-            )
-
-        from xarray_annotated.temporal import Freq, assert_valid_freq
-
-        freq = entry["freq"]
-        try:
-            assert_valid_freq(Freq(freq), f"[[resample]] to '{entry['to']}' freq")
-        except ValueError as exc:
-            raise CatenaValueError(str(exc)) from exc
-        if Freq(freq).any_day:
-            raise CatenaValueError(
-                f"[[resample]] to '{entry['to']}' freq must be a pandas offset alias, "
-                f"as {freq!r} says how often to sample but not where to stamp it. Use "
-                f"one such as '1ME' or 'YE'."
-            )
-        _assert_valid_per_var_tables(
-            entry,
-            _RESAMPLE_CONTRACT_KEYS,
-            list(entry["vars"]),
-            f"[[resample]] of {entry['vars']}",
-        )
         return cls(
             vars=entry["vars"],
             source=entry["from"],
             target=entry["to"],
-            freq=freq,
-            aggfunc=aggfunc,
-            contract={k: entry[k] for k in _RESAMPLE_CONTRACT_KEYS if k in entry},
+            freq=entry["freq"],
+            aggfunc=entry.get("aggfunc", "mean"),
+            contract={k: v for k, v in entry.items() if k not in _RESAMPLE_OWN_KEYS},
         )
 
 
@@ -237,8 +261,8 @@ def _assert_node_identifier(value: Any, field_: str, node_name: Any) -> None:
         )
 
 
-def _assert_valid_contract(entry: dict, node_name: Any) -> None:
-    """Reject a [[node]] entry's malformed output contract at parse time."""
+def _assert_valid_contract(entry: dict, where: str) -> None:
+    """Reject a generated node's malformed output contract at parse time."""
     from xarray_annotated import (
         annotate,
         assert_valid_declaration,
@@ -256,9 +280,9 @@ def _assert_valid_contract(entry: dict, node_name: Any) -> None:
             )
         )
         if declared is not None:
-            assert_valid_declaration(declared, f"node '{node_name}'")
+            assert_valid_declaration(declared, where)
     except TypeError as exc:
-        raise CatenaValueError(f"node '{node_name}': {exc}") from exc
+        raise CatenaValueError(f"{where}: {exc}") from exc
     except ValueError as exc:
         raise CatenaValueError(str(exc)) from exc
 
@@ -287,9 +311,7 @@ class NodeSpec:
     contract: validated at runtime, and read by the build-time check. An output with no
     ``units`` label is stamped with the declared unit; one that keeps its input's label
     still has to match, unless ``overwrite_units`` replaces it with the declared unit.
-    A node declaring none of them is not checked. ``inputs_share_output`` declares
-    each input with the output's ``units`` and ``dims`` too, for a node that keeps
-    both; `catena.config` sets it on the nodes a ``[[resample]]`` generates.
+    A node declaring none of them is not checked.
     """
 
     name: str
@@ -303,7 +325,6 @@ class NodeSpec:
     coords: list[str] | None = None
     freq: str | None = None
     overwrite_units: bool = False
-    inputs_share_output: bool = False
 
     @classmethod
     def from_config(cls, entry: dict) -> Self:
@@ -334,7 +355,7 @@ class NodeSpec:
                 f"'{missing}'. A function node needs both keys: "
                 f"'_import_path' (the module) and 'function' (the name within it)."
             )
-        _assert_valid_contract(entry, name)
+        _assert_valid_contract(entry, f"node '{name}'")
         _assert_valid_overwrite_units(entry, name)
         return cls(
             name=entry["name"],

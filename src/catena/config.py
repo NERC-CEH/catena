@@ -51,13 +51,19 @@ def expand_node_entries(entries: list[dict]) -> list[dict]:
     out: list[dict] = []
     for entry in entries:
         for_each = entry.get("for_each")
+        if for_each is not None and not for_each:
+            raise CatenaValueError(
+                f"[[node]] '{entry.get('name')}' has for_each = [], which would "
+                f"generate no nodes. List the variables to fan out over, or drop "
+                f"'for_each' for a single node."
+            )
         _assert_valid_per_var_tables(
             entry,
             CONTRACT_KEYS,
             list(for_each or []),
             f"[[node]] '{entry.get('name')}'",
         )
-        if not for_each:
+        if for_each is None:
             out.append(entry)
             continue
         for var in for_each:
@@ -84,39 +90,31 @@ def _subst_var(value: Any, var: str) -> Any:
 
 
 def resample_node_specs(spec: ResampleSpec) -> list[NodeSpec]:
-    """Build the node specs a `ResampleSpec` generates, one per variable.
-
-    A resample keeps its input's units label and dims, so each node declares the
-    ``units`` and ``dims`` it is given on its input as well as its output, and both
-    ends of the edge are checked.
-    """
-    entries = expand_node_entries([resample_to_node_entry(spec)])
+    """Build the node specs a `ResampleSpec` generates, one per variable."""
     return [
-        replace(NodeSpec.from_config(entry), inputs_share_output=True)
-        for entry in entries
+        NodeSpec.from_config(resample_to_node_entry(spec, var)) for var in spec.vars
     ]
 
 
-def resample_to_node_entry(spec: ResampleSpec) -> dict:
-    """Desugar a `ResampleSpec` into a fan-out ``[[node]]`` entry.
+def resample_to_node_entry(spec: ResampleSpec, var: str) -> dict:
+    """Desugar one variable of a `ResampleSpec` into a ``[[node]]`` entry.
 
-    Each variable ``v`` becomes a node ``{v}_{target}`` applying
+    The variable ``v`` becomes a node ``{v}_{target}`` applying
     `catena.transforms.resample` to ``{v}_{source}``, or to ``{v}`` when ``source``
     is empty. The node declares the resample's ``freq`` as its output frequency, so
     a fat-fingered ``W-WED`` is caught when the driver is built, together with
-    whatever else the entry declares.
+    whatever else the spec declares for ``v``.
     """
-    src = f"{{var}}_{spec.source}" if spec.source else "{var}"
+    src = f"{var}_{spec.source}" if spec.source else var
     return {
-        "for_each": list(spec.vars),
-        "name": f"{{var}}_{spec.target}",
+        **spec.contract_for(var),
+        "name": f"{var}_{spec.target}",
         "inputs": [src],
         "expression": (
             f"__transforms.resample({src}, freq={spec.freq!r}, "
             f"aggfunc={spec.aggfunc!r})"
         ),
         "freq": spec.freq,
-        **spec.contract,
     }
 
 

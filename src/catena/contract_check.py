@@ -36,8 +36,8 @@ Two distinctions apply:
   with ``Freq("D")``, which still raises on an axis with holes when the data arrives.
 
 **Generated nodes.** A ``[[node]]`` or ``[[resample]]`` node is checked like any
-other: by what it declares. A node declaring nothing breaks the edge chain, as
-whether it preserves a facet depends on what its expression does.
+other, by what it declares. An edge into or out of a node declaring nothing is not
+checked.
 """
 
 from dataclasses import is_dataclass

@@ -104,7 +104,7 @@ units = { temperature = "K", precipitation = "mm d-1" }
 ```
 
 This produces `temperature_weekly` and `precipitation_weekly` from their daily counterparts, with `freq` as the declared output frequency.
-The values keep their units labels, and `units` declares them, so each is checked on the way into the resample and on the way out; see [Contracts on a resample](../nodes/contracts.md#contracts-on-a-resample).
+The values keep their units labels, and `units` declares each output's; see [Contracts on a resample](../nodes/contracts.md#contracts-on-a-resample).
 Choose `aggfunc` with care: [no check can tell a wrong one](../nodes/resampling-and-units.md).
 
 `from` and `to` are just the node-name suffixes to read and write; `freq` alone sets the frequency, so any pair of labels works:

@@ -176,18 +176,11 @@ class TestCheckInputUnitsThroughNodes:
         )
         return build_driver(["node", "rs_cons"], {}, node_specs=specs)
 
-    def test_resample_routed_input_is_validated(self, register):
-        dr = self._resample_driver(register, units="g m-2 d-1")
-        with (
-            xra.enabled(True),
-            pytest.raises(CatenaValueError, match="gpp_weekly"),
-        ):
-            check_input_contracts(dr, {"gpp_weekly": _input("kg")})
-
-    def test_resample_routed_input_passes_when_correct(self, register):
+    def test_resample_routed_input_is_left_to_runtime(self, register):
+        # A resample declares its output only, so its input is not checked here.
         dr = self._resample_driver(register, units="g m-2 d-1")
         with xra.enabled(True):
-            check_input_contracts(dr, {"gpp_weekly": _input("g m-2 d-1")})
+            check_input_contracts(dr, {"gpp_weekly": _input("kg")})
 
     def test_undeclared_resample_routed_input_is_not_validated(self, register):
         dr = self._resample_driver(register)

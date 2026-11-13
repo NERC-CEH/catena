@@ -188,8 +188,7 @@ aggfunc = "mean"
 | `to` | **Required.** Node-name suffix to write to; must not be empty. |
 | `freq` | **Required.** Target frequency: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), validated at parse time. A calendar step such as `"month"` is refused, as it does not say where to stamp the result. |
 | `aggfunc` | Aggregation: `mean` (default), `sum`, `max`, `min`, `first`, `last`. |
-| `units`, `dims` | Declared on each node's input and output: one value for every variable, or a table keyed by variable. Optional; an undeclared facet is not checked. |
-| `dtype`, `coords` | Declared on each node's output, in the same two forms. Optional. |
+| `units`, `dims`, `dtype`, `coords` | Each node's declared output contract, as on a `[[node]]`: one value for every variable, or a table keyed by variable. Optional; an undeclared facet is not checked. |
 
 `from` and `to` are free-form labels, so `from = "raw"`, `to = "smoothed"` works just as well; `freq` alone sets the time axis, and becomes the node's declared output frequency.
 The time axis is detected from the data, so it need not be called `time`.

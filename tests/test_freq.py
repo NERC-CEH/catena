@@ -294,7 +294,8 @@ def _resample_specs(*specs):
 class TestResampleFreq:
     def test_entry_declares_the_offset(self):
         entry = resample_to_node_entry(
-            ResampleSpec(vars=["gpp"], source="daily", target="weekly", freq="7D")
+            ResampleSpec(vars=["gpp"], source="daily", target="weekly", freq="7D"),
+            "gpp",
         )
         assert entry["freq"] == "7D"
 
@@ -305,7 +306,8 @@ class TestResampleFreq:
                 source="daily",
                 target="weekly",
                 freq="W-WED",
-            )
+            ),
+            "gpp",
         )
         assert entry["freq"] == "W-WED"
 

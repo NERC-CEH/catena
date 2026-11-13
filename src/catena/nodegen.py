@@ -109,10 +109,6 @@ def _decorate(fn: Any, spec: NodeSpec) -> Any:
         coords=spec.coords or None,
         freq=spec.freq,
     )
-    if spec.inputs_share_output and (spec.units is not None or spec.dims):
-        kept = xra.annotate(unit=spec.units, dims=spec.dims or None)
-        for inp in spec.inputs:
-            fn.__annotations__[inp] = kept
     if spec.units is not None:
         fn = xra.stamp_output_units(overwrite=spec.overwrite_units)(fn)
     return xra.check_annotations(fn)

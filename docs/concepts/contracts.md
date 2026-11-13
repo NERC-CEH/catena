@@ -28,7 +28,7 @@ An annotation on a parameter declares what the node **requires**.
 An edge is checked wherever both ends declare the same facet.
 
 A node declaring nothing breaks the chain, since whether it keeps a facet depends on what it computes.
-A `[[resample]]` declares its output frequency, and whatever else its entry declares on both its input and its output, so an edge through it is checked at both ends.
+A `[[node]]` or `[[resample]]` declares its output only, so the edge out of it can be checked when the driver is built, and the edge into it is checked when it runs.
 
 ## The layers, and when each runs
 
@@ -71,4 +71,5 @@ An output unit is a claim: a stamped label, an `overwrite`, or a hand-written `.
 An edge that passes is not proven safe either: `Freq("D", gaps_ok=True)` is compatible with `Freq("D")`, so a producer that leaves holes reaches a strict consumer, which raises only when the data arrives.
 
 The output of a `@subdag` is checked only if the wrapping function declares it, since nothing says the wrapper passes its sub-DAG's output on unchanged.
+The edge into a `[[node]]` or `[[resample]]` is checked only when the node runs, since a generated node declares its output alone.
 [Test your pipeline](../guides/validate/test-your-pipeline.md) covers the rest.

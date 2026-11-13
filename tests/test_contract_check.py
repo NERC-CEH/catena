@@ -405,12 +405,20 @@ class TestResampleDeclarations:
         ):
             self._build(register, "kg", units="g m-2 d-1")
 
-    def test_declared_unit_is_checked_against_the_producer(self, register):
-        with (
-            xra.enabled(True),
-            pytest.raises(ValueError, match=r"'gpp_weekly'.*input of gpp_monthly"),
-        ):
+    def test_edge_into_the_resample_is_left_to_runtime(self, register):
+        # Like a [[node]], a resample declares its output only.
+        with xra.enabled(True):
             self._build(register, "kg", units="kg")
+
+    def test_loosely_typed_producer_wires_into_a_declaring_resample(self, register):
+        def gpp_daily() -> xr.DataArray | None: ...
+
+        register("lt_prod", gpp_daily)
+        specs = _resample_node_specs(
+            _resample(["gpp"], "daily", "weekly", "7D", units="K")
+        )
+        with xra.enabled(True):
+            build_driver(["lt_prod", "node"], {}, node_specs=specs)
 
     def test_consistent_declarations_pass(self, register):
         with xra.enabled(True):
