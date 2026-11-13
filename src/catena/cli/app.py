@@ -17,6 +17,7 @@ from .run import app as run_app
 
 app = typer.Typer(
     help="Command-line interface for the catena framework.",
+    rich_markup_mode="markdown",
     context_settings={"help_option_names": ["-h", "--help"]},
     # `main` renders CatenaError itself; typer's traceback would bury the message.
     pretty_exceptions_enable=False,

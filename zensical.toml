@@ -2,6 +2,11 @@
 
 use_directory_urls = false
 
+# Architecture decision records are for maintainers, not users.
+exclude_docs = """
+adr/
+"""
+
 site_name = "catena"
 site_description = "An opinionated Hamilton + xarray + xarray-annotated foundation for building configurable data pipelines."
 site_author = "Joe Marsh Rossney"

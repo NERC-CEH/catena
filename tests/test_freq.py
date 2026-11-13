@@ -3,8 +3,8 @@
 The frequency (and phase) of a node's time axis is one more facet of the whole-DAG
 contract check: declared with ``Annotated[DataArray, Freq("7D")]`` (or a ``freq``
 key on a ``[[node]]``), compared marker-vs-marker at build time and marker-vs-array
-in ``--dry-run``. Unlike units, it is *not* preserved across a passthrough — a
-``[[resample]]`` is exactly what changes it, so it declares its own output frequency.
+in ``--dry-run``. A ``[[resample]]`` is exactly what changes it, so it declares its
+own output frequency.
 
 Frequency validation is opt-in: an input is only checked where a consumer declares
 a ``Freq`` for it. The old label-magic validator (``_validate_dates``, keyed on the
@@ -286,19 +286,18 @@ class TestNodeFreq:
 
 
 def _resample_specs(*specs):
-    from catena.config import expand_node_entries
+    from catena.config import resample_node_specs
 
-    entries = [resample_to_node_entry(s) for s in specs]
-    return [NodeSpec.from_config(e) for e in expand_node_entries(entries)]
+    return [node for spec in specs for node in resample_node_specs(spec)]
 
 
 class TestResampleFreq:
     def test_entry_declares_the_offset(self):
         entry = resample_to_node_entry(
-            ResampleSpec(vars=["gpp"], source="daily", target="weekly", freq="7D")
+            ResampleSpec(vars=["gpp"], source="daily", target="weekly", freq="7D"),
+            "gpp",
         )
         assert entry["freq"] == "7D"
-        assert entry["passthrough"] is True
 
     def test_explicit_anchored_offset_is_declared(self):
         entry = resample_to_node_entry(
@@ -307,7 +306,8 @@ class TestResampleFreq:
                 source="daily",
                 target="weekly",
                 freq="W-WED",
-            )
+            ),
+            "gpp",
         )
         assert entry["freq"] == "W-WED"
 
@@ -365,9 +365,8 @@ class TestResampleFreq:
         assert xr.infer_freq(out["gpp_weekly"]["time"]) is not None
 
     def test_source_freq_is_not_propagated_across_the_resample(self, register):
-        # Units propagate across a passthrough; frequency must not — the resample
-        # changes it. A daily source feeding a 7D-declaring consumer of the
-        # *resampled* var is fine.
+        # The resample changes the frequency, so a daily source feeding a
+        # 7D-declaring consumer of the *resampled* var is fine.
         register("rfp_prod", _producer("gpp_daily", Freq("D")))
         register("rfp_cons", _consumer(Freq("7D"), in_name="gpp_weekly"))
         specs = _resample_specs(

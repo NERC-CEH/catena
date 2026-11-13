@@ -154,23 +154,23 @@ overwrite_units = true
 | `expression` | A Python/xarray expression over `inputs` (`xr` and `xra`, for `xarray_annotated`, are in scope). |
 | `_import_path` + `function` | Alternative to `expression`: call `function` in that module. Same two forms as a module section's. |
 | `units` | Output unit contract (validated at parse time). An output with no `units` label is stamped with it; an output that kept a label from its inputs must match it. |
-| `overwrite_units` | `true` replaces the label an output kept from its inputs with `units`. Needs `units`; not allowed on a `passthrough` node. Default `false`. |
+| `overwrite_units` | `true` replaces the label an output kept from its inputs with `units`. Needs `units`. Default `false`. |
 | `dims` | Output dimension contract (list of names). |
 | `dtype` | Output dtype contract (validated at parse time). A name with a width (`float64`) is exact; `float`, `int` and the like mean any width. |
 | `coords` | Output coordinate contract (list of names). |
 | `freq` | Output temporal-frequency contract, validated at parse time: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), or a calendar step on any day (`"month"`, `"3month"`, `"year"`, `"2year"`). |
-| `passthrough` | Declare no fixed output contract; propagate the input's contract across the node. |
-| `for_each` | Fan-out: generate one node per value, substituting `{var}` in string fields. |
+| `for_each` | Fan-out: generate one node per value, substituting `{var}` in string fields. Each contract key may then be a table keyed by value instead of one value for every node. |
 
 Declaring any of `units`/`dims`/`dtype`/`coords`/`freq` makes the node a typed producer the [contract check](../guides/nodes/contracts.md) can verify.
+Any other key is an error.
 See [Inline nodes & fan-out](../guides/configs/inline-nodes-and-fan-out.md) for worked examples.
 
 An anchored `freq` (`"W-SUN"`, `"ME"`) pins the *phase* as well as the spacing; an unanchored one (`"7D"`, `"W"`) constrains the spacing only; a calendar step (`"month"`) accepts one value per step on any day, such as monthly means stamped at midpoints.
 
 ## Resample
 
-`[[resample]]` aggregates to a coarser time frequency, preserving units and dims.
-It expands to one passthrough `[[node]]` per variable, applying `catena.transforms.resample`.
+`[[resample]]` aggregates to a coarser time frequency, keeping each input's units label and dims.
+It expands to one `[[node]]` per variable, applying `catena.transforms.resample`.
 
 ```toml
 [[resample]]
@@ -188,9 +188,12 @@ aggfunc = "mean"
 | `to` | **Required.** Node-name suffix to write to; must not be empty. |
 | `freq` | **Required.** Target frequency: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), validated at parse time. A calendar step such as `"month"` is refused, as it does not say where to stamp the result. |
 | `aggfunc` | Aggregation: `mean` (default), `sum`, `max`, `min`, `first`, `last`. |
+| `units`, `dims`, `dtype`, `coords` | Each node's declared output contract, as on a `[[node]]`: one value for every variable, or a table keyed by variable. Optional; an undeclared facet is not checked. |
+| `overwrite_units` | `true` replaces the label each output kept from its input with `units`, as on a `[[node]]`. Needs `units`. Default `false`. |
 
 `from` and `to` are free-form labels, so `from = "raw"`, `to = "smoothed"` works just as well; `freq` alone sets the time axis, and becomes the node's declared output frequency.
 The time axis is detected from the data, so it need not be called `time`.
+Any other key is an error.
 
 !!! warning "No check can catch a wrong `aggfunc`"
 

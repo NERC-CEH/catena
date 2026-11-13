@@ -370,112 +370,86 @@ class TestBuildDriverIntegration:
 
 
 # ---------------------------------------------------------------------------
-# Resample propagation: a resampled var inherits its source's unit
+# Resample: a resampled var is checked by what its [[resample]] declares
 # ---------------------------------------------------------------------------
 
 
 def _resample_node_specs(*specs):
-    """Desugar ResampleSpecs into fan-out passthrough node specs (as config does)."""
-    from catena.config import expand_node_entries, resample_to_node_entry
+    """Build the node specs each ResampleSpec generates (as config does)."""
+    from catena.config import resample_node_specs
 
-    entries = [resample_to_node_entry(s) for s in specs]
-    return [NodeSpec.from_config(e) for e in expand_node_entries(entries)]
+    return [node for spec in specs for node in resample_node_specs(spec)]
 
 
-class TestResamplePropagation:
-    """A producer emits ``gpp_weekly`` ('g m-2 d-1'); a passthrough resample to
-    ``gpp_monthly`` should propagate that unit so a downstream consumer is
-    checked against it."""
+def _resample(vars_, source, target, freq, **contract):
+    return ResampleSpec(
+        vars=vars_, source=source, target=target, freq=freq, contract=contract
+    )
 
-    def _build(self, register, consumer_unit):
+
+class TestResampleDeclarations:
+    """A producer emits ``gpp_weekly`` ('g m-2 d-1'), resampled to ``gpp_monthly``."""
+
+    def _build(self, register, consumer_unit, **contract):
         register("rs_prod", _producer("g m-2 d-1"))  # produces gpp_weekly
         register("rs_cons", _consumer(consumer_unit, in_name="gpp_monthly"))
         specs = _resample_node_specs(
-            ResampleSpec(vars=["gpp"], source="weekly", target="monthly", freq="1ME")
+            _resample(["gpp"], "weekly", "monthly", "1ME", **contract)
         )
         return build_driver(["rs_prod", "node", "rs_cons"], {}, node_specs=specs)
 
-    def test_incompatible_consumer_of_resampled_var_raises(self, register):
+    def test_declared_unit_is_checked_against_the_consumer(self, register):
         with (
             xra.enabled(True),
-            pytest.raises(ValueError, match="gpp_monthly"),
+            pytest.raises(ValueError, match=r"'gpp_monthly'.*output of gpp_monthly"),
         ):
-            self._build(register, "kg")
+            self._build(register, "kg", units="g m-2 d-1")
 
-    def test_compatible_consumer_of_resampled_var_passes(self, register):
+    def test_edge_into_the_resample_is_left_to_runtime(self, register):
+        # Like a [[node]], a resample declares its output only.
         with xra.enabled(True):
-            self._build(register, "g m-2 d-1")
+            self._build(register, "kg", units="kg")
 
-    def test_conflict_names_where_the_resample_got_its_unit(self, register):
-        with (
-            xra.enabled(True),
-            pytest.raises(ValueError, match=r"units from gpp_weekly"),
-        ):
+    def test_loosely_typed_producer_wires_into_a_declaring_resample(self, register):
+        def gpp_daily() -> xr.DataArray | None: ...
+
+        register("lt_prod", gpp_daily)
+        specs = _resample_node_specs(
+            _resample(["gpp"], "daily", "weekly", "7D", units="K")
+        )
+        with xra.enabled(True):
+            build_driver(["lt_prod", "node"], {}, node_specs=specs)
+
+    def test_consistent_declarations_pass(self, register):
+        with xra.enabled(True):
+            self._build(register, "g m-2 d-1", units="g m-2 d-1")
+
+    def test_undeclared_unit_leaves_the_edges_unchecked(self, register):
+        with xra.enabled(True):
             self._build(register, "kg")
 
-    def test_passthrough_declaring_nothing_propagates_the_unit(self, register):
-        register("pt_prod", _producer("g m-2 d-1"))
-        register("pt_cons", _consumer("kg", in_name="gpp_copy"))
-        specs = [
-            NodeSpec.from_config(
-                {
-                    "name": "gpp_copy",
-                    "inputs": ["gpp_weekly"],
-                    "expression": "gpp_weekly",
-                    "passthrough": True,
-                }
-            )
-        ]
-        with (
-            xra.enabled(True),
-            pytest.raises(ValueError, match=r"output of passthrough of gpp_weekly"),
-        ):
-            build_driver(["pt_prod", "node", "pt_cons"], {}, node_specs=specs)
-
-    def test_resample_from_a_bare_name_propagates_the_unit(self, register):
-        class _P(TypedDict):
-            gpp: Annotated[xr.DataArray, xra.Unit("g m-2 d-1")]
-
-        @extract_fields()
-        @xra.check_annotations
-        def prod() -> _P:  # type: ignore[valid-type]
-            return {"gpp": _da()}
-
-        register("bare_prod", prod)
-        register("bare_cons", _consumer("kg", in_name="gpp_weekly"))
-        specs = _resample_node_specs(
-            ResampleSpec(vars=["gpp"], source="", target="weekly", freq="7D")
+    def test_per_variable_units_are_checked_per_variable(self, register):
+        register(
+            "pv_prods", _bare_producer("K", name="t"), _bare_producer("mm", name="p")
         )
-        with (
-            xra.enabled(True),
-            pytest.raises(ValueError, match=r"units from gpp\b"),
-        ):
-            build_driver(["bare_prod", "node", "bare_cons"], {}, node_specs=specs)
-
-    def test_chained_resample_propagates_through_multiple_hops(self, register):
-        """The unit must propagate across a *chain* of resamples
-        (daily -> weekly -> monthly), exercising the fixpoint loop, so a
-        consumer of the twice-resampled variable is still checked."""
-
-        class _P(TypedDict):
-            gpp_daily: Annotated[xr.DataArray, xra.Unit("g m-2 d-1")]
-
-        @extract_fields()
-        @xra.check_annotations
-        def prod() -> _P:  # type: ignore[valid-type]
-            return {"gpp_daily": _da()}
-
-        register("crp_prod", prod)
-        register("crp_cons", _consumer("kg", in_name="gpp_monthly"))
+        register("pv_cons", _consumer("mm", name="pv", in_name="t_weekly"))
         specs = _resample_node_specs(
-            ResampleSpec(vars=["gpp"], source="daily", target="weekly", freq="7D"),
-            ResampleSpec(vars=["gpp"], source="weekly", target="monthly", freq="1ME"),
+            _resample(["t", "p"], "", "weekly", "7D", units={"t": "K", "p": "mm"})
         )
-        with (
-            xra.enabled(True),
-            pytest.raises(ValueError, match="gpp_monthly"),
-        ):
-            build_driver(["crp_prod", "node", "crp_cons"], {}, node_specs=specs)
+        with xra.enabled(True), pytest.raises(ValueError, match="'t_weekly'"):
+            build_driver(["pv_prods", "node", "pv_cons"], {}, node_specs=specs)
+
+    def test_declared_dims_are_checked(self, register):
+        register("rd_prod", _schema_producer("arr_daily", Dims("time", "x")))
+        register(
+            "rd_cons",
+            _named_schema_consumer("rd", Dims("time", "y"), in_name="arr_weekly"),
+        )
+        specs = _resample_node_specs(
+            _resample(["arr"], "daily", "weekly", "7D", dims=["time", "x"])
+        )
+        with xra.enabled(True), pytest.raises(ValueError, match="'arr_weekly'"):
+            build_driver(["rd_prod", "node", "rd_cons"], {}, node_specs=specs)
 
 
 # ---------------------------------------------------------------------------

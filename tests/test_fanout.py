@@ -1,11 +1,13 @@
 """Tests for the general fan-out [[node]] mechanism and node contract decls."""
 
+import pytest
 import xarray as xr
 from xarray_annotated import Declared, Dims, Dtype, declarations_from_signature
 
 from catena.build import build_driver
 from catena.config import Config, NodeSpec, expand_node_entries
-from catena.nodegen import PASSTHROUGH_TAG, make_node_module
+from catena.errors import CatenaValueError
+from catena.nodegen import make_node_module
 
 
 def _node(name, inputs, expression, **kw):
@@ -36,6 +38,12 @@ class TestForEachExpansion:
         assert entries[0]["expression"] == "a_in * 2"
         assert "for_each" not in entries[0]
 
+    def test_empty_for_each_is_rejected(self):
+        with pytest.raises(CatenaValueError, match=r"for_each = \[\]"):
+            expand_node_entries(
+                [{"name": "x", "inputs": [], "expression": "1", "for_each": []}]
+            )
+
     def test_entry_without_for_each_passes_through(self):
         entries = expand_node_entries([{"name": "x", "inputs": [], "expression": "1"}])
         assert len(entries) == 1
@@ -65,7 +73,6 @@ class TestForEachExpansion:
         assert list(out["a_doubled"].values) == [2.0, 4.0]
 
     def test_fan_out_name_collision_raises(self):
-        import pytest
 
         config = Config(
             {
@@ -121,7 +128,6 @@ class TestSchemaOnNode:
         assert spec.dtype == "float64"
 
     def test_invalid_dtype_raises(self):
-        import pytest
 
         config = Config(
             {
@@ -134,13 +140,71 @@ class TestSchemaOnNode:
             config.parse()
 
 
-class TestPassthroughNode:
-    def test_passthrough_is_tagged_and_undeclared(self):
-        mod = make_node_module([_node("p", ["x"], "x", passthrough=True)])
-        # Tagged for the contract check to propagate its input's declaration ...
-        (tag_deco,) = mod.p.__dict__["decorate_nodes"]
-        assert tag_deco.tags[PASSTHROUGH_TAG] == "true"
-        # ... and declares no contract of its own (bare DataArray return).
-        assert mod.p.__annotations__["return"] is xr.DataArray
-        _, out = declarations_from_signature(mod.p)
-        assert out is None
+class TestPerVariableContracts:
+    """A contract key given as a table keyed by variable, under fan-out."""
+
+    def _expand(self, **contract):
+        return expand_node_entries(
+            [
+                {
+                    "for_each": ["a", "b"],
+                    "name": "{var}_out",
+                    "inputs": ["{var}"],
+                    "expression": "{var}",
+                    **contract,
+                }
+            ]
+        )
+
+    def test_each_node_gets_its_own_value(self):
+        a, b = self._expand(units={"a": "K", "b": "mm"})
+        assert (a["units"], b["units"]) == ("K", "mm")
+
+    def test_a_plain_value_applies_to_every_node(self):
+        a, b = self._expand(dims=["time"])
+        assert a["dims"] == b["dims"] == ["time"]
+
+    def test_a_variable_left_out_declares_nothing(self):
+        a, b = self._expand(units={"a": "K"})
+        assert a["units"] == "K"
+        assert "units" not in b
+
+    def test_an_unknown_variable_is_rejected(self):
+        with pytest.raises(CatenaValueError, match=r"units names \['c'\]"):
+            self._expand(units={"a": "K", "c": "mm"})
+
+    def test_a_table_without_fan_out_is_rejected(self):
+        with pytest.raises(CatenaValueError, match="needs 'for_each'"):
+            expand_node_entries(
+                [{"name": "x", "inputs": [], "expression": "1", "units": {"x": "K"}}]
+            )
+
+    def test_per_variable_units_reach_the_generated_nodes(self):
+        specs = (
+            Config(
+                {
+                    "node": [
+                        {
+                            "for_each": ["a", "b"],
+                            "name": "{var}_out",
+                            "inputs": ["{var}"],
+                            "expression": "{var}",
+                            "units": {"a": "K", "b": "mm"},
+                        }
+                    ]
+                }
+            )
+            .parse()
+            .node_specs
+        )
+        assert {s.name: s.units for s in specs} == {"a_out": "K", "b_out": "mm"}
+
+
+class TestUnknownNodeKeys:
+    @pytest.mark.parametrize("key", ["passthrough", "unitz"])
+    def test_unknown_key_is_rejected(self, key):
+        config = Config(
+            {"node": [{"name": "f", "inputs": ["a"], "expression": "a", key: True}]}
+        )
+        with pytest.raises(CatenaValueError, match=f"unrecognised key.*{key}"):
+            config.parse()

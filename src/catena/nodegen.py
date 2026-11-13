@@ -12,16 +12,10 @@ from typing import Any
 
 import xarray as xr
 import xarray_annotated as xra
-from hamilton.function_modifiers import tag
 
 from .errors import CatenaValueError
 from .importing import import_user_module
 from .specs import NodeSpec
-
-#: Hamilton tag marking a node whose output preserves its input's declared contract.
-#: The contract check reads it to propagate that declaration across the node — see
-#: `catena.contract_check` for the semantics (notably that it is per facet).
-PASSTHROUGH_TAG = "catena_passthrough"
 
 
 def _node_namespace(base: Path | None = None) -> dict[str, Any]:
@@ -106,16 +100,8 @@ def make_node_module(
 
 def _decorate(fn: Any, spec: NodeSpec) -> Any:
     """Attach the node's declared output contract to the bare ``exec``'d function."""
-    # A passthrough declares no contract of its own except its frequency (the one
-    # facet it does not preserve), and is tagged for the check to propagate the rest.
-    if spec.passthrough:
-        fn.__annotations__["return"] = xra.annotate(freq=spec.freq)
-        fn = xra.check_annotations(fn)
-        return tag(**{PASSTHROUGH_TAG: "true"})(fn)  # type: ignore[reportArgumentType]
-
-    # Otherwise a declared unit/dims/dtype/coords/freq makes the node a typed producer:
-    # validated at runtime and read by the build-time check. Without any, the node is
-    # simply unchecked.
+    # A declared unit/dims/dtype/coords/freq makes the node a typed producer: validated
+    # at runtime and read by the build-time check. Without any, the node is unchecked.
     fn.__annotations__["return"] = xra.annotate(
         unit=spec.units,
         dims=spec.dims or None,

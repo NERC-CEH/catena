@@ -1,7 +1,7 @@
 """Tests for the resample transform and the [[resample]] preset pipeline.
 
-``[[resample]]`` is now a preset that desugars to fan-out passthrough ``[[node]]``
-entries applying `catena.transforms.resample`; there is no dedicated DAG module.
+``[[resample]]`` is a preset that desugars to fan-out ``[[node]]`` entries applying
+`catena.transforms.resample`; there is no dedicated DAG module.
 These tests cover the transform directly and end-to-end via a built driver.
 """
 
@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
+import xarray_annotated as xra
 from xarray_annotated.temporal import Freq, check_freq
 
 from catena.build import build_driver
@@ -108,7 +109,7 @@ class TestResampleTimeDim:
 
 
 class TestResamplePresetPipeline:
-    """[[resample]] desugars to a passthrough node; the built driver executes it."""
+    """[[resample]] desugars to fan-out nodes; the built driver executes them."""
 
     def _driver(self, entry: dict):
         parsed = Config({"resample": [entry]}).parse()
@@ -241,4 +242,124 @@ class TestResampleSpecValidation:
         with pytest.raises(CatenaValueError, match="to = ''"):
             ResampleSpec.from_config(
                 {"vars": ["x"], "from": "daily", "to": "", "freq": "7D"}
+            )
+
+
+def _labelled(units: str) -> xr.DataArray:
+    return _daily_da(14, 1).assign_attrs(units=units)
+
+
+_TWO_VARS = {
+    "vars": ["temperature", "precipitation"],
+    "from": "daily",
+    "to": "weekly",
+    "freq": "7D",
+}
+
+
+class TestResampleContracts:
+    """What a [[resample]] declares beyond its frequency, and where it is checked."""
+
+    def _driver(self, **contract):
+        parsed = Config({"resample": [{**_TWO_VARS, **contract}]}).parse()
+        return build_driver(
+            parsed.modules, parsed.driver_config, node_specs=parsed.node_specs
+        )
+
+    def test_per_variable_units_are_checked_when_run(self):
+        dr = self._driver(units={"temperature": "K", "precipitation": "mm"})
+        inputs = {
+            "temperature_daily": _labelled("K"),
+            "precipitation_daily": _labelled("K"),
+        }
+        with xra.enabled(True):
+            out = dr.execute(["temperature_weekly"], inputs=inputs)
+            assert out["temperature_weekly"].attrs["units"] == "K"
+            with pytest.raises(xra.units.UnitError, match="precipitation"):
+                dr.execute(["precipitation_weekly"], inputs=inputs)
+
+    def test_declared_dims_are_checked_when_run(self):
+        dr = self._driver(dims=["time", "site"])
+        with xra.enabled(True), pytest.raises(xra.schema.SchemaError):
+            dr.execute(
+                ["temperature_weekly"], inputs={"temperature_daily": _labelled("K")}
+            )
+
+    def test_declared_units_stamp_an_unlabelled_input(self):
+        dr = self._driver(units="K")
+        with xra.enabled(True):
+            out = dr.execute(
+                ["temperature_weekly"], inputs={"temperature_daily": _daily_da()}
+            )
+        assert out["temperature_weekly"].attrs["units"] == "K"
+
+    def test_a_summed_rate_is_relabelled_as_declared(self):
+        dr = self._driver(
+            aggfunc="sum",
+            units={"precipitation": "mm week-1"},
+            overwrite_units={"precipitation": True},
+        )
+        with xra.enabled(True):
+            out = dr.execute(
+                ["precipitation_weekly"],
+                inputs={"precipitation_daily": _labelled("mm d-1")},
+            )
+        assert out["precipitation_weekly"].attrs["units"] == "mm week-1"
+
+    def test_a_kept_label_contradicting_units_still_fails(self):
+        dr = self._driver(aggfunc="sum", units="mm week-1")
+        with xra.enabled(True), pytest.raises(xra.units.UnitError):
+            dr.execute(
+                ["precipitation_weekly"],
+                inputs={"precipitation_daily": _labelled("mm d-1")},
+            )
+
+    def test_undeclared_units_are_not_checked(self):
+        dr = self._driver()
+        with xra.enabled(True):
+            dr.execute(
+                ["temperature_weekly"], inputs={"temperature_daily": _daily_da()}
+            )
+
+    @pytest.mark.parametrize(
+        ("extra", "match"),
+        [
+            ({"overwrite_units": True}, "needs a declared 'units'"),
+            ({"passthrough": True}, r"unrecognised key.*passthrough"),
+            ({"units": {"temperature": "K", "wind": "m s-1"}}, r"\['wind'\]"),
+            ({"freq_table": {"temperature": "7D"}}, "unrecognised key"),
+        ],
+    )
+    def test_invalid_entry_is_refused(self, extra, match):
+        with pytest.raises(CatenaValueError, match=match):
+            Config({"resample": [{**_TWO_VARS, **extra}]}).parse()
+
+    @pytest.mark.parametrize(
+        ("extra", "match"),
+        [
+            ({"units": "notaunit"}, r"^\[\[resample\]\] of"),
+            ({"dtype": {"temperature": "flaot"}}, r"^\[\[resample\]\] of"),
+        ],
+    )
+    def test_invalid_contract_value_names_the_resample(self, extra, match):
+        with pytest.raises(CatenaValueError, match=match):
+            Config({"resample": [{**_TWO_VARS, **extra}]}).parse()
+
+    @pytest.mark.parametrize(
+        ("contract", "match"),
+        [
+            ({"freq": "D"}, r"unrecognised key.*freq"),
+            ({"overwrite_units": "yes", "units": "K"}, "must be true or false"),
+        ],
+    )
+    def test_spec_built_in_python_is_validated(self, contract, match):
+        from catena.specs import ResampleSpec
+
+        with pytest.raises(CatenaValueError, match=match):
+            ResampleSpec(
+                vars=["t"],
+                source="daily",
+                target="weekly",
+                freq="7D",
+                contract=contract,
             )

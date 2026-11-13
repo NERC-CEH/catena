@@ -226,7 +226,7 @@ def _node_maps(dr: Driver) -> tuple[dict[str, str], dict[str, str]]:
     (`catena.io.load_inputs`), so a pipeline whose resample targets are called
     ``raw``/``smoothed`` is grouped exactly as well as one using ``daily``/``weekly``.
     """
-    produced, consumed, _ = _collect_declarations(dr)
+    produced, consumed = _collect_declarations(dr)
     units: dict[str, str] = {}
     freqs: dict[str, str] = {}
     for name, consumers in consumed.items():

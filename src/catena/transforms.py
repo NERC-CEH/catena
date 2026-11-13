@@ -1,11 +1,7 @@
 """Reusable DAG transforms referenced from ``[[node]]``/preset config.
 
 A transform is a plain function applied to a node's inputs by a config-generated
-node (see `catena.nodegen`). Transforms that *preserve* their inputs'
-declared contracts (units/dims/dtype) are wired in as **passthrough** nodes: the
-generated node declares no fixed output contract and is tagged so the contract
-check propagates the input's declaration across it
-(`catena.contract_check`).
+node (see `catena.nodegen`), whose contract is the one its config entry declares.
 """
 
 import xarray as xr

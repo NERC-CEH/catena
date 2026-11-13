@@ -12,6 +12,10 @@ from catena.io import load_inputs
 
 multiprocessing.set_start_method("spawn", force=True)
 os.environ["XARRAY_ANNOTATED_ENABLED"] = "false"
+# typer forces a colour terminal when GITHUB_ACTIONS, FORCE_COLOR or PY_COLORS is
+# set, putting escape codes in CliRunner output on CI only. Read when
+# typer.rich_utils is first imported, which typer defers until it renders.
+os.environ["_TYPER_FORCE_DISABLE_TERMINAL"] = "1"
 
 TEST_CONFIG_PATH = Path(__file__).parent / "test_config.toml"
 

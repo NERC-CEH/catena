@@ -49,18 +49,23 @@ freq = "7D"
 aggfunc = "mean"
 ```
 
-If you genuinely want the weekly *amount* from a daily *rate*, do the multiplication explicitly — resample with `mean`, then scale by the window length in a `[[node]]`, and declare the resulting units:
+Summing a daily rate does give the weekly amount, but only the label is wrong: seven days of `g C m-2 day-1` sum to `g C m-2 week-1`.
+catena does not infer that from `aggfunc`, so if a `sum` is what you mean, declare the unit of the result and replace the kept label:
 
 ```toml
-[[node]]
-name = "gpp_weekly_total"
-inputs = ["gpp_weekly"]
-expression = "gpp_weekly * 7.0"
-units = "g C m-2"
-overwrite_units = true  # the product keeps the daily rate's label
+[[resample]]
+vars = ["gpp"]
+from = "daily"
+to = "weekly"
+freq = "7D"
+aggfunc = "sum"
+units = "g C m-2 week-1"
+overwrite_units = true  # the sum keeps the daily rate's label
 ```
 
 Now the declared units say what the number is, and the contract check has something to check against.
+Declaring `units` without `overwrite_units` fails when the node runs, since the kept `g C m-2 day-1` label contradicts it.
+`overwrite_units` relabels without looking at the values, so it is a claim you are responsible for.
 
 ## Resampling an axis with holes
 

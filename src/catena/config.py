@@ -22,6 +22,7 @@ from .importing import (
 )
 from .input_checks import CHECKS
 from .specs import (
+    CONTRACT_KEYS,
     BlockingSpec,
     CacheSpec,
     CheckSpec,
@@ -31,6 +32,7 @@ from .specs import (
     RegisteredModule,
     ResampleSpec,
     SubsetSpec,
+    _assert_valid_per_var_tables,
     _validate_vars,
 )
 
@@ -40,19 +42,41 @@ def expand_node_entries(entries: list[dict]) -> list[dict]:
 
     An entry with ``for_each = ["a", "b"]`` produces one entry per value, with
     every ``{var}`` in its string fields (``name``, ``inputs``, ``expression``)
-    substituted. Entries without ``for_each`` pass through unchanged. This is the
-    config-level equivalent of Hamilton's ``@parameterize``.
+    substituted. A contract key given as a table keyed by variable
+    (``units = {a = "K", b = "mm"}``) gives each node its own value, and a variable
+    the table leaves out declares nothing for that key. Entries without
+    ``for_each`` pass through unchanged. This is the config-level equivalent of
+    Hamilton's ``@parameterize``.
     """
     out: list[dict] = []
     for entry in entries:
         for_each = entry.get("for_each")
-        if not for_each:
+        if for_each is not None and not for_each:
+            raise CatenaValueError(
+                f"[[node]] '{entry.get('name')}' has for_each = [], which would "
+                f"generate no nodes. List the variables to fan out over, or drop "
+                f"'for_each' for a single node."
+            )
+        _assert_valid_per_var_tables(
+            entry,
+            CONTRACT_KEYS,
+            list(for_each or []),
+            f"[[node]] '{entry.get('name')}'",
+        )
+        if for_each is None:
             out.append(entry)
             continue
         for var in for_each:
-            out.append(
-                {k: _subst_var(v, var) for k, v in entry.items() if k != "for_each"}
-            )
+            concrete: dict = {}
+            for key, value in entry.items():
+                if key == "for_each":
+                    continue
+                if key in CONTRACT_KEYS and isinstance(value, dict):
+                    if var not in value:
+                        continue
+                    value = value[var]
+                concrete[key] = _subst_var(value, var)
+            out.append(concrete)
     return out
 
 
@@ -65,27 +89,32 @@ def _subst_var(value: Any, var: str) -> Any:
     return value
 
 
-def resample_to_node_entry(spec: ResampleSpec) -> dict:
-    """Desugar a `ResampleSpec` into a fan-out passthrough ``[[node]]`` entry.
+def resample_node_specs(spec: ResampleSpec) -> list[NodeSpec]:
+    """Build the node specs a `ResampleSpec` generates, one per variable."""
+    return [
+        NodeSpec.from_config(resample_to_node_entry(spec, var)) for var in spec.vars
+    ]
 
-    Each variable ``v`` becomes a node ``{v}_{target}`` applying
+
+def resample_to_node_entry(spec: ResampleSpec, var: str) -> dict:
+    """Desugar one variable of a `ResampleSpec` into a ``[[node]]`` entry.
+
+    The variable ``v`` becomes a node ``{v}_{target}`` applying
     `catena.transforms.resample` to ``{v}_{source}``, or to ``{v}`` when ``source``
-    is empty. The node is a **passthrough**
-    but declares its own ``freq`` — the one facet a resample does not preserve — so
-    every resample carries a checkable output-frequency contract, anchor included (a
-    fat-fingered ``W-WED`` is caught at build time). See `catena.contract_check`.
+    is empty. The node declares the resample's ``freq`` as its output frequency, so
+    a fat-fingered ``W-WED`` is caught when the driver is built, together with
+    whatever else the spec declares for ``v``.
     """
-    src = f"{{var}}_{spec.source}" if spec.source else "{var}"
+    src = f"{var}_{spec.source}" if spec.source else var
     return {
-        "for_each": list(spec.vars),
-        "name": f"{{var}}_{spec.target}",
+        **spec.contract_for(var),
+        "name": f"{var}_{spec.target}",
         "inputs": [src],
         "expression": (
             f"__transforms.resample({src}, freq={spec.freq!r}, "
             f"aggfunc={spec.aggfunc!r})"
         ),
         "freq": spec.freq,
-        "passthrough": True,
     }
 
 
@@ -208,23 +237,23 @@ class Config:
     def _parse_nodes(self, data: dict) -> list["NodeSpec"]:
         """Handle [[node]] and [[resample]] — both generate ``node`` module specs.
 
-        ``[[resample]]`` is desugared to fan-out passthrough node entries
-        (`resample_to_node_entry`), then all entries — inline and desugared — are
-        fan-out-expanded (`expand_node_entries`) and built into `NodeSpec`s, with a
-        single node-name-uniqueness check across the combined set.
+        ``[[node]]`` entries are fan-out-expanded (`expand_node_entries`) and built
+        into `NodeSpec` objects, and each ``[[resample]]`` into its own
+        (`resample_node_specs`), with a single node-name-uniqueness check across the
+        combined set.
         """
-        entries: list[dict] = list(data.pop("node", []))
+        specs: list[NodeSpec] = [
+            NodeSpec.from_config(concrete)
+            for concrete in expand_node_entries(list(data.pop("node", [])))
+        ]
         for entry in data.pop("resample", []):
-            entries.append(resample_to_node_entry(ResampleSpec.from_config(entry)))
+            specs.extend(resample_node_specs(ResampleSpec.from_config(entry)))
 
         seen_names: set[str] = set()
-        specs: list[NodeSpec] = []
-        for concrete in expand_node_entries(entries):
-            spec = NodeSpec.from_config(concrete)
+        for spec in specs:
             if spec.name in seen_names:
                 raise CatenaValueError(f"Duplicate node name '{spec.name}'")
             seen_names.add(spec.name)
-            specs.append(spec)
         return specs
 
     def _parse_cache(self, data: dict) -> CacheSpec | None:
@@ -382,7 +411,7 @@ class Config:
                             (see catena.input_checks)
         - [outputs.*]     — I/O specs; freq derived from subsection key
         - [[node]]        — config-driven custom nodes (supports for_each fan-out)
-        - [[resample]]    — preset desugaring to fan-out passthrough nodes
+        - [[resample]]    — preset desugaring to fan-out nodes
         - [cache]         — Hamilton result caching (path, recompute, disable)
         - [blocking]      — blocked execution over one dimension (block_size, dim)
         - [subset]        — a slice of one dimension (dim, start, stop)

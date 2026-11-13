@@ -35,29 +35,19 @@ Two distinctions apply:
   An edge that passes is not proven safe: ``Freq("D", gaps_ok=True)`` is compatible
   with ``Freq("D")``, which still raises on an axis with holes when the data arrives.
 
-**Passthrough propagation.** A node with no declared producer contract breaks the
-edge chain. A node tagged *passthrough* (`catena.nodegen.PASSTHROUGH_TAG`)
-preserves its input's units, so a declared unit is propagated across it — forward
-for the DAG check, backward for the input check. A non-passthrough ``[[node]]`` may
-transform its input arbitrarily, so nothing is propagated and it falls back to the
-runtime check.
-
-Only units are propagated: a resample preserves its input's units but is precisely
-the thing that *changes* its frequency, so a ``[[resample]]`` node declares its own
-output frequency instead, making it an ordinary producer for that one facet.
+**Generated nodes.** A ``[[node]]`` or ``[[resample]]`` node is checked like any
+other, by what it declares. An edge into or out of a node declaring nothing is not
+checked.
 """
 
-from collections.abc import Iterable
-from dataclasses import is_dataclass, replace
+from dataclasses import is_dataclass
 from itertools import combinations
 from typing import Any, get_type_hints, is_typeddict
 
-import xarray as xr
-from hamilton import driver, graph_types
+from hamilton import driver
 from hamilton.node import Node
 from xarray_annotated import (
     Declared,
-    Unit,
     assert_valid_declaration,
     declaration_conflicts,
     declaration_from_hint,
@@ -102,37 +92,18 @@ def _output_hint(node: Node) -> Any:
     return node.type
 
 
-def _passthrough_edges(hg: graph_types.HamiltonGraph) -> dict[str, str]:
-    """Passthrough node name -> its single source name.
-
-    A passthrough node (tagged ``catena_passthrough``, e.g. a ``[[resample]]``
-    node) preserves its input's declared contract, so the source's declaration is
-    propagated across it. Any node so tagged with exactly one dependency qualifies —
-    no module is special-cased.
-    """
-    from .nodegen import PASSTHROUGH_TAG
-
-    return {
-        node.name: next(iter(node.required_dependencies))
-        for node in hg.nodes
-        if node.tags.get(PASSTHROUGH_TAG) == "true"
-        and len(node.required_dependencies) == 1
-    }
-
-
 def _collect_declarations(
     dr: driver.Driver,
-) -> tuple[_Produced, _Consumed, dict[str, str]]:
+) -> tuple[_Produced, _Consumed]:
     """Read declared contracts off the built DAG's nodes.
 
-    Returns ``(produced, consumed, passthrough_edges)``, the shared source for both
+    Returns ``(produced, consumed)``, the shared source for both
     the build-time (`check_dag_contracts`) and runtime (`check_input_contracts`)
     checks. Declarations are keyed by node name, read from each node's output type
     and from the hint on each of its dependencies, so nodes that a decorator renames
     or rebinds (`@parameterize_sources`, `@parameterize`, `@subdag`) are checked on
     their real edges.
     """
-    hg = graph_types.HamiltonGraph.from_graph(dr.graph)
     produced: _Produced = {}
     consumed: _Consumed = {}
     for node in dr.graph.get_nodes():
@@ -147,71 +118,12 @@ def _collect_declarations(
             decl = declaration_from_hint(hint)
             if decl is not None:
                 consumed.setdefault(dep, []).append((decl, label))
-    return produced, consumed, _passthrough_edges(hg)
-
-
-# ---------------------------------------------------------------------------
-# Propagation of units across passthrough edges
-# ---------------------------------------------------------------------------
-
-
-def _propagate_units_forward(
-    produced: _Produced, passthrough_edges: dict[str, str]
-) -> None:
-    """Give each passthrough target its source's declared unit (to a fixpoint)."""
-    changed = True
-    while changed:
-        changed = False
-        for target, source in passthrough_edges.items():
-            source_unit = produced[source][0].unit if source in produced else None
-            if source_unit is None:
-                continue
-            if target not in produced:
-                produced[target] = (
-                    Declared(unit=source_unit),
-                    f"passthrough of {source}",
-                )
-                changed = True
-            elif produced[target][0].unit is None:
-                decl, who = produced[target]
-                produced[target] = (
-                    replace(decl, unit=source_unit),
-                    f"{who} (units from {source})",
-                )
-                changed = True
-
-
-def _propagate_units_backward(
-    expected: dict[str, list[Unit]], passthrough_edges: dict[str, str]
-) -> None:
-    """Push each passthrough target's expected units onto its source."""
-    changed = True
-    while changed:
-        changed = False
-        for target, source in passthrough_edges.items():
-            if target not in expected:
-                continue
-            dst = expected.setdefault(source, [])
-            before = len(dst)
-            for unit in expected[target]:
-                if unit not in dst:
-                    dst.append(unit)
-            if len(dst) != before:
-                changed = True
+    return produced, consumed
 
 
 # ---------------------------------------------------------------------------
 # The two checks
 # ---------------------------------------------------------------------------
-
-
-def _distinct[T](markers: Iterable[T | None]) -> list[T]:
-    """Return the declared markers, without repeats, in first-seen order."""
-    seen: list[T] = []
-    for marker in markers:
-        if marker is not None and marker not in seen:
-            seen.append(marker)
-    return seen
 
 
 def check_dag_contracts(dr: driver.Driver) -> None:
@@ -224,8 +136,7 @@ def check_dag_contracts(dr: driver.Driver) -> None:
     """
     if not resolve_enabled():
         return
-    produced, consumed, passthrough_edges = _collect_declarations(dr)
-    _propagate_units_forward(produced, passthrough_edges)
+    produced, consumed = _collect_declarations(dr)
     findings: list[str] = []
     for name, consumers in consumed.items():
         candidates: list[tuple[Declared, str]] = []
@@ -267,9 +178,8 @@ def check_input_contracts(dr: driver.Driver, inputs: dict[str, Any]) -> None:
     frequency of its time axis (temporal), are checked against the contract declared
     by its consumer(s). Dims/coords/dtype live in the file header and a frequency
     needs only the 1-D datetime coordinate, so — like units — this executes no node
-    and is suitable as a ``run --dry-run`` pre-flight. Units are propagated backward
-    through unit-preserving passthrough edges to a fixpoint. A declared input that is
-    not a ``DataArray`` fails unless its hint allows the value, as ``| None`` allows
+    and is suitable as a ``run --dry-run`` pre-flight. A declared input that is not
+    a ``DataArray`` fails unless its hint allows the value, as ``| None`` allows
     ``None``.
 
     Every failing input is reported in one `CatenaValueError`, with every failing
@@ -278,19 +188,10 @@ def check_input_contracts(dr: driver.Driver, inputs: dict[str, Any]) -> None:
     """
     if not resolve_enabled():
         return
-    _, consumed, passthrough_edges = _collect_declarations(dr)
-    expected_units = {
-        name: _distinct(decl.unit for decl, _ in consumers)
-        for name, consumers in consumed.items()
-    }
-    _propagate_units_backward(expected_units, passthrough_edges)
+    _, consumed = _collect_declarations(dr)
     findings: list[str] = []
     for name, value in inputs.items():
         decls = [decl for decl, _ in consumed.get(name, ())]
-        # A unit-only declaration has no `others`, so it would refuse a `| None`.
-        if isinstance(value, xr.DataArray):
-            units = sorted(expected_units.get(name, []), key=lambda u: u.unit)
-            decls += [Declared(unit=unit) for unit in units]
         try:
             found = [v for d in decls for v in declaration_violations(value, d, name)]
         except ValueError as exc:
