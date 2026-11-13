@@ -91,3 +91,9 @@ class TestPythonApiPage:
         """
         blocks = re.findall(r"^::: (\S+)", API_PAGE.read_text(), flags=re.MULTILINE)
         assert not [b for b in blocks if b == "catena" or b.startswith("catena.")]
+
+
+def test_decision_records_are_not_rendered():
+    """``docs/adr/`` is for maintainers, so the docs site must not publish it."""
+    config = tomllib.loads(ZENSICAL.read_text())["project"]
+    assert "adr/" in config.get("exclude_docs", "").split()
