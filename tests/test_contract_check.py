@@ -376,9 +376,7 @@ class TestBuildDriverIntegration:
 
 def _resample_node_specs(*specs):
     """Build the node specs each ResampleSpec generates (as config does)."""
-    from catena.config import resample_node_specs
-
-    return [node for spec in specs for node in resample_node_specs(spec)]
+    return [node for spec in specs for node in spec.node_specs()]
 
 
 def _resample(vars_, source, target, freq, **contract):

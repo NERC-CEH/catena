@@ -9,6 +9,7 @@ from hamilton import driver
 from hamilton.settings import ENABLE_POWER_USER_MODE
 
 import catena
+from catena.errors import CatenaValueError
 from catena.wiring_check import WiringWarning, check_wiring
 
 
@@ -57,7 +58,7 @@ def _consumer_module(register):
 class TestUnbound:
     def test_missing_required_input_raises(self, register):
         dr = _consumer_module(register)
-        with pytest.raises(ValueError, match="unbound pipeline input"):
+        with pytest.raises(ValueError, match="Required input x not provided"):
             check_wiring(dr, ["out"], {})
 
     def test_present_input_passes(self, register):
@@ -144,3 +145,10 @@ class TestUnused:
         with warnings.catch_warnings():
             warnings.simplefilter("error")
             check_wiring(dr, ["out"], {"x": _da()})
+
+
+class TestUnboundMessage:
+    def test_names_the_consuming_node_and_is_a_catena_error(self, register):
+        dr = _consumer_module(register)
+        with pytest.raises(CatenaValueError, match=r"x not provided.*\['out'\]"):
+            check_wiring(dr, ["out"], {})

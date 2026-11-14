@@ -20,7 +20,7 @@ from typing import Any, Literal
 import xarray as xr
 
 from .blocking import execute_blocked
-from .build import build_driver
+from .build import build_driver_from_config
 from .config import load_config
 from .errors import CatenaError, CatenaValueError
 from .io import (
@@ -159,14 +159,8 @@ def run(
     if parsed.output_specs:
         assert_output_paths_writable(parsed.output_specs, parsed.subset_spec)
 
-    dr = build_driver(
-        modules=parsed.modules,
-        config=parsed.driver_config,
-        node_specs=parsed.node_specs,
-        allow_module_overrides=allow_overrides,
-        cache=cache_spec,
-        base=parsed.base,
-        registered=parsed.registered_modules,
+    dr = build_driver_from_config(
+        parsed, allow_module_overrides=allow_overrides, cache=cache_spec
     )
 
     if not parsed.output_specs:
@@ -340,15 +334,8 @@ def dry_run(
     # Caching is an execution-time adapter; disable it so the dry run creates no
     # cache directory. The graph structure and unit checks are unaffected.
     try:
-        dr = build_driver(
-            modules=parsed.modules,
-            config=parsed.driver_config,
-            node_specs=parsed.node_specs,
-            allow_module_overrides=allow_overrides,
-            cache=None,
-            base=parsed.base,
-            registered=parsed.registered_modules,
-            check_contracts=False,
+        dr = build_driver_from_config(
+            parsed, allow_module_overrides=allow_overrides, check_contracts=False
         )
     except CatenaError as exc:
         dr = None
@@ -470,17 +457,10 @@ def _plan_stage(
     with warnings.catch_warnings(record=True) as wiring_warnings:
         warnings.simplefilter("always")
         try:
-            # Before Hamilton's own validation: an unbound input reads more
-            # clearly here, and an unused one surfaces as a finding.
             check_wiring(dr, targets, inputs, exempt=auxiliary_input_names(inputs))
         except CatenaError as exc:
             errors.append(str(exc))
     findings = tuple(str(w.message) for w in wiring_warnings)
-    if not errors:
-        try:
-            dr.validate_execution(targets, inputs=inputs)
-        except ValueError as exc:  # Hamilton's, naming a fault in the config
-            errors.append(str(exc))
     if errors:
         return Stage(
             "plan", "failed", "execution plan invalid", findings, tuple(errors)

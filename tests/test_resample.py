@@ -345,6 +345,12 @@ class TestResampleContracts:
         with pytest.raises(CatenaValueError, match=match):
             Config({"resample": [{**_TWO_VARS, **extra}]}).parse()
 
+    def test_empty_vars_is_refused(self):
+        with pytest.raises(CatenaValueError, match=r"vars = \[\]"):
+            Config(
+                {"resample": [{"vars": [], "from": "d", "to": "w", "freq": "7D"}]}
+            ).parse()
+
     @pytest.mark.parametrize(
         ("contract", "match"),
         [

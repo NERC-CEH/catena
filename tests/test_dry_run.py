@@ -162,18 +162,14 @@ class TestCheckInputUnitsDirect:
 class TestCheckInputUnitsThroughNodes:
     def _resample_driver(self, register, **contract):
         """External ``gpp_weekly`` -> resample -> ``gpp_monthly`` (rate)."""
-        from catena.config import resample_node_specs
-
         register("rs_cons", _consumer("g m-2 d-1", in_name="gpp_monthly"))
-        specs = resample_node_specs(
-            ResampleSpec(
-                vars=["gpp"],
-                source="weekly",
-                target="monthly",
-                freq="1ME",
-                contract=contract,
-            )
-        )
+        specs = ResampleSpec(
+            vars=["gpp"],
+            source="weekly",
+            target="monthly",
+            freq="1ME",
+            contract=contract,
+        ).node_specs()
         return build_driver(["node", "rs_cons"], {}, node_specs=specs)
 
     def test_resample_routed_input_is_left_to_runtime(self, register):
@@ -446,10 +442,13 @@ class TestEveryFaultInOneRun:
             dry_run(_unbound_config(tmp_path))
         report = excinfo.value.report
         assert [s.name for s in report.failed] == ["plan"]
-        assert "'offset'" in _stage(report, "plan").errors[0]
+        assert "Required input offset" in _stage(report, "plan").errors[0]
 
     def test_unbound_input_with_outputs_is_a_fault(self, tmp_path):
-        with xra.enabled(True), pytest.raises(DryRunError, match="'offset'"):
+        with (
+            xra.enabled(True),
+            pytest.raises(DryRunError, match="Required input offset"),
+        ):
             dry_run(_unbound_config(tmp_path, outputs=True))
 
     def test_contract_mismatch_does_not_hide_the_wiring_fault(self, tmp_path):
@@ -458,7 +457,7 @@ class TestEveryFaultInOneRun:
         report = excinfo.value.report
         assert [s.name for s in report.failed] == ["dag", "plan"]
         assert "'temperature'" in _stage(report, "dag").errors[0]
-        assert "'offset'" in _stage(report, "plan").errors[0]
+        assert "Required input offset" in _stage(report, "plan").errors[0]
         assert _stage(report, "outputs").status == "ok"
 
     def test_an_unbound_input_does_not_hide_an_unused_one(
@@ -473,7 +472,7 @@ class TestEveryFaultInOneRun:
         with xra.enabled(True), pytest.raises(DryRunError) as excinfo:
             dry_run(cfg)
         plan = _stage(excinfo.value.report, "plan")
-        assert "'offset'" in plan.errors[0]
+        assert "Required input offset" in plan.errors[0]
         assert any("humidity_extra" in f for f in plan.findings)
 
     def test_a_failed_blocking_dim_labels_the_inputs_invalid(
@@ -509,7 +508,10 @@ class TestEveryFaultInOneRun:
         assert _stage(report, "plan").status == "ok"
 
     def test_final_vars_that_need_an_unbound_input_fail(self, tmp_path):
-        with xra.enabled(True), pytest.raises(DryRunError, match="'offset'"):
+        with (
+            xra.enabled(True),
+            pytest.raises(DryRunError, match="Required input offset"),
+        ):
             dry_run(_unbound_config(tmp_path), final_vars=["total"])
 
     def test_unknown_final_vars_are_named(self, tmp_path):
@@ -524,7 +526,7 @@ class TestEveryFaultInOneRun:
         with xra.enabled(True):
             result = runner.invoke(app, ["run", cfg, "--dry-run"])
         assert result.exit_code == 1
-        assert "'offset'" in result.output
+        assert "Required input offset" in result.output
         assert "'temperature'" in result.output
         assert "Dry run failed: 2 stage(s)" in result.output
         assert "Dry run passed." not in result.output

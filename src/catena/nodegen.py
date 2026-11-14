@@ -127,13 +127,7 @@ def _decorate(fn: Any, spec: NodeSpec) -> Any:
     """Attach the node's declared output contract to the bare ``exec``'d function."""
     # A declared unit/dims/dtype/coords/freq makes the node a typed producer: validated
     # at runtime and read by the build-time check. Without any, the node is unchecked.
-    fn.__annotations__["return"] = xra.annotate(
-        unit=spec.units,
-        dims=spec.dims or None,
-        dtype=spec.dtype,
-        coords=spec.coords or None,
-        freq=spec.freq,
-    )
+    fn.__annotations__["return"] = spec.return_hint()
     if spec.units is not None:
         fn = xra.stamp_output_units(overwrite=spec.overwrite_units)(fn)
     return xra.check_annotations(fn)

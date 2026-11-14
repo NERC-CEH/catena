@@ -44,15 +44,17 @@ Taking the steps yourself lets you inspect individual nodes, plot intermediate r
 These are the steps `catena.run` takes:
 
 ```python
-from catena import build_driver, get_final_vars, get_outputs, load_inputs, save_outputs
+from catena import (
+    build_driver_from_config,
+    get_final_vars,
+    get_outputs,
+    load_inputs,
+    save_outputs,
+)
 from catena.config import Config
 
 parsed = Config(config_data).parse()  # 1. parse
-dr = build_driver(  # 2. build, and check contracts
-    modules=parsed.modules,
-    config=parsed.driver_config,
-    node_specs=parsed.node_specs,
-)
+dr = build_driver_from_config(parsed)  # 2. build, and check contracts
 inputs = load_inputs(parsed.input_specs)  # 3. load
 results = dr.execute(get_final_vars(parsed.output_specs), inputs=inputs)  # 4. execute
 datasets = get_outputs(results, parsed.output_specs)  # 5. collect
@@ -88,8 +90,7 @@ The resulting `ParsedConfig` holds one spec per config section; see [its referen
 
 ### 2. Build the driver
 
-`build_driver()` constructs a Hamilton `Driver` and runs the contract check.
-Pass `node_specs` whenever the config has `[[node]]` or `[[resample]]` entries.
+`build_driver_from_config()` constructs a Hamilton `Driver` from the parsed config and runs the contract check.
 The driver can be inspected with Hamilton's own methods, such as `dr.display_all_functions()` or `dr.visualize_path_between(...)`; [`GraphStyle`](../../reference/modules/catena.graph.md#catena.graph.GraphStyle) adds catena's styling to them.
 
 ### 3. Load inputs

@@ -1,9 +1,9 @@
 """Blocked driver execution for memory management.
 
-Partitions a chosen dimension (``dim``, default ``pixel``) into fixed-size blocks
-and calls ``dr.execute`` per block sequentially, then concatenates results along
-that dimension. Peak memory is bounded to a small multiple of one block's
-footprint.
+Partitions a chosen dimension (``dim``) into fixed-size blocks and calls
+``dr.execute`` per block sequentially, then concatenates results along that
+dimension. Intermediate nodes are held for one block at a time; the requested
+outputs of every block are held until they are concatenated.
 """
 
 from collections.abc import Generator
