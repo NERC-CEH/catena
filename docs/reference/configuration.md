@@ -232,7 +232,7 @@ dim = "pixel"
 | Key | Description |
 |-----|-------------|
 | `block_size` | **Required.** Positive integer — rows of `dim` per block. |
-| `dim` | **Required.** Partition dimension, which at least one input must have. Gridded pipelines use `pixel`, because the geospatial layer stacks `(y, x)` into it. |
+| `dim` | **Required.** Partition dimension, which at least one loaded input must have. Gridded pipelines use `pixel`, because the geospatial layer stacks `(y, x)` into it. |
 
 ## Subset
 
@@ -242,20 +242,20 @@ See [Scale up › parallel subset runs](../guides/run/scale-up.md#parallel-subse
 ```toml
 [subset]
 start = 0            # inclusive
-stop  = 500          # exclusive
-dim   = "pixel"
+stop  = 50           # exclusive
+dim   = "y"
 ```
 
 | Key | Description |
 |-----|-------------|
 | `start` | **Required.** First index along `dim` (inclusive, zero-based). |
 | `stop` | **Required.** One past the last index (exclusive); must exceed `start`. |
-| `dim` | **Required.** Partition dimension, which at least one input must have. Gridded pipelines use `pixel`, because the geospatial layer stacks `(y, x)` into it. |
+| `dim` | **Required.** Partition dimension: one the input files have, with the same length in every file that has it. For gridded inputs this is a spatial dimension such as `y`, as the files are sliced before the grid is stacked into `pixel`. |
 
 `catena run --subset DIM:START:STOP` (and the `subset` argument of `catena.run`) replaces this section, so parallel runs can share one config.
 
 Each NetCDF part is written to its own suffixed file (`out_location0-500.nc`).
-A Zarr output requires `dim = "pixel"`, because the shared store's layout is the stacked pixel grid; use NetCDF to subset over any other dimension.
+A Zarr output is region-written into a shared store that [`catena gridded create-store`](cli.md#catena-gridded-create-store) builds first.
 
 ## Validation
 

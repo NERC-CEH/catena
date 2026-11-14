@@ -1,4 +1,4 @@
-"""``catena gridded`` CLI: parallel Zarr store creation and subset merge."""
+"""``catena gridded`` CLI: shared Zarr store creation and subset merge."""
 
 from pathlib import Path
 from typing import Annotated
@@ -9,7 +9,7 @@ from ..config import load_config
 from .io import create_output_store, merge_subset_outputs
 
 app = typer.Typer(
-    help="Gridded (CRS/pixel) parallel Zarr I/O: pre-create stores and merge subsets."
+    help="Parallel subset runs: pre-create shared Zarr stores and merge the results."
 )
 
 
@@ -45,12 +45,21 @@ def create_store(
     config_file: Annotated[
         Path, typer.Argument(exists=True, file_okay=True, dir_okay=False, readable=True)
     ],
-    pixel_chunk: Annotated[
+    dim: Annotated[
+        str | None,
+        typer.Option(
+            "--dim",
+            help="The dimension the subset runs will partition, e.g. y. Defaults "
+            "to the config's [subset] dim.",
+        ),
+    ] = None,
+    chunk: Annotated[
         int | None,
         typer.Option(
-            "--pixel-chunk",
-            help="Pixel chunk size for the store. Subset boundaries must align to "
-            "this value. Defaults to [blocking].block_size, or the full grid.",
+            "--chunk",
+            help="Chunk size of the store along the partition dimension. Subset "
+            "boundaries must be multiples of it. Defaults to [blocking].block_size "
+            "when [blocking] partitions the same dimension, else one chunk.",
         ),
     ] = None,
     overwrite: Annotated[
@@ -65,16 +74,18 @@ def create_store(
     """Create empty Zarr stores so subset runs can region-write concurrently.
 
     Run this once before launching independent ``catena run`` processes that
-    each handle a different ``[subset]`` of the same grid and write to a shared
+    each handle a different subset of the same inputs and write to a shared
     Zarr store.
     """
     parsed = load_config(config_file)
 
-    chunk = pixel_chunk
-    if chunk is None and parsed.blocking_spec is not None:
-        chunk = parsed.blocking_spec.block_size
+    if dim is None and parsed.subset_spec is not None:
+        dim = parsed.subset_spec.dim
+    blocking = parsed.blocking_spec
+    if chunk is None and blocking is not None and blocking.dim == dim:
+        chunk = blocking.block_size
 
-    created = create_output_store(parsed, pixel_chunk=chunk, overwrite=overwrite)
+    created = create_output_store(parsed, dim=dim, chunk=chunk, overwrite=overwrite)
 
     if not created:
         typer.echo("No Zarr outputs in config; nothing to create.")
@@ -93,38 +104,36 @@ def merge(
         typer.Option(
             "--out",
             "-o",
-            help="Explicit destination for the merged, gridded output. Only valid "
-            "with a single output section. Defaults to the config's path for "
-            "NetCDF and a sibling gridded store for Zarr.",
+            help="Explicit destination for the merged NetCDF output. Only valid "
+            "with a single output section. Defaults to the config's path.",
         ),
     ] = None,
     dim: Annotated[
         str | None,
         typer.Option(
             "--dim",
-            help="The dimension the subset runs partitioned. Defaults to the "
-            "config's [subset] dim, or 'pixel' without one; needed when the runs "
-            "took their subset from `catena run --subset`.",
+            help="The dimension the subset runs partitioned, which names the "
+            "NetCDF parts to merge. Defaults to the config's [subset] dim.",
         ),
     ] = None,
 ) -> None:
-    """Merge per-subset outputs back into a single file per output section.
+    """Finish a set of subset runs: one whole, verified dataset per output.
 
     NetCDF parts (``*_<dim><start>-<stop>.nc``) are concatenated and written to the
-    config's declared path; a shared Zarr store is unstacked into a sibling
-    ``*_gridded.zarr`` store.  Use ``--out`` to override the destination.
+    config's declared path, or to ``--out``. A shared Zarr store is already whole,
+    so it is checked instead: a chunk no run wrote is an error.
 
     The partition dimension is ``--dim`` if given, else the config's ``[subset]``
-    dim, else ``pixel``. It must be the one the subset runs used, as it is part of
-    the filenames they wrote.
+    dim. NetCDF parts carry it in their filenames, so it must be the one the
+    subset runs used.
     """
     parsed = load_config(config_file)
-    if dim is None:
-        dim = parsed.subset_spec.dim if parsed.subset_spec is not None else "pixel"
+    if dim is None and parsed.subset_spec is not None:
+        dim = parsed.subset_spec.dim
     written = merge_subset_outputs(parsed.output_specs, out=out, dim=dim)
 
     if not written:
         typer.echo("No mergeable outputs in config.")
         return
     for path in written:
-        typer.echo(f"Wrote gridded output: {path}")
+        typer.echo(f"Complete: {path}")

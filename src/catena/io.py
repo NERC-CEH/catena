@@ -193,8 +193,8 @@ def load_inputs(
         Mapping from section label to ``IOSpec`` (path, vars, suffix).
         Typically ``parsed_config.input_specs``.
     subset_spec:
-        If provided, slice all pixel-bearing inputs to the specified pixel
-        range after loading.  Typically ``parsed_config.subset_spec``.
+        If provided, slice every input file carrying its ``dim`` to the specified
+        range, before any grid is stacked. Typically ``parsed_config.subset_spec``.
     geospatial:
         Force the geospatial path on (``True``) or off (``False``). When ``None``
         (default) it is auto-detected from the presence of CRS metadata.
@@ -207,6 +207,8 @@ def load_inputs(
 
     inputs: dict[str, xr.DataArray] = {}
     raw_datasets = load_raw_datasets(input_specs)
+    if subset_spec is not None:
+        raw_datasets = subset_datasets(raw_datasets, subset_spec)
 
     # Invariant: at most one time dimension per input dataset. A second datetime
     # axis makes "the time dimension" ambiguous (for validation, resampling, and
@@ -242,9 +244,6 @@ def load_inputs(
             inputs["latitude"] = lat
             inputs["longitude"] = lon
 
-    if subset_spec is not None:
-        inputs = subset_inputs(inputs, subset_spec)
-
     return inputs
 
 
@@ -263,29 +262,52 @@ def assert_dim_in_inputs(inputs: dict[str, Any], dim: str, section: str) -> None
         )
 
 
-def subset_inputs(
-    inputs: dict[str, xr.DataArray], subset_spec: SubsetSpec
-) -> dict[str, xr.DataArray]:
-    """Slice every input carrying ``subset_spec.dim`` to that spec's range.
+def subset_datasets(
+    datasets: dict[str, xr.Dataset], subset_spec: SubsetSpec
+) -> dict[str, xr.Dataset]:
+    """Slice every dataset carrying ``subset_spec.dim`` to that spec's range.
 
-    Inputs without the dimension pass through untouched, but at least one must have
-    it (see `assert_dim_in_inputs`).
+    The datasets are the input files as opened (`load_raw_datasets`), so ``dim`` is
+    a dimension of the files: for a gridded input that is a spatial dimension such
+    as ``y``, not the ``pixel`` it is later stacked into. Datasets without the
+    dimension pass through untouched, but at least one must have it.
     """
     dim = subset_spec.dim
-    assert_dim_in_inputs(inputs, dim, "subset")
+    dim_size(datasets, dim, "subset")
     sl = slice(subset_spec.start, subset_spec.stop)
     return {
-        name: val.isel({dim: sl}) if dim in val.dims else val
-        for name, val in inputs.items()
+        label: ds.isel({dim: sl}) if dim in ds.dims else ds
+        for label, ds in datasets.items()
     }
+
+
+def dim_size(datasets: dict[str, xr.Dataset], dim: str, section: str) -> int:
+    """Return the length of ``dim``, shared by every dataset that has it.
+
+    Raises a catena error if no dataset has ``dim``, or if they disagree on its
+    length: one index range would then mean a different extent in each.
+    ``section`` names the config section that asked for ``dim``, for the message.
+    """
+    assert_dim_in_inputs(datasets, dim, section)
+    sizes = {label: ds.sizes[dim] for label, ds in datasets.items() if dim in ds.dims}
+    if len(set(sizes.values())) > 1:
+        detail = ", ".join(
+            f"[inputs.{label}]={n}" for label, n in sorted(sizes.items())
+        )
+        raise CatenaValueError(
+            f"Inputs disagree on the size of the [{section}] dimension {dim!r}: "
+            f"{detail}. Every input carrying {dim!r} must span the same domain."
+        )
+    return next(iter(sizes.values()))
 
 
 def get_outputs(
     results: dict[str, xr.DataArray],
     output_specs: dict[str, IOSpec],
-    stacked: bool = False,
 ) -> dict[str, xr.Dataset]:
     """Merge model results into one Dataset per output section.
+
+    Gridded results are unstacked from ``pixel`` back to their ``(y, x)`` grid.
 
     Parameters
     ----------
@@ -294,18 +316,9 @@ def get_outputs(
     output_specs:
         Mapping from section label to ``IOSpec``.
         Typically ``parsed_config.output_specs``.
-    stacked:
-        If ``False`` (default) gridded results are unstacked to a ``(y, x)`` grid.
-        If ``True`` the stacked ``pixel`` layout is kept (with the MultiIndex
-        flattened to serialisable 1D coords) so that subset processes can write
-        partial outputs that are reassembled later — see `unstack_pixel`.
     """
-    from .gridded.io import (  # lazy: optional geo extra
-        flatten_pixel_index,
-        unstack_if_gridded,
-    )
+    from .gridded.io import unstack_if_gridded  # lazy: optional geo extra
 
-    transform = flatten_pixel_index if stacked else unstack_if_gridded
     out: dict[str, xr.Dataset] = {}
     for label, spec in output_specs.items():
         # (Re-)assign the file variable name to each array so merging succeeds.
@@ -316,7 +329,7 @@ def get_outputs(
         # Explicit, so differing coordinates keep raising if xarray's defaults change.
         merged = xr.merge(arrays, compat="no_conflicts", join="outer")
         # merge copies the first array's attrs onto the Dataset (#31).
-        out[label] = transform(merged.drop_attrs(deep=False))
+        out[label] = unstack_if_gridded(merged.drop_attrs(deep=False))
     return out
 
 
@@ -336,7 +349,7 @@ def save_outputs(
         Mapping from section label to ``IOSpec``.
         Typically ``parsed_config.output_specs``.
     subset_spec:
-        If provided, the datasets are partial (a stacked pixel subset) and are
+        If provided, the datasets are one slice of ``subset_spec.dim`` and are
         written so independent processes don't collide: NetCDF outputs go to a
         uniquely-suffixed file, and Zarr outputs are region-written into a
         pre-created shared store.
@@ -385,7 +398,8 @@ def assert_output_paths_writable(
 
     Raises (before any computation) if a destination would fail at save time: an
     unsupported file extension, a parent directory that cannot be written to or
-    created, or a subset run targeting a Zarr store that has not been pre-created.
+    created, or a subset run targeting a Zarr store that has not been pre-created
+    or whose chunks its range does not align to.
     A clean pass here means `save_outputs` will accept the path. Creates nothing:
     `save_outputs` makes any missing directories. Used by ``catena run --dry-run``.
     """
@@ -395,13 +409,11 @@ def assert_output_paths_writable(
         fmt = format_for(spec.path)
 
         if subset_spec is not None:
+            from .gridded.io import open_region_store, subset_path  # lazy: geo extra
+
             if fmt.needs_store:
-                if not Path(spec.path).exists():
-                    raise CatenaFileNotFoundError(
-                        f"Zarr store {spec.path!r} for output {label!r} does not exist."
-                    )
-                continue  # store exists; the region write targets it directly
-            from .gridded.io import subset_path  # lazy: geo extra
+                open_region_store(spec.path, subset_spec)
+                continue  # the region write targets the existing store directly
 
             path = subset_path(spec.path, subset_spec)
 

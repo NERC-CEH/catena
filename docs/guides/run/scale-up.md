@@ -46,7 +46,7 @@ Combine with blocking to cap peak memory.
 ```toml
 [blocking]
 block_size = 500     # rows of the partition dim processed at a time
-dim = "pixel"        # any dim, e.g. "location" for non-gridded data
+dim = "pixel"        # a dim of the loaded arrays, e.g. "location" if non-gridded
 ```
 
 !!! warning "Outputs must vary over the partition dim"
@@ -60,54 +60,60 @@ For parallelism, run independent `catena run` processes, each restricted to a co
 Give each process its slice on the command line, so that they all share one config:
 
 ```sh
-catena run config.toml --subset pixel:0:500      # DIM:START:STOP, stop exclusive
-catena run config.toml --subset pixel:500:1000
+catena run config.toml --subset y:0:50      # DIM:START:STOP, stop exclusive
+catena run config.toml --subset y:50:100
 ```
 
-From Python, pass `subset=SubsetSpec(0, 500, dim="pixel")` to `catena.run`.
+From Python, pass `subset=SubsetSpec(0, 50, dim="y")` to `catena.run`.
 A `[subset]` section in the config does the same for a single slice, and `--subset` replaces it:
 
 ```toml
 [subset]
 start = 0            # inclusive, zero-based
-stop  = 500          # exclusive (Python slice convention)
-dim   = "pixel"      # any dim
+stop  = 50           # exclusive (Python slice convention)
+dim   = "y"          # a dimension of the input files
 ```
 
-As with `[blocking]`, the dimension can be any one, such as `location` or `site` in a non-gridded pipeline.
-Each process reads only its slice.
-The processes share one output `path`, so catena keeps their writes apart, and `catena gridded merge` (in the `geo` extra) reassembles them afterwards.
-`merge` needs to know the dimension: it reads the config's `[subset]`, falls back to `pixel`, and takes `--dim` for anything else.
+The dimension is one the **input files** have, and every file that has it is sliced before anything else happens.
+For gridded data that is a spatial dimension such as `y`, so a subset is a band of whole rows; `pixel` only exists after catena has stacked the grid, and is not a dimension you can subset.
+For non-gridded data it is whatever the files call it, such as `location` or `site`.
+Every input that has the dimension must have the same length along it.
 
-**NetCDF** — each process writes its own part (`weekly.nc` → `weekly_pixel0-500.nc`), with no setup needed:
+Each process reads only its slice and writes its outputs in the usual layout.
+The processes share one output `path`, so catena keeps their writes apart, and `catena gridded merge` (in the `geo` extra) finishes the job.
+
+**NetCDF** — each process writes its own part (`weekly.nc` → `weekly_y0-50.nc`), with no setup needed:
 
 ```sh
-parallel catena run config.toml --subset pixel:{} ::: 0:500 500:1000 1000:1500
-catena gridded merge config.toml                  # concatenate the parts back into weekly.nc
+parallel catena run config.toml --subset y:{} ::: 0:50 50:100 100:150
+catena gridded merge config.toml --dim y          # concatenate the parts into weekly.nc
 ```
 
-`merge` refuses to run unless the parts cover the dimension end to end, so a shard that died cannot leave a silent gap of NaNs.
+`merge` refuses to run unless the parts cover the dimension end to end, so a run that died cannot leave a silent gap.
+It finds the parts by the dimension in their names: pass `--dim`, or it reads the config's `[subset]`.
+Pass `--out <path>` (single-output configs only) to choose a destination.
 
-**Zarr** — all processes write regions of one shared store, created once up front.
-The store's layout is the stacked pixel grid, so this path works only with `dim = "pixel"`:
+**Zarr** — all processes write regions of one shared store, created once up front:
 
 ```sh
-catena gridded create-store config.toml           # build the empty shared store(s)
-parallel catena run config.toml --subset pixel:{} ::: 0:500 500:1000 1000:1500
-catena gridded merge config.toml                  # unstack into a sibling *_gridded.zarr
+catena gridded create-store config.toml --dim y --chunk 50   # build the empty store(s)
+parallel catena run config.toml --subset y:{} ::: 0:50 50:100 100:150
+catena gridded merge config.toml                  # check every region was written
 ```
 
-`merge` writes NetCDF to the config's declared path and Zarr to a sibling `*_gridded.zarr`; pass `--out <path>` (single-output configs only) to choose a destination.
+The store is the finished output, in the layout an ordinary run writes, so nothing is copied afterwards.
+`merge` checks it instead: every run writes all the chunks in its region, so a chunk missing from the store means a run failed or was never launched, and `merge` says how many.
 
 !!! note "What `create-store` computes"
 
-    `create-store` runs the pipeline over a single pixel and takes each output's other axes, dims and dtype from the result, so the layout matches what the shards will write, derived axes included.
+    `create-store` runs the pipeline over a single index of the dimension and takes each output's other axes, dims and dtype from the result, so the layout matches what the runs will write, derived axes included.
 
     The store therefore belongs to the config that created it.
     If a config change moves an output's time axis, `run` refuses to write into the stale store; re-create it with `--overwrite`.
+    An output variable without the partition dimension, such as a total over it, cannot go in a shared store; write it to NetCDF.
 
 !!! note "Chunk alignment for Zarr"
 
-    Concurrent region writes are safe only when each subset's boundaries fall on the store's pixel-chunk boundaries.
-    `create-store` sets the chunk from `--pixel-chunk` (default: `[blocking].block_size`), and a misaligned subset is an error.
-    Keep subset ranges to multiples of the chunk size.
+    Concurrent region writes are safe only when each subset's boundaries fall on the store's chunk boundaries along the partition dimension.
+    `create-store --chunk` sets that chunk size; without it the whole dimension is one chunk, or `[blocking].block_size` if `[blocking]` partitions the same dimension.
+    A misaligned subset is an error before the run computes anything, so keep subset ranges to multiples of the chunk size.
