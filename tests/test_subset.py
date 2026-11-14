@@ -243,3 +243,131 @@ dim = "pixel"
                 ref_ds[var].transpose("time", "pixel").isel(pixel=slice(0, 2)).values,
                 equal_nan=True,
             )
+
+
+class TestSubsetFromString:
+    def test_valid(self):
+        assert SubsetSpec.from_string("pixel:0:500") == SubsetSpec(0, 500, dim="pixel")
+
+    @pytest.mark.parametrize("text", ["0:500", "pixel:0", "pixel:a:5", "pixel:-1:5"])
+    def test_malformed_raises(self, text):
+        with pytest.raises(CatenaValueError, match="DIM:START:STOP"):
+            SubsetSpec.from_string(text)
+
+    def test_bounds_are_validated_as_in_the_config(self):
+        with pytest.raises(CatenaValueError, match="must be greater than"):
+            SubsetSpec.from_string("pixel:5:5")
+
+
+class TestSubsetOverride:
+    """One shared config, with each run's subset given on the command line."""
+
+    @pytest.fixture
+    def shared_config(self, tmp_path, synthetic_data_dir):
+        out_path = tmp_path / "outputs.nc"
+        config = tmp_path / "config.toml"
+        config.write_text(
+            f"""\
+[[node]]
+name = "mean_temperature_weekly"
+inputs = ["temperature_daily"]
+expression = "temperature_daily.resample(time='7D').mean()"
+
+[inputs.daily]
+path = "{synthetic_data_dir / "daily.nc"}"
+vars = ["temperature"]
+
+[outputs.weekly]
+path = "{out_path}"
+vars = ["mean_temperature"]
+"""
+        )
+        return config, out_path
+
+    def test_cli_runs_merge_to_the_full_result(self, shared_config, tmp_path):
+        from typer.testing import CliRunner
+
+        from catena import run
+        from catena.cli.app import app
+
+        config, out_path = shared_config
+        runner = CliRunner()
+        for subset in ("pixel:0:2", "pixel:2:4"):
+            result = runner.invoke(app, ["run", str(config), "--subset", subset])
+            assert result.exit_code == 0, result.output
+        assert not out_path.exists()
+        result = runner.invoke(app, ["gridded", "merge", str(config)])
+        assert result.exit_code == 0, result.output
+        merged = xr.open_dataset(out_path).load()
+        out_path.unlink()
+
+        run(config)
+        xr.testing.assert_allclose(merged, xr.open_dataset(out_path))
+
+    def test_run_argument_replaces_the_config_section(self, shared_config):
+        from catena import run
+
+        config, _ = shared_config
+        with open(config, "a") as f:
+            f.write('\n[subset]\nstart = 0\nstop = 1\ndim = "pixel"\n')
+        report = run(config, subset=SubsetSpec(2, 4, dim="pixel"))
+        (written,) = report.written
+        assert written.path.name == "outputs_pixel2-4.nc"
+
+    def test_dry_run_takes_the_same_argument(self, shared_config):
+        from catena import dry_run
+
+        config, _ = shared_config
+        with pytest.raises(CatenaValueError, match="dim 'locaton'"):
+            dry_run(config, subset=SubsetSpec(0, 2, dim="locaton"))
+
+    def test_malformed_cli_subset_is_a_usage_error(self, shared_config):
+        from typer.testing import CliRunner
+
+        from catena.cli.app import app
+
+        config, _ = shared_config
+        result = CliRunner().invoke(app, ["run", str(config), "--subset", "0:2"])
+        assert result.exit_code != 0
+        assert "DIM:START:STOP" in result.output
+
+    def test_merge_takes_the_dim_when_the_config_has_no_subset(self, tmp_path):
+        """A non-pixel partition given by --subset must be named to `merge` too."""
+        from typer.testing import CliRunner
+
+        from catena.cli.app import app
+
+        data = tmp_path / "sites.nc"
+        xr.Dataset(
+            {"t": (("site",), np.arange(4.0), {"units": "K"})},
+            coords={"site": np.arange(4)},
+        ).to_netcdf(data)
+        out_path = tmp_path / "out.nc"
+        config = tmp_path / "config.toml"
+        config.write_text(
+            f"""\
+[[node]]
+name = "doubled"
+inputs = ["t"]
+expression = "t * 2"
+
+[inputs.sites]
+path = "{data}"
+suffix = ""
+vars = ["t"]
+
+[outputs.out]
+path = "{out_path}"
+suffix = ""
+vars = ["doubled"]
+"""
+        )
+        runner = CliRunner()
+        for subset in ("site:0:2", "site:2:4"):
+            result = runner.invoke(app, ["run", str(config), "--subset", subset])
+            assert result.exit_code == 0, result.output
+        result = runner.invoke(app, ["gridded", "merge", str(config), "--dim", "site"])
+        assert result.exit_code == 0, result.output
+        np.testing.assert_array_equal(
+            xr.open_dataset(out_path)["doubled"].values, np.arange(4.0) * 2
+        )
