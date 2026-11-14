@@ -13,9 +13,11 @@ from typing import Annotated
 
 import typer
 
+from ..errors import CatenaValueError
 from ..pipeline import DryRunError, DryRunReport, RunReport
 from ..pipeline import dry_run as _dry_run
 from ..pipeline import run as _run
+from ..specs import SubsetSpec
 
 app = typer.Typer(help="Execute a pipeline defined in a configuration file.")
 
@@ -47,6 +49,16 @@ def run(
             help="Directory for cached results (implies caching is enabled).",
         ),
     ] = None,
+    subset: Annotated[
+        str | None,
+        typer.Option(
+            "--subset",
+            metavar="DIM:START:STOP",
+            help="Run only this slice of one dimension, e.g. pixel:0:500 (stop "
+            "exclusive), replacing the [subset] section of the config. Lets "
+            "parallel jobs share one config.",
+        ),
+    ] = None,
     dry_run: Annotated[
         bool,
         typer.Option(
@@ -57,9 +69,15 @@ def run(
     ] = False,
 ) -> None:
     """Execute a pipeline defined in a configuration file."""
+    try:
+        subset_spec = None if subset is None else SubsetSpec.from_string(subset)
+    except CatenaValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--subset") from exc
     if dry_run:
         try:
-            report = _dry_run(config_file, allow_overrides=allow_overrides)
+            report = _dry_run(
+                config_file, allow_overrides=allow_overrides, subset=subset_spec
+            )
         except DryRunError as exc:
             _echo_report(exc.report)
             raise typer.Exit(1) from exc
@@ -74,6 +92,7 @@ def run(
             allow_overrides=allow_overrides,
             cache=cache,
             cache_dir=cache_dir,
+            subset=subset_spec,
         )
     )
 

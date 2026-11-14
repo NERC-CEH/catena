@@ -347,6 +347,7 @@ class TestDryRunReport:
         with pytest.raises(DryRunError, match="Mismatched coordinate") as excinfo:
             dry_run(cfg)
         assert [s.name for s in excinfo.value.report.failed] == ["inputs"]
+
     def test_misspelt_function_node_fails_the_dag_stage(
         self, tmp_path, synthetic_data_dir
     ):

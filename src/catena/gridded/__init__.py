@@ -24,24 +24,20 @@ from .io import (
     MisalignedGridError,
     compute_lat_lon,
     create_output_store,
-    flatten_pixel_index,
     has_crs,
     merge_subset_outputs,
     stack_if_gridded,
     subset_suffix,
     unstack_if_gridded,
-    unstack_pixel,
 )
 
 __all__ = [
     "MisalignedGridError",
     "compute_lat_lon",
     "create_output_store",
-    "flatten_pixel_index",
     "has_crs",
     "merge_subset_outputs",
     "stack_if_gridded",
     "subset_suffix",
     "unstack_if_gridded",
-    "unstack_pixel",
 ]
