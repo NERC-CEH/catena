@@ -25,7 +25,7 @@ from hamilton.settings import ENABLE_POWER_USER_MODE
 from xarray_annotated.temporal import Freq, FreqError
 
 from catena.build import build_driver
-from catena.config import NodeSpec, ResampleSpec, resample_to_node_entry
+from catena.config import NodeSpec, ResampleSpec
 from catena.contract_check import check_dag_contracts, check_input_contracts
 from catena.errors import CatenaValueError
 
@@ -286,30 +286,21 @@ class TestNodeFreq:
 
 
 def _resample_specs(*specs):
-    from catena.config import resample_node_specs
-
-    return [node for spec in specs for node in resample_node_specs(spec)]
+    return [node for spec in specs for node in spec.node_specs()]
 
 
 class TestResampleFreq:
     def test_entry_declares_the_offset(self):
-        entry = resample_to_node_entry(
-            ResampleSpec(vars=["gpp"], source="daily", target="weekly", freq="7D"),
-            "gpp",
+        (node,) = _resample_specs(
+            ResampleSpec(vars=["gpp"], source="daily", target="weekly", freq="7D")
         )
-        assert entry["freq"] == "7D"
+        assert node.freq == "7D"
 
     def test_explicit_anchored_offset_is_declared(self):
-        entry = resample_to_node_entry(
-            ResampleSpec(
-                vars=["gpp"],
-                source="daily",
-                target="weekly",
-                freq="W-WED",
-            ),
-            "gpp",
+        (node,) = _resample_specs(
+            ResampleSpec(vars=["gpp"], source="daily", target="weekly", freq="W-WED")
         )
-        assert entry["freq"] == "W-WED"
+        assert node.freq == "W-WED"
 
     def _dr(self, register, consumer: Freq, offset: str = "7D"):
         register("rf_cons", _consumer(consumer, in_name="gpp_weekly"))

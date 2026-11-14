@@ -162,18 +162,14 @@ class TestCheckInputUnitsDirect:
 class TestCheckInputUnitsThroughNodes:
     def _resample_driver(self, register, **contract):
         """External ``gpp_weekly`` -> resample -> ``gpp_monthly`` (rate)."""
-        from catena.config import resample_node_specs
-
         register("rs_cons", _consumer("g m-2 d-1", in_name="gpp_monthly"))
-        specs = resample_node_specs(
-            ResampleSpec(
-                vars=["gpp"],
-                source="weekly",
-                target="monthly",
-                freq="1ME",
-                contract=contract,
-            )
-        )
+        specs = ResampleSpec(
+            vars=["gpp"],
+            source="weekly",
+            target="monthly",
+            freq="1ME",
+            contract=contract,
+        ).node_specs()
         return build_driver(["node", "rs_cons"], {}, node_specs=specs)
 
     def test_resample_routed_input_is_left_to_runtime(self, register):

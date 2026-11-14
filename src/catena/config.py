@@ -1,8 +1,7 @@
 """Configuration management: parse a TOML file into a `ParsedConfig`.
 
 The data model itself lives in `catena.specs`; this module owns the
-TOML -> spec translation: section dispatch, the `[[node]]` fan-out expansion,
-the `[[resample]]` preset desugaring, and path resolution.
+TOML -> spec translation: section dispatch and path resolution.
 """
 
 import os
@@ -22,7 +21,6 @@ from .importing import (
 )
 from .input_checks import CHECKS
 from .specs import (
-    CONTRACT_KEYS,
     BlockingSpec,
     CacheSpec,
     CheckSpec,
@@ -32,91 +30,9 @@ from .specs import (
     RegisteredModule,
     ResampleSpec,
     SubsetSpec,
-    _assert_valid_per_var_tables,
     _validate_vars,
+    expand_node_entries,
 )
-
-
-def expand_node_entries(entries: list[dict]) -> list[dict]:
-    """Expand ``for_each`` fan-out entries into concrete per-variable node entries.
-
-    An entry with ``for_each = ["a", "b"]`` produces one entry per value, with
-    every ``{var}`` in its string fields (``name``, ``inputs``, ``expression``)
-    substituted. A contract key given as a table keyed by variable
-    (``units = {a = "K", b = "mm"}``) gives each node its own value, and a variable
-    the table leaves out declares nothing for that key. Entries without
-    ``for_each`` pass through unchanged. This is the config-level equivalent of
-    Hamilton's ``@parameterize``.
-    """
-    out: list[dict] = []
-    for entry in entries:
-        for_each = entry.get("for_each")
-        if for_each is not None and not for_each:
-            raise CatenaValueError(
-                f"[[node]] '{entry.get('name')}' has for_each = [], which would "
-                f"generate no nodes. List the variables to fan out over, or drop "
-                f"'for_each' for a single node."
-            )
-        _assert_valid_per_var_tables(
-            entry,
-            CONTRACT_KEYS,
-            list(for_each or []),
-            f"[[node]] '{entry.get('name')}'",
-        )
-        if for_each is None:
-            out.append(entry)
-            continue
-        for var in for_each:
-            concrete: dict = {}
-            for key, value in entry.items():
-                if key == "for_each":
-                    continue
-                if key in CONTRACT_KEYS and isinstance(value, dict):
-                    if var not in value:
-                        continue
-                    value = value[var]
-                concrete[key] = _subst_var(value, var)
-            out.append(concrete)
-    return out
-
-
-def _subst_var(value: Any, var: str) -> Any:
-    """Substitute ``{var}`` in a string, or each string in a list."""
-    if isinstance(value, str):
-        return value.replace("{var}", var)
-    if isinstance(value, list):
-        return [x.replace("{var}", var) if isinstance(x, str) else x for x in value]
-    return value
-
-
-def resample_node_specs(spec: ResampleSpec) -> list[NodeSpec]:
-    """Build the node specs a `ResampleSpec` generates, one per variable."""
-    return [
-        NodeSpec.from_config(resample_to_node_entry(spec, var)) for var in spec.vars
-    ]
-
-
-def resample_to_node_entry(spec: ResampleSpec, var: str) -> dict:
-    """Desugar one variable of a `ResampleSpec` into a ``[[node]]`` entry.
-
-    The variable ``v`` becomes a node ``{v}_{target}`` applying
-    `catena.transforms.resample` to ``{v}_{source}``, or to ``{v}`` when ``source``
-    is empty. The node declares the resample's ``freq`` as its output frequency, so
-    a fat-fingered ``W-WED`` is caught when the driver is built, together with
-    whatever else the spec declares for ``v``.
-    """
-    src = f"{var}_{spec.source}" if spec.source else var
-    return {
-        **spec.contract_for(var),
-        "name": f"{var}_{spec.target}",
-        "inputs": [src],
-        "expression": (
-            f"__transforms.resample({src}, freq={spec.freq!r}, "
-            f"aggfunc={spec.aggfunc!r})"
-        ),
-        "freq": spec.freq,
-    }
-
 
 # ---------------------------------------------------------------------------
 # The parser: raw TOML dict -> ParsedConfig
@@ -239,7 +155,7 @@ class Config:
 
         ``[[node]]`` entries are fan-out-expanded (`expand_node_entries`) and built
         into `NodeSpec` objects, and each ``[[resample]]`` into its own
-        (`resample_node_specs`), with a single node-name-uniqueness check across the
+        (`ResampleSpec.node_specs`), with a single node-name-uniqueness check across the
         combined set.
         """
         specs: list[NodeSpec] = [
@@ -247,7 +163,7 @@ class Config:
             for concrete in expand_node_entries(list(data.pop("node", [])))
         ]
         for entry in data.pop("resample", []):
-            specs.extend(resample_node_specs(ResampleSpec.from_config(entry)))
+            specs.extend(ResampleSpec.from_config(entry).node_specs())
 
         seen_names: set[str] = set()
         for spec in specs:
