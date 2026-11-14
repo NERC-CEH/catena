@@ -7,7 +7,7 @@ Integrates Apache Hamilton (DAG execution), xarray (+ dask) and xarray-annotated
 from xarray_annotated.units import use_cf_units
 
 from ._version import __version__
-from .build import build_driver
+from .build import build_driver, build_driver_from_config
 from .config import load_config
 from .graph import build_graph
 from .io import (
@@ -54,6 +54,7 @@ __all__ = [
     "WrittenOutput",
     "__version__",
     "build_driver",
+    "build_driver_from_config",
     "build_graph",
     "dry_run",
     "get_final_vars",

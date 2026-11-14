@@ -35,7 +35,7 @@ from hamilton import graph_types
 from hamilton.driver import Driver
 from hamilton.settings import ENABLE_POWER_USER_MODE
 
-from .build import build_driver
+from .build import build_driver_from_config
 from .contract_check import _collect_declarations
 from .errors import CatenaValueError
 from .graph_style import FREQ_COLOR_CYCLE, GraphvizSpec, load_graphviz_spec
@@ -663,14 +663,7 @@ def build_graph(
     """
     parsed, _ = prepare_config(config)
 
-    dr = build_driver(
-        modules=parsed.modules,
-        config=parsed.driver_config,
-        node_specs=parsed.node_specs,
-        allow_module_overrides=allow_overrides,
-        base=parsed.base,
-        registered=parsed.registered_modules,
-    )
+    dr = build_driver_from_config(parsed, allow_module_overrides=allow_overrides)
     outputs = get_final_vars(parsed.output_specs)
     graph_style = GraphStyle.from_driver(
         dr,

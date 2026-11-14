@@ -93,3 +93,16 @@ class TestBuildDriverDAGStructure:
         dr = build_driver(["node"], {}, node_specs=specs)
         available = {v.name for v in dr.list_available_variables()}
         assert "my_var" in available
+
+
+class TestBuildDriverFromConfig:
+    def test_resolves_a_relative_module_against_the_config(self, tmp_path):
+        """`base` is passed through, which a hand-written `build_driver` call omits."""
+        from catena import build_driver_from_config
+        from catena.config import load_config
+
+        (tmp_path / "nodes.py").write_text("def one() -> int:\n    return 1\n")
+        config = tmp_path / "config.toml"
+        config.write_text('[model]\n_import_path = "nodes.py"\n')
+        dr = build_driver_from_config(load_config(config))
+        assert dr.execute(["one"]) == {"one": 1}
