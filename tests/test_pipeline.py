@@ -167,7 +167,7 @@ checks = [{{ check = "time_equal", inputs = ["daily", "weekly"] }}]
             tmp_path,
             synthetic_data_dir,
             out,
-            extra='\n[subset]\nstart = 0\nstop = 2\ndim = "pixel"\n',
+            extra='\n[subset]\nstart = 0\nstop = 1\ndim = "y"\n',
         )
         with pytest.raises(FileNotFoundError, match="does not exist"):
             run(cfg)

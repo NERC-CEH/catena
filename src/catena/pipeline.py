@@ -186,8 +186,7 @@ def run(
         results = execute_blocked(dr, inputs, target_vars, parsed.blocking_spec)
     else:
         results = dr.execute(target_vars, inputs=inputs)  # type: ignore[reportArgumentType]
-    stacked = parsed.subset_spec is not None
-    output_datasets = get_outputs(results, parsed.output_specs, stacked=stacked)
+    output_datasets = get_outputs(results, parsed.output_specs)
     paths = save_outputs(
         output_datasets,
         parsed.output_specs,

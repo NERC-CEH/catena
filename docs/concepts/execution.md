@@ -34,8 +34,8 @@ Two properties make this work:
 The first is the default, and the rest compose: a blocked, dask-backed run over a subset is ordinary.
 
 - **Out-of-core** changes nothing about the graph. Hand a node dask-backed inputs and it streams lazily.
-- **Blocking** partitions a dimension and drives the whole graph over one block at a time, concatenating the results. Peak memory is a small multiple of one block, however large the total. Every requested output must therefore vary over the partition dimension.
-- **Sharding** partitions the same way, but many processes run the parts concurrently. Each runs an ordinary `catena run` over its own slice, and a `merge` step reassembles the domain. For Zarr, the shards write into one store created up front.
+- **Blocking** partitions a dimension of the loaded arrays and drives the whole graph over one block at a time, concatenating the results. Peak memory is a small multiple of one block, however large the total. Every requested output must therefore vary over the partition dimension.
+- **Sharding** partitions a dimension of the input files, and many processes run the parts concurrently. Each runs an ordinary `catena run` over its own slice. NetCDF parts are concatenated by a `merge` step; for Zarr, the shards write into one store created up front, which `merge` checks is complete.
 
 **Caching** is independent of all four.
 `[cache]` keys each node on a fingerprint of its code and inputs, so changing one parameter recomputes that node and its descendants and reads the rest from disk.

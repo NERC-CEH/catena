@@ -1,6 +1,4 @@
-"""Tests for the [subset] spatial pixel slicing feature."""
-
-from typing import Any
+"""Tests for [subset]: running one slice of a dimension of the input files."""
 
 import numpy as np
 import pytest
@@ -12,6 +10,10 @@ from catena.errors import CatenaValueError
 from catena.io import get_final_vars, load_inputs
 
 _FINAL_VARS = get_final_vars({"weekly": IOSpec(path="", vars=["mean_temperature"])})
+
+# The session grid is 2x2, so `y` has two rows.
+_ROW_A = SubsetSpec(start=0, stop=1, dim="y")
+_ROW_B = SubsetSpec(start=1, stop=2, dim="y")
 
 
 # ---------------------------------------------------------------------------
@@ -81,7 +83,9 @@ class TestMissingDim:
         spec = SubsetSpec(start=0, stop=2, dim="locaton")
         with pytest.raises(CatenaValueError, match=r"\[subset\] dim 'locaton'") as exc:
             load_inputs(pipeline_config.input_specs, subset_spec=spec)
-        assert "pixel" in str(exc.value)
+        # The dimensions listed are the files' own, before stacking.
+        assert "'y'" in str(exc.value)
+        assert "pixel" not in str(exc.value)
 
 
 # ---------------------------------------------------------------------------
@@ -93,28 +97,23 @@ class TestSubsetCorrectness:
     """Two complementary subsets concatenate back to the full inputs."""
 
     def test_pixel_coords_correct(self, pipeline_config, pipeline_inputs):
-        """Each subset contains the right pixel coordinates."""
-        spec_a = SubsetSpec(start=0, stop=2, dim="pixel")
-        spec_b = SubsetSpec(start=2, stop=4, dim="pixel")
-
-        inputs_a = load_inputs(pipeline_config.input_specs, subset_spec=spec_a)
-        inputs_b = load_inputs(pipeline_config.input_specs, subset_spec=spec_b)
+        """Each subset holds its own rows of the grid, stacked as usual."""
+        inputs_a = load_inputs(pipeline_config.input_specs, subset_spec=_ROW_A)
+        inputs_b = load_inputs(pipeline_config.input_specs, subset_spec=_ROW_B)
 
         for name, full_val in pipeline_inputs.items():
-            if not (isinstance(full_val, xr.DataArray) and "pixel" in full_val.dims):
-                continue
             combined = xr.concat([inputs_a[name], inputs_b[name]], dim="pixel")
             xr.testing.assert_identical(combined, full_val)
 
-    def test_no_pixel_inputs_unaffected(self, pipeline_config, pipeline_inputs):
-        """Inputs without the partition dim pass through unchanged."""
-        spec = SubsetSpec(start=0, stop=2, dim="pixel")
-        inputs_sub = load_inputs(pipeline_config.input_specs, subset_spec=spec)
+    def test_inputs_without_the_dim_are_unaffected(self, tmp_path):
+        """A file with no `y` passes through whole."""
+        from catena.io import subset_datasets
 
-        for name, full_val in pipeline_inputs.items():
-            if "pixel" in full_val.dims:
-                continue
-            xr.testing.assert_identical(inputs_sub[name], full_val)
+        series = xr.Dataset({"v": ("time", np.arange(3.0))})
+        grid = xr.Dataset({"w": (("y", "x"), np.zeros((2, 2)))})
+        out = subset_datasets({"series": series, "grid": grid}, _ROW_A)
+        xr.testing.assert_identical(out["series"], series)
+        assert out["grid"].sizes["y"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -133,12 +132,8 @@ class TestSubsetPipelineResult:
         )
         reference = dr.execute(_FINAL_VARS, inputs=pipeline_inputs)  # type: ignore[reportArgumentType]
 
-        inputs_a = load_inputs(
-            pipeline_config.input_specs, subset_spec=SubsetSpec(0, 2, dim="pixel")
-        )
-        inputs_b = load_inputs(
-            pipeline_config.input_specs, subset_spec=SubsetSpec(2, 4, dim="pixel")
-        )
+        inputs_a = load_inputs(pipeline_config.input_specs, subset_spec=_ROW_A)
+        inputs_b = load_inputs(pipeline_config.input_specs, subset_spec=_ROW_B)
         result_a = dr.execute(_FINAL_VARS, inputs=inputs_a)  # type: ignore[reportArgumentType]
         result_b = dr.execute(_FINAL_VARS, inputs=inputs_b)  # type: ignore[reportArgumentType]
 
@@ -153,7 +148,7 @@ class TestSubsetPipelineResult:
 
 
 class TestCLISubset:
-    """catena run with [subset] exits zero and writes only the subset pixels."""
+    """catena run with [subset] exits zero and writes only the subset's rows."""
 
     @pytest.fixture
     def subset_config_toml(self, tmp_path, synthetic_data_dir):
@@ -177,8 +172,8 @@ vars = ["mean_temperature"]
 
 [subset]
 start = 0
-stop = 2
-dim = "pixel"
+stop = 1
+dim = "y"
 """
         p = tmp_path / "config.toml"
         p.write_text(content)
@@ -188,9 +183,8 @@ dim = "pixel"
         """The auto-suffixed NetCDF path a [subset] run writes to."""
         from catena.gridded.io import subset_suffix
 
-        spec = SubsetSpec(0, 2, dim="pixel")
         return out_path.with_name(
-            f"{out_path.stem}{subset_suffix(spec)}{out_path.suffix}"
+            f"{out_path.stem}{subset_suffix(_ROW_A)}{out_path.suffix}"
         )
 
     def test_exits_zero(self, subset_config_toml):
@@ -202,8 +196,8 @@ dim = "pixel"
         result = CliRunner().invoke(app, ["run", str(config_path)])
         assert result.exit_code == 0, result.output
 
-    def test_output_is_stacked_subset(self, subset_config_toml):
-        """A subset run writes a uniquely-suffixed, stacked (pixel) file."""
+    def test_output_is_one_row_of_the_grid(self, subset_config_toml):
+        """A subset run writes a uniquely-suffixed file in the usual grid layout."""
         from typer.testing import CliRunner
 
         from catena.cli.app import app
@@ -211,17 +205,17 @@ dim = "pixel"
         config_path, out_path = subset_config_toml
         CliRunner().invoke(app, ["run", str(config_path)])
 
-        # The un-suffixed path is never written; the suffixed one holds 2 pixels.
+        # The un-suffixed path is never written; the suffixed one holds one row.
         assert not out_path.exists()
         ds = xr.open_dataset(self._subset_path(out_path))
-        assert ds.sizes["pixel"] == 2
+        assert dict(ds.sizes) | {"time": 0} == {"time": 0, "y": 1, "x": 2}
 
-    def test_output_values_match_full_run(self, subset_config_toml):
+    def test_output_values_match_full_run(self, subset_config_toml, tmp_path):
         from typer.testing import CliRunner
 
+        from catena import run
         from catena.cli.app import app
         from catena.config import load_config
-        from catena.io import get_outputs
 
         config_path, out_path = subset_config_toml
         CliRunner().invoke(app, ["run", str(config_path)])
@@ -229,20 +223,10 @@ dim = "pixel"
 
         parsed = load_config(config_path)
         parsed.subset_spec = None
-        dr = build_driver(
-            parsed.modules, parsed.driver_config, node_specs=parsed.node_specs
+        run(parsed)
+        xr.testing.assert_allclose(
+            subset_ds, xr.open_dataset(out_path).isel(y=slice(0, 1))
         )
-        full_inputs = load_inputs(parsed.input_specs)
-        final_vars: list[Any] = get_final_vars(parsed.output_specs)
-        full_results = dr.execute(final_vars, inputs=full_inputs)  # type: ignore[reportArgumentType]
-        ref_ds = get_outputs(full_results, parsed.output_specs, stacked=True)["weekly"]
-
-        for var in subset_ds.data_vars:
-            np.testing.assert_allclose(
-                subset_ds[var].transpose("time", "pixel").values,
-                ref_ds[var].transpose("time", "pixel").isel(pixel=slice(0, 2)).values,
-                equal_nan=True,
-            )
 
 
 class TestSubsetFromString:
@@ -292,11 +276,11 @@ vars = ["mean_temperature"]
 
         config, out_path = shared_config
         runner = CliRunner()
-        for subset in ("pixel:0:2", "pixel:2:4"):
+        for subset in ("y:0:1", "y:1:2"):
             result = runner.invoke(app, ["run", str(config), "--subset", subset])
             assert result.exit_code == 0, result.output
         assert not out_path.exists()
-        result = runner.invoke(app, ["gridded", "merge", str(config)])
+        result = runner.invoke(app, ["gridded", "merge", str(config), "--dim", "y"])
         assert result.exit_code == 0, result.output
         merged = xr.open_dataset(out_path).load()
         out_path.unlink()
@@ -309,10 +293,10 @@ vars = ["mean_temperature"]
 
         config, _ = shared_config
         with open(config, "a") as f:
-            f.write('\n[subset]\nstart = 0\nstop = 1\ndim = "pixel"\n')
-        report = run(config, subset=SubsetSpec(2, 4, dim="pixel"))
+            f.write('\n[subset]\nstart = 0\nstop = 1\ndim = "y"\n')
+        report = run(config, subset=_ROW_B)
         (written,) = report.written
-        assert written.path.name == "outputs_pixel2-4.nc"
+        assert written.path.name == "outputs_y1-2.nc"
 
     def test_dry_run_takes_the_same_argument(self, shared_config):
         from catena import dry_run
