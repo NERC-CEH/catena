@@ -5,6 +5,7 @@ TOML -> spec translation: section dispatch, the `[[node]]` fan-out expansion,
 the `[[resample]]` preset desugaring, and path resolution.
 """
 
+import inspect
 import os
 import tomllib
 from dataclasses import replace
@@ -299,7 +300,8 @@ class Config:
         DAG structure). For each entry in its ``checks`` list this validates the
         check name (against the registry), expands ``["*"]`` to all input labels,
         checks every named input exists, and validates arity — all at parse time.
-        Remaining inline-table keys become forwarded ``kwargs``.
+        Remaining inline-table keys become forwarded ``kwargs``, and must be ones
+        the check takes.
         """
         section = data.pop("validation", {})
         unknown_keys = set(section) - {"checks"}
@@ -343,12 +345,26 @@ class Config:
                         f"{unknown}; known: {sorted(input_specs)}"
                     )
 
+            repeated = sorted({s for s in inputs if inputs.count(s) > 1})
+            if repeated:
+                raise CatenaValueError(
+                    f"check {name!r} names input section(s) {repeated} more than "
+                    f"once; an input always agrees with itself."
+                )
+
             arity = CHECKS[name].arity
             if arity != "variadic" and len(inputs) != arity:
                 raise CatenaValueError(
                     f"check {name!r} takes exactly {arity} input(s), "
                     f"got {len(inputs)}: {inputs}"
                 )
+
+            try:
+                inspect.signature(CHECKS[name].func).bind({}, **entry)
+            except TypeError as exc:
+                raise CatenaValueError(
+                    f"check {name!r} was given the wrong keys: {exc}."
+                ) from None
 
             specs.append(CheckSpec(check=name, inputs=inputs, kwargs=entry))
         return specs

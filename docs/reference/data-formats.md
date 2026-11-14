@@ -38,6 +38,7 @@ catena handles two spatial layouts automatically:
 - **Gridded (NetCDF/Zarr with a CRS).** Spatial dimensions (`x`/`y` or `lat`/`lon`) with a CRS are stacked into a single `pixel` dimension — each grid cell becomes one pixel.
   This path uses the optional `geo` extra and activates only when CRS metadata is present.
   See [`catena.gridded`](modules/catena.gridded/io.md).
+  Every gridded input must share one CRS, the same spatial dimension names and the same coordinate values (to within `1e-6`); a mismatch is an error when the inputs load.
 - **Pre-stacked.** Data that already has a `pixel` dimension is used as-is.
 
 Grid coordinate nodes (`latitude`, `longitude`) are computed from the CRS when a gridded input is loaded.
