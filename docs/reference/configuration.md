@@ -252,6 +252,8 @@ dim   = "pixel"
 | `stop` | **Required.** One past the last index (exclusive); must exceed `start`. |
 | `dim` | **Required.** Partition dimension, which at least one input must have. Gridded pipelines use `pixel`, because the geospatial layer stacks `(y, x)` into it. |
 
+`catena run --subset DIM:START:STOP` (and the `subset` argument of `catena.run`) replaces this section, so parallel runs can share one config.
+
 Each NetCDF part is written to its own suffixed file (`out_location0-500.nc`).
 A Zarr output requires `dim = "pixel"`, because the shared store's layout is the stacked pixel grid; use NetCDF to subset over any other dimension.
 

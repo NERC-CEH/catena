@@ -56,7 +56,16 @@ dim = "pixel"        # any dim, e.g. "location" for non-gridded data
 
 ## Parallel subset runs
 
-For parallelism, run independent `catena run` processes, each restricted by `[subset]` to a contiguous slice of one dimension:
+For parallelism, run independent `catena run` processes, each restricted to a contiguous slice of one dimension.
+Give each process its slice on the command line, so that they all share one config:
+
+```sh
+catena run config.toml --subset pixel:0:500      # DIM:START:STOP, stop exclusive
+catena run config.toml --subset pixel:500:1000
+```
+
+From Python, pass `subset=SubsetSpec(0, 500, dim="pixel")` to `catena.run`.
+A `[subset]` section in the config does the same for a single slice, and `--subset` replaces it:
 
 ```toml
 [subset]
@@ -65,15 +74,15 @@ stop  = 500          # exclusive (Python slice convention)
 dim   = "pixel"      # any dim
 ```
 
-As with `[blocking]`, `dim` can be any dimension, such as `location` or `site` in a non-gridded pipeline.
+As with `[blocking]`, the dimension can be any one, such as `location` or `site` in a non-gridded pipeline.
 Each process reads only its slice.
 The processes share one output `path`, so catena keeps their writes apart, and `catena gridded merge` (in the `geo` extra) reassembles them afterwards.
-In practice, generate one config per task, for example from a SLURM array job.
+`merge` needs to know the dimension: it reads the config's `[subset]`, falls back to `pixel`, and takes `--dim` for anything else.
 
 **NetCDF** — each process writes its own part (`weekly.nc` → `weekly_pixel0-500.nc`), with no setup needed:
 
 ```sh
-parallel catena run config_{}.toml ::: 0 1 2 3   # writes weekly_<dim><start>-<stop>.nc
+parallel catena run config.toml --subset pixel:{} ::: 0:500 500:1000 1000:1500
 catena gridded merge config.toml                  # concatenate the parts back into weekly.nc
 ```
 
@@ -84,7 +93,7 @@ The store's layout is the stacked pixel grid, so this path works only with `dim 
 
 ```sh
 catena gridded create-store config.toml           # build the empty shared store(s)
-parallel catena run config_{}.toml ::: 0 1 2 3    # each shard region-writes its pixels
+parallel catena run config.toml --subset pixel:{} ::: 0:500 500:1000 1000:1500
 catena gridded merge config.toml                  # unstack into a sibling *_gridded.zarr
 ```
 
@@ -100,5 +109,5 @@ catena gridded merge config.toml                  # unstack into a sibling *_gri
 !!! note "Chunk alignment for Zarr"
 
     Concurrent region writes are safe only when each subset's boundaries fall on the store's pixel-chunk boundaries.
-    `create-store` sets the chunk from `--pixel-chunk` (default: `[blocking].block_size`), and a misaligned `[subset]` is an error.
+    `create-store` sets the chunk from `--pixel-chunk` (default: `[blocking].block_size`), and a misaligned subset is an error.
     Keep subset ranges to multiples of the chunk size.

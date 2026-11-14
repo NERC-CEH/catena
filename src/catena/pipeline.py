@@ -32,7 +32,7 @@ from .io import (
     load_inputs,
     save_outputs,
 )
-from .specs import CacheSpec, ParsedConfig
+from .specs import CacheSpec, ParsedConfig, SubsetSpec
 from .wiring_check import check_wiring, terminal_nodes
 
 __all__ = [
@@ -51,17 +51,22 @@ logger = logging.getLogger(__name__)
 ConfigSource = str | Path | ParsedConfig
 
 
-def prepare_config(config: ConfigSource) -> tuple[ParsedConfig, Path | None]:
+def prepare_config(
+    config: ConfigSource, subset: SubsetSpec | None = None
+) -> tuple[ParsedConfig, Path | None]:
     """Resolve a config source to a parsed config and its source path, if any.
 
     Accepts a path to a TOML file or an already-parsed `ParsedConfig`. The returned
     path is ``None`` for a `ParsedConfig`, which has no file to stamp provenance from.
+    ``subset``, if given, replaces the config's ``[subset]``.
     """
     if isinstance(config, ParsedConfig):
         parsed, config_file = config, None
     else:
         config_file = Path(config)
         parsed = load_config(config_file)
+    if subset is not None:
+        parsed = replace(parsed, subset_spec=subset)
     return parsed, config_file
 
 
@@ -104,6 +109,7 @@ def run(
     allow_overrides: bool = False,
     cache: bool | None = None,
     cache_dir: Path | None = None,
+    subset: SubsetSpec | None = None,
 ) -> RunReport:
     """Execute a pipeline and write its outputs.
 
@@ -118,6 +124,9 @@ def run(
         section. ``None`` defers to the config.
     cache_dir
         Directory for cached results. Implies caching is enabled.
+    subset
+        Restrict the run to this slice of one dimension, replacing the config's
+        ``[subset]`` section. This lets many processes share one config.
 
     Returns
     -------
@@ -133,7 +142,7 @@ def run(
     prints it.
     """
     started = time.perf_counter()
-    parsed, config_file = prepare_config(config)
+    parsed, config_file = prepare_config(config, subset)
     for source in _registered_sources(parsed):
         logger.info("%s", source)
     cache_spec = _resolve_cache(parsed.cache_spec, cache, cache_dir)
@@ -275,6 +284,7 @@ def dry_run(
     *,
     allow_overrides: bool = False,
     final_vars: list[str] | None = None,
+    subset: SubsetSpec | None = None,
 ) -> DryRunReport:
     """Validate everything a real run depends on, without executing it.
 
@@ -290,6 +300,8 @@ def dry_run(
     Otherwise they are checked for the nodes the ``[outputs.*]`` sections request
     or, with no outputs configured, for every terminal node of the DAG.
 
+    ``subset`` replaces the config's ``[subset]`` section, as for `run`.
+
     A stage that finds a fault is marked ``failed`` with the fault in
     `Stage.errors`, and the dry run carries on through every later stage that does
     not depend on it, so one run reports every fault it can reach. A stage that
@@ -304,7 +316,7 @@ def dry_run(
 
     from .contract_check import check_dag_contracts, check_input_contracts
 
-    parsed, config_file = prepare_config(config)
+    parsed, config_file = prepare_config(config, subset)
     # Reported in `detail` rather than `findings`: a finding renders as a warning,
     # and where a module came from is information, not a problem.
     sources = _registered_sources(parsed)

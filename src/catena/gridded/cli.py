@@ -98,6 +98,15 @@ def merge(
             "NetCDF and a sibling gridded store for Zarr.",
         ),
     ] = None,
+    dim: Annotated[
+        str | None,
+        typer.Option(
+            "--dim",
+            help="The dimension the subset runs partitioned. Defaults to the "
+            "config's [subset] dim, or 'pixel' without one; needed when the runs "
+            "took their subset from `catena run --subset`.",
+        ),
+    ] = None,
 ) -> None:
     """Merge per-subset outputs back into a single file per output section.
 
@@ -105,11 +114,13 @@ def merge(
     config's declared path; a shared Zarr store is unstacked into a sibling
     ``*_gridded.zarr`` store.  Use ``--out`` to override the destination.
 
-    The partition dimension is read from the config's ``[subset]`` section (so the
-    part filenames match what the subset runs wrote), defaulting to ``pixel``.
+    The partition dimension is ``--dim`` if given, else the config's ``[subset]``
+    dim, else ``pixel``. It must be the one the subset runs used, as it is part of
+    the filenames they wrote.
     """
     parsed = load_config(config_file)
-    dim = parsed.subset_spec.dim if parsed.subset_spec is not None else "pixel"
+    if dim is None:
+        dim = parsed.subset_spec.dim if parsed.subset_spec is not None else "pixel"
     written = merge_subset_outputs(parsed.output_specs, out=out, dim=dim)
 
     if not written:
