@@ -34,8 +34,5 @@ def resample(
        and physically meaningless. See the "Resampling & units" guide.
     """
     dim = dim or sole_time_dim(var_in, f"resample input {var_in.name!r}")
-    out = getattr(var_in.resample({dim: freq}), aggfunc)()
-    # Preserve attrs (notably CF 'units') so contract validation downstream sees
-    # the resampled variable's units.
-    out.attrs = dict(var_in.attrs)
-    return out
+    # keep_attrs: the CF 'units' must survive for contract validation downstream.
+    return getattr(var_in.resample({dim: freq}), aggfunc)(keep_attrs=True)
