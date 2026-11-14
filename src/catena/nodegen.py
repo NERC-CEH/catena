@@ -70,6 +70,7 @@ def make_node_module(
     mod = types.ModuleType(_module_name(node_specs, base))
     ns: dict = _node_namespace(base)
     for spec in node_specs:
+        _check_function_resolves(spec, ns)
         source = _build_fn_code(spec)
         filename = f"<catena node {spec.name} in {mod.__name__}>"
         # Hamilton's result cache versions a node by hashing its source, which it
@@ -96,6 +97,30 @@ def make_node_module(
         setattr(mod, spec.name, fn)
     sys.modules[mod.__name__] = mod
     return mod
+
+
+def _check_function_resolves(spec: NodeSpec, ns: dict[str, Any]) -> None:
+    """Raise unless a function node's ``_import_path`` + ``function`` name a callable.
+
+    The generated body looks the function up each time the node runs, so without
+    this a misspelt name would pass every check that builds the DAG and fail only
+    during execution.
+    """
+    if spec.import_path is None or spec.function is None:
+        return
+    module = ns["__import_module"](spec.import_path)
+    try:
+        target = getattr(module, spec.function)
+    except AttributeError:
+        raise CatenaValueError(
+            f"[[node]] '{spec.name}': module {spec.import_path!r} has no attribute "
+            f"{spec.function!r}."
+        ) from None
+    if not callable(target):
+        raise CatenaValueError(
+            f"[[node]] '{spec.name}': {spec.function!r} in {spec.import_path!r} is "
+            f"not callable (it is a {type(target).__name__})."
+        )
 
 
 def _decorate(fn: Any, spec: NodeSpec) -> Any:
