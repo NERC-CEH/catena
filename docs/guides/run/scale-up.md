@@ -41,7 +41,8 @@ Combine with blocking to cap peak memory.
 
 ## Memory-bounded execution with `[blocking]`
 
-`[blocking]` runs the whole DAG over one fixed-size block of a dimension at a time and concatenates the results, so peak memory stays near one block's footprint.
+`[blocking]` runs the whole DAG over one fixed-size block of a dimension at a time and concatenates the results.
+Intermediate nodes are held in memory for one block at a time; the requested outputs of every block are held until they are written, so the outputs as a whole must still fit in memory.
 
 ```toml
 [blocking]

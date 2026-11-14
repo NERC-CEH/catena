@@ -106,8 +106,8 @@ class Config:
         """Handle [inputs.*] sections.
 
         An input section may omit ``vars`` entirely, which binds every variable in
-        the file through the section's suffix. It may not list *no* variables: an
-        empty list previously parsed fine and then silently bound nothing.
+        the file through the section's suffix. It may not list *no* variables,
+        which would bind nothing.
         """
         for label, params in data.pop("inputs", {}).items():
             if "path" not in params:
@@ -337,11 +337,11 @@ class Config:
         """Parse config into a ParsedConfig.
 
         Recognised top-level keys and sections (processed directly):
-        - [inputs.*]      — I/O specs; freq derived from subsection key
+        - [inputs.*]      — I/O specs; the subsection key is an inert label
         - [validation]    — declared expectations to validate; `checks` holds the
                             input-Dataset compatibility checks
                             (see catena.input_checks)
-        - [outputs.*]     — I/O specs; freq derived from subsection key
+        - [outputs.*]     — I/O specs; the subsection key is an inert label
         - [[node]]        — config-driven custom nodes (supports for_each fan-out)
         - [[resample]]    — preset desugaring to fan-out nodes
         - [cache]         — Hamilton result caching (path, recompute, disable)
