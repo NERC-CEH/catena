@@ -16,6 +16,7 @@ from catena.cli import main
 from catena.cli.app import app
 from catena.errors import (
     CatenaError,
+    CatenaFileExistsError,
     CatenaFileNotFoundError,
     CatenaPermissionError,
     CatenaValueError,
@@ -331,6 +332,7 @@ class TestErrorTypes:
             (CatenaValueError, ValueError),
             (CatenaFileNotFoundError, FileNotFoundError),
             (CatenaPermissionError, PermissionError),
+            (CatenaFileExistsError, FileExistsError),
         ],
     )
     def test_inherits_stdlib_type(self, error, stdlib):

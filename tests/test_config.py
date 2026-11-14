@@ -12,7 +12,7 @@ from catena.config import (
     ParsedConfig,
     load_config,
 )
-from catena.errors import CatenaValueError
+from catena.errors import CatenaFileExistsError, CatenaValueError
 
 TEST_CONFIG_PATH = Path(__file__).parent / "test_config.toml"
 
@@ -765,7 +765,7 @@ class TestDump:
         out_path = tmp_path / "config.toml"
         out_path.write_text("")
         config = Config.load(TEST_CONFIG_PATH)
-        with pytest.raises(FileExistsError):
+        with pytest.raises(CatenaFileExistsError):
             config.dump(out_path)
 
     def test_dump_overwrite_ok(self, tmp_path):
