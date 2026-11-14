@@ -23,7 +23,7 @@ Install the `geo` extra; see [Installation](install.md#extras).
 
 ## Wiring and contracts
 
-### "No producer for node X" / an unbound input
+### "Required input X not provided" / an unbound input
 
 A node needs an input that nothing produces.
 Usually one of:
@@ -99,15 +99,11 @@ Check that the `[outputs.*]` `vars` name nodes that exist, that the output's dir
 To draw less, pass a `--style` file with Graphviz sizing attributes, or draw part of the DAG with one of Hamilton's views, styled by catena:
 
 ```python
-from catena import build_driver, load_config
+from catena import build_driver_from_config, load_config
 from catena.graph import GraphStyle
 
 parsed = load_config("config.toml")
-dr = build_driver(
-    modules=parsed.modules,
-    config=parsed.driver_config,
-    node_specs=parsed.node_specs,
-)
+dr = build_driver_from_config(parsed)
 style = GraphStyle.from_driver(dr)
 style.apply(
     dr.visualize_path_between(

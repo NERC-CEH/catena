@@ -14,7 +14,7 @@ These are the names used in [Drive catena from Python](../guides/run/drive-from-
 | [`Config`](modules/catena.config.md#catena.config.Config) | A config as a Python dict, or loaded from a file. `.parse()` validates it. |
 | [`load_config`](modules/catena.config.md#catena.config.load_config) | Load and parse a TOML file in one call. |
 | [`ParsedConfig`](modules/catena.specs.md#catena.specs.ParsedConfig) | What you get back: one spec per config section. |
-| [`build_driver`](modules/catena.build.md#catena.build.build_driver) | Build the Hamilton driver, and run the contract check. |
+| [`build_driver_from_config`](modules/catena.build.md#catena.build.build_driver_from_config) | Build the Hamilton driver, and run the contract check. |
 | [`load_inputs`](modules/catena.io.md#catena.io.load_inputs) | Open the input files, keyed by node name. |
 | [`get_final_vars`](modules/catena.io.md#catena.io.get_final_vars) | The node names to ask `dr.execute` for. |
 | [`get_outputs`](modules/catena.io.md#catena.io.get_outputs) | Merge the executed nodes into per-section datasets. |

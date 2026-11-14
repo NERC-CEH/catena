@@ -356,7 +356,7 @@ def create_output_store(
     """
     import dask.array as da
 
-    from ..build import build_driver
+    from ..build import build_driver_from_config
     from ..io import get_final_vars, load_inputs, subset_inputs, var_mapping
 
     zarr_specs = {
@@ -401,13 +401,7 @@ def create_output_store(
     # is deliberately not enabled: the probe is an implementation detail of building
     # the store and should neither consult nor populate the user's cache.
     probe_inputs = subset_inputs(inputs, SubsetSpec(start=0, stop=1, dim="pixel"))
-    dr = build_driver(
-        modules=parsed.modules,
-        config=parsed.driver_config,
-        node_specs=parsed.node_specs,
-        base=parsed.base,
-        registered=parsed.registered_modules,
-    )
+    dr = build_driver_from_config(parsed)
     probe = dr.execute(
         get_final_vars(zarr_specs),  # type: ignore[reportArgumentType]
         inputs=probe_inputs,
