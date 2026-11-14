@@ -351,6 +351,19 @@ class TestDryRunReport:
             dry_run(cfg)
         assert "dag" in [s.name for s in excinfo.value.report.failed]
 
+    def test_mismatched_grids_fail_the_inputs_stage(self, tmp_path, synthetic_data_dir):
+        """Inputs on different grids are a user error, reported by its stage."""
+        static = xr.open_dataset(synthetic_data_dir / "static.nc").load()
+        x_dim = next(d for d in static.dims if static.sizes[d] > 0 and d != "time")
+        shifted = tmp_path / "shifted.nc"
+        static.assign_coords({x_dim: static[x_dim] + 10.0}).to_netcdf(shifted)
+        var = next(iter(static.data_vars))
+        extra = f'[inputs.static]\npath = "{shifted}"\nvars = ["{var}"]\n'
+        cfg = _config(tmp_path, synthetic_data_dir, extra)
+        with pytest.raises(DryRunError, match="Mismatched coordinate") as excinfo:
+            dry_run(cfg)
+        assert [s.name for s in excinfo.value.report.failed] == ["inputs"]
+
     def test_unreachable_output_var_raises(self, tmp_path, synthetic_data_dir):
         out = tmp_path / "out.nc"
         outputs = f'[outputs.daily]\npath = "{out}"\nvars = ["not_a_real_variable"]\n'

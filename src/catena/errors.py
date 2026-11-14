@@ -31,3 +31,7 @@ class CatenaFileNotFoundError(CatenaError, FileNotFoundError):
 
 class CatenaPermissionError(CatenaError, PermissionError):
     """A path catena was told to write to exists but is not writable."""
+
+
+class CatenaFileExistsError(CatenaError, FileExistsError):
+    """A file or store catena was told to create is already there."""

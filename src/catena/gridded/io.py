@@ -23,13 +23,17 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from ..errors import CatenaFileNotFoundError, CatenaValueError
+from ..errors import (
+    CatenaFileExistsError,
+    CatenaFileNotFoundError,
+    CatenaValueError,
+)
 from ..formats import format_for
 from ..specs import IOSpec, ParsedConfig, SubsetSpec
 from .spatial import stack_spatial_dims
 
 
-class MisalignedGridError(Exception):
+class MisalignedGridError(CatenaValueError):
     """Raised when two datasets do not share a common CRS and coordinates."""
 
 
@@ -383,7 +387,7 @@ def create_output_store(
             spec.path for spec in zarr_specs.values() if Path(spec.path).exists()
         ]
         if existing:
-            raise FileExistsError(
+            raise CatenaFileExistsError(
                 f"Zarr store(s) already exist: {existing}. Re-creating them would "
                 f"erase data already written by subset processes. Pass overwrite=True "
                 f"(CLI: --overwrite) to recreate them from scratch."
