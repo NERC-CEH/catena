@@ -124,6 +124,21 @@ class TestMakeNodeModule:
         mod = make_node_module([_fn_spec("make_dict", ["x"], "builtins", "dict")])
         assert mod.make_dict(42) == {"x": 42}
 
+    def test_missing_function_is_rejected_when_the_module_is_built(self):
+        spec = _fn_spec("root", ["x"], "math", "sqroot")
+        with pytest.raises(CatenaValueError, match=r"'root'.*no attribute 'sqroot'"):
+            make_node_module([spec])
+
+    def test_non_callable_function_is_rejected_when_the_module_is_built(self):
+        spec = _fn_spec("pi", [], "math", "pi")
+        with pytest.raises(CatenaValueError, match=r"'pi'.*not callable"):
+            make_node_module([spec])
+
+    def test_missing_module_is_rejected_when_the_module_is_built(self):
+        spec = _fn_spec("root", ["x"], "no_such_module_xyz", "sqrt")
+        with pytest.raises(CatenaValueError, match="no_such_module_xyz"):
+            make_node_module([spec])
+
     def test_function_module_attr_set(self):
         mod = make_node_module([_expr_spec("g", [], "42")])
         assert mod.g.__module__ == mod.__name__

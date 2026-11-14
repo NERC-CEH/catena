@@ -262,14 +262,14 @@ A Zarr output requires `dim = "pixel"`, because the shared store's layout is the
 ```toml
 [validation]
 checks = [
-  { check = "spatial_grid_equal", inputs = ["*"] },
-  { check = "time_equal",         inputs = ["climate", "land"] },
-  { check = "coords_equal",       inputs = ["*"], coords = ["level"] },
+  { check = "time_equal",   inputs = ["climate", "land"] },
+  { check = "coords_equal", inputs = ["*"], coords = ["level"] },
 ]
 ```
 
 Each entry names a `check` and the `inputs` to pass it.
 `check` and `inputs` are reserved; **every other key is forwarded verbatim as a keyword argument** to the check (e.g. `coords`, `atol`).
+A key the check does not take, or an input named twice, is an error when the config is parsed.
 
 | Key | Description |
 |-----|-------------|
@@ -283,11 +283,11 @@ Available checks:
 |---------|--------|---------|
 | `time_equal` | any | all inputs share an identical time index |
 | `time_subset` | exactly 2 | the second input's timestamps are a subset of the first's |
-| `spatial_grid_equal` | any | all inputs share a CRS, x/y dims, and coordinate values (`atol`) |
-| `crs_equal` | any | all inputs share a CRS |
 | `coords_equal` | any | the named `coords` match across all inputs (`atol` for float coords) |
 
-The checks live in [`catena.input_checks`](modules/catena.input_checks.md) and can be called directly from Python.
+There is no grid check to declare: gridded inputs must all share one CRS and grid, and catena [checks that whenever it loads them](data-formats.md#spatial-handling).
+
+The checks live in [`catena.input_checks`](modules/catena.input_checks.md) and can be called directly from Python, with a mapping from a name to each dataset.
 Under [`[subset]`](#subset) they are skipped with a warning, since they describe the whole domain rather than one shard.
 
 ## Contract checks

@@ -1,9 +1,12 @@
 """Intrinsic input-Dataset compatibility checks.
 
-A small library of pairwise/variadic predicates over input ``Dataset``s,
-``check_X(*datasets, **kwargs) -> None`` (raise on failure, return ``None`` on
+A small library of predicates over input ``Dataset``s,
+``check_X(datasets, **kwargs) -> None`` (raise on failure, return ``None`` on
 pass), plus a registry (`CHECKS`) and a runner (`run_input_checks`) that applies
 a parsed ``[validation].checks`` config block and aggregates failures.
+
+``datasets`` maps a name to each dataset; the name is what a failure message
+calls it. The first entry is the reference the others are compared against.
 
 Every check here is a statement about the inputs *alone*. Anything coupled to a
 DAG operation ("does a resample node land on the right anchor?") is a Freq
@@ -11,8 +14,7 @@ contract instead, not a check.
 """
 
 import logging
-import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Literal
 
@@ -20,7 +22,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .errors import CatenaValueError
+from .errors import CatenaError, CatenaValueError
 from .io import time_dims
 from .specs import CheckSpec
 
@@ -31,12 +33,16 @@ class InputCheckError(CatenaValueError):
     """Raised (by `run_input_checks`) when one or more input checks fail."""
 
 
+#: Name -> dataset, in the order the check compares them.
+Datasets = Mapping[str, xr.Dataset]
+
+
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
 
 
-def _single_time_index(ds: xr.Dataset) -> pd.DatetimeIndex:
+def _single_time_index(name: str, ds: xr.Dataset) -> pd.DatetimeIndex:
     """Return the dataset's single time index, raising if there is not exactly one.
 
     Uses `catena.io.time_dims` so arbitrarily-labelled time dimensions are
@@ -46,12 +52,12 @@ def _single_time_index(ds: xr.Dataset) -> pd.DatetimeIndex:
     tdims = time_dims(ds)
     if not tdims:
         raise CatenaValueError(
-            "dataset has no time dimension; a time check cannot be applied to it"
+            f"{name} has no time dimension; a time check cannot be applied to it"
         )
     return ds.get_index(tdims[0])  # type: ignore[return-value]
 
 
-def _require_arity(datasets: tuple[xr.Dataset, ...], name: str, arity: int) -> None:
+def _require_arity(datasets: Datasets, name: str, arity: int) -> None:
     """Backstop arity guard for fixed-arity checks (the parser catches this earlier)."""
     if len(datasets) != arity:
         raise CatenaValueError(
@@ -64,72 +70,37 @@ def _require_arity(datasets: tuple[xr.Dataset, ...], name: str, arity: int) -> N
 # ---------------------------------------------------------------------------
 
 
-def time_equal(*datasets: xr.Dataset) -> None:
+def time_equal(datasets: Datasets) -> None:
     """Assert every dataset shares an identical time index."""
     if len(datasets) < 2:
         return
-    ref = _single_time_index(datasets[0])
-    for i, ds in enumerate(datasets[1:], start=1):
-        idx = _single_time_index(ds)
+    (ref_name, ref_ds), *others = datasets.items()
+    ref = _single_time_index(ref_name, ref_ds)
+    for name, ds in others:
+        idx = _single_time_index(name, ds)
         if not ref.equals(idx):
             raise CatenaValueError(
-                f"dataset {i} time index differs from dataset 0 "
+                f"{name} time index differs from {ref_name} "
                 f"({len(idx)} vs {len(ref)} timestamps)"
             )
 
 
-def time_subset(*datasets: xr.Dataset) -> None:
-    """Assert ``datasets[1]`` timestamps are a subset of ``datasets[0]``'s.
+def time_subset(datasets: Datasets) -> None:
+    """Assert the second dataset's timestamps are a subset of the first's.
 
     Directional: the first dataset is the reference (superset), the second the
     candidate subset. Raw timestamps, no resampling.
     """
     _require_arity(datasets, "time_subset", 2)
-    sup = _single_time_index(datasets[0])
-    sub = _single_time_index(datasets[1])
+    (sup_name, sup_ds), (sub_name, sub_ds) = datasets.items()
+    sup = _single_time_index(sup_name, sup_ds)
+    sub = _single_time_index(sub_name, sub_ds)
     missing = sub[~sub.isin(sup)]
     if len(missing) > 0:
         raise CatenaValueError(
-            f"dataset 1 has {len(missing)} timestamp(s) absent from dataset 0: "
+            f"{sub_name} has {len(missing)} timestamp(s) absent from {sup_name}: "
             f"{missing.tolist()}"
         )
-
-
-# ---------------------------------------------------------------------------
-# Spatial / CRS checks
-#
-# Every catena.gridded import below sits inside a function body so that importing
-# this module stays free of the optional geo extra. Keep them there: hoisting one
-# to the top would make `import catena.input_checks` require rioxarray/pyproj.
-# ---------------------------------------------------------------------------
-
-
-def spatial_grid_equal(*datasets: xr.Dataset, atol: float = 1e-6) -> None:
-    """Assert every dataset shares CRS + x/y dim names + coordinate values."""
-    from .gridded.io import _check_common_grid  # lazy: geo extra
-
-    if len(datasets) < 2:
-        return
-    ref = datasets[0]
-    for i, ds in enumerate(datasets[1:], start=1):
-        _check_common_grid(
-            ref, ds, label1="dataset 0", label2=f"dataset {i}", atol=atol
-        )
-
-
-def crs_equal(*datasets: xr.Dataset) -> None:
-    """Assert every dataset shares a CRS (ignoring resolution/extent)."""
-    from .gridded.io import _ensure_rio  # lazy: geo extra
-
-    if len(datasets) < 2:
-        return
-    _ensure_rio()
-    ref_crs = datasets[0].rio.crs
-    for i, ds in enumerate(datasets[1:], start=1):
-        if ds.rio.crs != ref_crs:
-            raise CatenaValueError(
-                f"dataset {i} CRS ({ds.rio.crs}) differs from dataset 0 ({ref_crs})"
-            )
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +108,7 @@ def crs_equal(*datasets: xr.Dataset) -> None:
 # ---------------------------------------------------------------------------
 
 
-def coords_equal(*datasets: xr.Dataset, coords: list[str], atol: float = 1e-6) -> None:
+def coords_equal(datasets: Datasets, *, coords: list[str], atol: float = 1e-6) -> None:
     """Assert the named ``coords`` match across every dataset.
 
     Float coordinates are compared with ``atol``; other dtypes (datetime,
@@ -145,29 +116,29 @@ def coords_equal(*datasets: xr.Dataset, coords: list[str], atol: float = 1e-6) -
     """
     if len(datasets) < 2:
         return
+    (ref_name, ref_ds), *others = datasets.items()
     for coord in coords:
-        ref = datasets[0].coords.get(coord)
+        ref = ref_ds.coords.get(coord)
         if ref is None:
-            raise CatenaValueError(f"coordinate '{coord}' missing from dataset 0")
-        for i, ds in enumerate(datasets[1:], start=1):
+            raise CatenaValueError(f"coordinate '{coord}' missing from {ref_name}")
+        for name, ds in others:
             other = ds.coords.get(coord)
             if other is None:
-                raise CatenaValueError(f"coordinate '{coord}' missing from dataset {i}")
+                raise CatenaValueError(f"coordinate '{coord}' missing from {name}")
             if other.shape != ref.shape:
                 raise CatenaValueError(
-                    f"coordinate '{coord}' has shape {other.shape} in dataset {i} "
-                    f"but {ref.shape} in dataset 0"
+                    f"coordinate '{coord}' has shape {other.shape} in {name} "
+                    f"but {ref.shape} in {ref_name}"
                 )
             if np.issubdtype(ref.dtype, np.floating):
                 if not np.allclose(ref.values, other.values, atol=atol):
                     raise CatenaValueError(
-                        f"coordinate '{coord}' values differ between dataset 0 and "
-                        f"dataset {i} (atol={atol})"
+                        f"coordinate '{coord}' values differ between {ref_name} and "
+                        f"{name} (atol={atol})"
                     )
             elif not ref.equals(other):
                 raise CatenaValueError(
-                    f"coordinate '{coord}' values differ between dataset 0 and "
-                    f"dataset {i}"
+                    f"coordinate '{coord}' values differ between {ref_name} and {name}"
                 )
 
 
@@ -181,7 +152,8 @@ class Check:
     """A registry entry: the predicate plus its expected arity.
 
     ``arity`` is ``"variadic"`` (any number, ``>=1``) or an exact integer. The
-    config parser uses it to reject an ill-sized ``inputs`` list at parse time.
+    config parser uses it to reject an ill-sized ``inputs`` list at parse time,
+    and ``func``'s signature to reject keys the check does not take.
     """
 
     func: Callable[..., None]
@@ -191,8 +163,6 @@ class Check:
 CHECKS: dict[str, Check] = {
     "time_equal": Check(time_equal, "variadic"),
     "time_subset": Check(time_subset, 2),
-    "spatial_grid_equal": Check(spatial_grid_equal, "variadic"),
-    "crs_equal": Check(crs_equal, "variadic"),
     "coords_equal": Check(coords_equal, "variadic"),
 }
 
@@ -202,14 +172,15 @@ def run_input_checks(
 ) -> None:
     """Apply each `CheckSpec` to the loaded raw Datasets, aggregating failures.
 
-    A variadic check that receives fewer than two datasets is a quiet no-op.
-    Individual check failures are collected and raised together as a single
-    `InputCheckError` naming every failed check.
+    Each dataset is named ``[inputs.<label>]`` in a failure message. A variadic
+    check that receives fewer than two datasets is a quiet no-op. Individual check
+    failures are collected and raised together as a single `InputCheckError`
+    naming every failed check.
     """
-    failures: list[tuple[CheckSpec, Exception]] = []
+    failures: list[tuple[CheckSpec, CatenaError]] = []
     for spec in checks:
         entry = CHECKS[spec.check]
-        datasets = tuple(raw_datasets[label] for label in spec.inputs)
+        datasets = {f"[inputs.{label}]": raw_datasets[label] for label in spec.inputs}
         if entry.arity == "variadic" and len(datasets) < 2:
             logger.info(
                 "check '%s' over %s is a no-op (fewer than two datasets)",
@@ -218,25 +189,15 @@ def run_input_checks(
             )
             continue
         try:
-            entry.func(*datasets, **spec.kwargs)
-        except Exception as exc:
+            entry.func(datasets, **spec.kwargs)
+        except CatenaError as exc:
             failures.append((spec, exc))
 
     if failures:
         lines = [
-            f"  - check '{spec.check}' over {spec.inputs}: {_name_inputs(exc, spec)}"
+            f"  - check '{spec.check}' over {spec.inputs}: {exc}"
             for spec, exc in failures
         ]
         raise InputCheckError(
             f"{len(failures)} input check(s) failed:\n" + "\n".join(lines)
         )
-
-
-def _name_inputs(exc: Exception, spec: CheckSpec) -> str:
-    """Replace the checks' positional "dataset N" with the input section label."""
-    # WARNING: relies on every check wording its message as "dataset N". A check
-    # that words it differently keeps its index. Revisit: pass labels into the
-    # checks instead.
-    return re.sub(
-        r"dataset (\d+)", lambda m: f"[inputs.{spec.inputs[int(m[1])]}]", str(exc)
-    )

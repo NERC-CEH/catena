@@ -17,9 +17,9 @@ catena run config.toml --dry-run
 It checks, in order, and prints a summary per stage:
 
 1. **Config** — the TOML parses into a valid pipeline.
-2. **Inputs** — every input file exists and opens.
+2. **Inputs** — every input file exists and opens, and gridded inputs share one grid.
    Only headers are read, not arrays.
-3. **Input checks** — any [`[validation]` checks](#input-compatibility-checks) you declared pass (compatible grids, aligned time axes, matching coordinates).
+3. **Input checks** — any [`[validation]` checks](#input-compatibility-checks) you declared pass (aligned time axes, matching coordinates).
    Skipped if you declared none, or under `[subset]`.
 4. **DAG** — the driver builds, and the contract check passes on every edge with a contract at both ends.
 5. **Execution plan and wiring** — every variable in `[outputs.*]` is reachable from the inputs, required inputs are all bound, and unused inputs are reported ([below](#the-wiring-check)).
@@ -38,14 +38,14 @@ If checks are [switched off](../nodes/contracts.md#turning-the-checks-off), the 
 
 ## Input compatibility checks
 
-Some expectations concern the input files themselves, which nothing in the DAG records: "the climate and land-cover inputs must sit on the same grid", say, or "these two records must share a time axis".
+Some expectations concern the input files themselves, which nothing in the DAG records: "these two records must share a time axis", say, or "every input must have the same vertical levels".
 Declare those in a [`[validation]`](../../reference/configuration.md#validation) block:
 
 ```toml
 [validation]
 checks = [
-  { check = "spatial_grid_equal", inputs = ["*"] },
-  { check = "time_equal",         inputs = ["climate", "land"] },
+  { check = "time_equal",   inputs = ["climate", "land"] },
+  { check = "coords_equal", inputs = ["*"], coords = ["level"] },
 ]
 ```
 

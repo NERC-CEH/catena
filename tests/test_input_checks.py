@@ -8,11 +8,10 @@ import xarray as xr
 from catena.config import CheckSpec
 from catena.input_checks import (
     CHECKS,
+    Check,
     InputCheckError,
     coords_equal,
-    crs_equal,
     run_input_checks,
-    spatial_grid_equal,
     time_equal,
     time_subset,
 )
@@ -29,6 +28,11 @@ def _ts_ds(times, name="v"):
 DAILY = pd.date_range("2020-01-01", periods=10, freq="D")
 
 
+def _named(*datasets):
+    """Name datasets ``ds0``, ``ds1``, … in the order given."""
+    return {f"ds{i}": ds for i, ds in enumerate(datasets)}
+
+
 # ---------------------------------------------------------------------------
 # time_equal
 # ---------------------------------------------------------------------------
@@ -36,19 +40,19 @@ DAILY = pd.date_range("2020-01-01", periods=10, freq="D")
 
 class TestTimeEqual:
     def test_identical_passes(self):
-        time_equal(_ts_ds(DAILY), _ts_ds(DAILY, name="w"))
+        time_equal(_named(_ts_ds(DAILY), _ts_ds(DAILY, name="w")))
 
     def test_single_dataset_passes(self):
-        time_equal(_ts_ds(DAILY))
+        time_equal(_named(_ts_ds(DAILY)))
 
     def test_differing_index_raises(self):
-        with pytest.raises(ValueError, match="dataset 1 time index differs"):
-            time_equal(_ts_ds(DAILY), _ts_ds(DAILY[:5]))
+        with pytest.raises(ValueError, match="ds1 time index differs from ds0"):
+            time_equal(_named(_ts_ds(DAILY), _ts_ds(DAILY[:5])))
 
     def test_missing_time_dim_raises(self):
         ds = xr.Dataset({"v": ("x", [1.0, 2.0])}, coords={"x": [0, 1]})
         with pytest.raises(ValueError, match="no time dimension"):
-            time_equal(_ts_ds(DAILY), ds)
+            time_equal(_named(_ts_ds(DAILY), ds))
 
 
 # ---------------------------------------------------------------------------
@@ -58,54 +62,21 @@ class TestTimeEqual:
 
 class TestTimeSubset:
     def test_subset_passes(self):
-        time_subset(_ts_ds(DAILY), _ts_ds(DAILY[2:6]))
+        time_subset(_named(_ts_ds(DAILY), _ts_ds(DAILY[2:6])))
 
     def test_superfluous_timestamp_raises(self):
         extra = DAILY.append(pd.DatetimeIndex(["2021-01-01"]))
-        with pytest.raises(ValueError, match="absent from dataset 0"):
-            time_subset(_ts_ds(DAILY), _ts_ds(extra))
+        with pytest.raises(ValueError, match=r"ds1 has 1 timestamp.* absent from ds0"):
+            time_subset(_named(_ts_ds(DAILY), _ts_ds(extra)))
 
     def test_wrong_arity_raises(self):
         with pytest.raises(ValueError, match="exactly 2 datasets"):
-            time_subset(_ts_ds(DAILY))
+            time_subset(_named(_ts_ds(DAILY)))
 
     def test_missing_time_dim_raises(self):
         ds = xr.Dataset({"v": ("x", [1.0])}, coords={"x": [0]})
         with pytest.raises(ValueError, match="no time dimension"):
-            time_subset(_ts_ds(DAILY), ds)
-
-
-# ---------------------------------------------------------------------------
-# spatial_grid_equal / crs_equal (reuse gridded fixtures)
-# ---------------------------------------------------------------------------
-
-
-class TestSpatialGridEqual:
-    def test_matching_grid_passes(self, daily_ds, static_ds):
-        spatial_grid_equal(daily_ds, static_ds)
-
-    def test_single_dataset_passes(self, daily_ds):
-        spatial_grid_equal(daily_ds)
-
-    def test_mismatched_crs_raises(self, daily_ds):
-        from catena.gridded.io import MisalignedGridError
-
-        other = daily_ds.rio.write_crs("EPSG:3857")
-        with pytest.raises(MisalignedGridError):
-            spatial_grid_equal(daily_ds, other)
-
-
-class TestCrsEqual:
-    def test_matching_crs_passes(self, daily_ds, static_ds):
-        crs_equal(daily_ds, static_ds)
-
-    def test_mismatched_crs_raises(self, daily_ds):
-        other = daily_ds.rio.write_crs("EPSG:3857")
-        with pytest.raises(ValueError, match="CRS"):
-            crs_equal(daily_ds, other)
-
-    def test_single_dataset_passes(self, daily_ds):
-        crs_equal(daily_ds)
+            time_subset(_named(_ts_ds(DAILY), ds))
 
 
 # ---------------------------------------------------------------------------
@@ -115,42 +86,42 @@ class TestCrsEqual:
 
 class TestCoordsEqual:
     def test_matching_passes(self, daily_ds, static_ds):
-        coords_equal(daily_ds, static_ds, coords=["x", "y"])
+        coords_equal(_named(daily_ds, static_ds), coords=["x", "y"])
 
     def test_within_atol_passes(self, daily_ds):
         shifted = daily_ds.assign_coords(x=daily_ds["x"] + 1e-9)
-        coords_equal(daily_ds, shifted, coords=["x"], atol=1e-6)
+        coords_equal(_named(daily_ds, shifted), coords=["x"], atol=1e-6)
 
     def test_beyond_atol_raises(self, daily_ds):
         shifted = daily_ds.assign_coords(x=daily_ds["x"] + 1.0)
         with pytest.raises(ValueError, match="values differ"):
-            coords_equal(daily_ds, shifted, coords=["x"], atol=1e-6)
+            coords_equal(_named(daily_ds, shifted), coords=["x"], atol=1e-6)
 
     def test_missing_coord_raises(self, daily_ds, static_ds):
         with pytest.raises(ValueError, match="missing"):
-            coords_equal(daily_ds, static_ds, coords=["nonexistent"])
+            coords_equal(_named(daily_ds, static_ds), coords=["nonexistent"])
 
     def test_shape_mismatch_raises(self, daily_ds):
         smaller = daily_ds.isel(x=slice(0, 1))
         with pytest.raises(ValueError, match="shape"):
-            coords_equal(daily_ds, smaller, coords=["x"])
+            coords_equal(_named(daily_ds, smaller), coords=["x"])
 
     def test_datetime_coord_exact_match_passes(self):
         # Non-float coords take the exact-comparison branch.
-        coords_equal(_ts_ds(DAILY), _ts_ds(DAILY, name="w"), coords=["time"])
+        coords_equal(_named(_ts_ds(DAILY), _ts_ds(DAILY, name="w")), coords=["time"])
 
     def test_datetime_coord_mismatch_raises(self):
         shifted = _ts_ds(DAILY + pd.Timedelta(days=1))
         with pytest.raises(ValueError, match="values differ"):
-            coords_equal(_ts_ds(DAILY), shifted, coords=["time"])
+            coords_equal(_named(_ts_ds(DAILY), shifted), coords=["time"])
 
     def test_missing_coord_in_later_dataset_raises(self, daily_ds):
         renamed = daily_ds.rename(x="col")
-        with pytest.raises(ValueError, match="missing from dataset 1"):
-            coords_equal(daily_ds, renamed, coords=["x"])
+        with pytest.raises(ValueError, match="missing from ds1"):
+            coords_equal(_named(daily_ds, renamed), coords=["x"])
 
     def test_single_dataset_passes(self, daily_ds):
-        coords_equal(daily_ds, coords=["x"])
+        coords_equal(_named(daily_ds), coords=["x"])
 
 
 # ---------------------------------------------------------------------------
@@ -163,8 +134,6 @@ class TestRegistry:
         assert set(CHECKS) == {
             "time_equal",
             "time_subset",
-            "spatial_grid_equal",
-            "crs_equal",
             "coords_equal",
         }
 
@@ -204,6 +173,15 @@ class TestRunInputChecks:
         with pytest.raises(InputCheckError) as exc:
             run_input_checks(raw, [CheckSpec("time_equal", ["daily", "short"])])
         assert "[inputs.short] time index differs from [inputs.daily]" in str(exc.value)
+
+    def test_a_bug_in_a_check_is_not_reported_as_a_failed_check(self, monkeypatch):
+        def broken(datasets):
+            raise RuntimeError("bug")
+
+        monkeypatch.setitem(CHECKS, "time_equal", Check(broken, "variadic"))
+        raw = {"a": _ts_ds(DAILY), "b": _ts_ds(DAILY)}
+        with pytest.raises(RuntimeError, match="bug"):
+            run_input_checks(raw, [CheckSpec("time_equal", ["a", "b"])])
 
     def test_unknown_arity_backstop(self):
         # Direct call bypassing the parser: fixed-arity self-guard still fires.
