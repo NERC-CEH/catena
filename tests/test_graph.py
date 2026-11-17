@@ -184,7 +184,7 @@ class TestGraphPostProcessing:
         assert "<td>latitude</td><td>DataArray</td>" in digraph.body[0]
 
     def test_relabel_input_row_of_a_widened_type(self):
-        """An untyped second consumer makes Hamilton render an input as ``Any``."""
+        """An untyped second consumer makes Hamilton render an input as `Any`."""
         row = "<tr><td>precipitation</td><td>Any</td></tr>"
         other = "<tr><td>scale</td><td>Any</td></tr>"
         digraph = SimpleNamespace(
@@ -344,7 +344,7 @@ def unrelated(precipitation: Rain) -> Rain:
 
 
 def _styled(dr, view: str, *args, outputs=(), **kwargs):
-    """Draw ``view`` with catena's styling."""
+    """Draw `view` with catena's styling."""
     style = GraphStyle.from_driver(dr, outputs=outputs)
     return style.apply(getattr(dr, view)(*args, **style.hamilton_kwargs(), **kwargs))
 
@@ -680,7 +680,7 @@ def renamed_driver(tmp_path_factory):
 
 
 class TestRenamedNodes:
-    """Units on nodes that ``@parameterize_sources`` names, read off the nodes."""
+    """Units on nodes that `@parameterize_sources` names, read off the nodes."""
 
     def test_output_with_no_annotated_consumer_has_its_unit(self, renamed_driver):
         units, _ = _node_maps(renamed_driver)

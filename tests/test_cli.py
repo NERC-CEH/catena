@@ -1,7 +1,7 @@
 """Tests for the catena CLI: argument handling, exit codes, and what it prints.
 
 The CLI is a shim over `catena.pipeline` and `catena.graph`, so the pipeline
-behaviour itself is tested in ``test_pipeline.py`` and ``test_graph.py``. What is
+behaviour itself is tested in `test_pipeline.py` and `test_graph.py`. What is
 left here is the part only the command can get wrong.
 """
 
@@ -75,7 +75,7 @@ class TestGriddedGeoExtraGuard:
 class TestMissingTyperExtra:
     """Without the extra, `catena` must explain itself, not traceback.
 
-    The import boundary itself is checked in ``test_layout.py``.
+    The import boundary itself is checked in `test_layout.py`.
     """
 
     def test_entry_point_hints_at_the_extra(self, monkeypatch, capsys):
@@ -262,8 +262,8 @@ class TestGraphRendering:
 class TestModuleBesideTheConfig:
     """A `.py` file named by an `_import_path` resolves against the config.
 
-    The CLI used to append the working directory to ``sys.path`` for this. It no
-    longer touches ``sys.path`` at all, so the config has to be self-contained --
+    The CLI used to append the working directory to `sys.path` for this. It no
+    longer touches `sys.path` at all, so the config has to be self-contained --
     and it is, from any working directory.
     """
 

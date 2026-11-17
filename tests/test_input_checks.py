@@ -29,7 +29,7 @@ DAILY = pd.date_range("2020-01-01", periods=10, freq="D")
 
 
 def _named(*datasets):
-    """Name datasets ``ds0``, ``ds1``, … in the order given."""
+    """Name datasets `ds0`, `ds1`, … in the order given."""
     return {f"ds{i}": ds for i, ds in enumerate(datasets)}
 
 

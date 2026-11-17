@@ -1,6 +1,6 @@
 """Run a configured pipeline end to end, or validate one without running it.
 
-`run` executes everything a ``config.toml`` describes. `dry_run` performs the
+`run` executes everything a `config.toml` describes. `dry_run` performs the
 same setup and validation but executes nothing and writes nothing, returning a
 `DryRunReport` of what each stage found.
 
@@ -47,15 +47,15 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-#: Either a path to a TOML config file or an already-parsed config.
 ConfigSource = str | Path | ParsedConfig
+"""Either a path to a TOML config file or an already-parsed config."""
 
 
 def prepare_config(config: ConfigSource) -> tuple[ParsedConfig, Path | None]:
     """Resolve a config source to a parsed config and its source path, if any.
 
     Accepts a path to a TOML file or an already-parsed `ParsedConfig`. The returned
-    path is ``None`` for a `ParsedConfig`, which has no file to stamp provenance from.
+    path is `None` for a `ParsedConfig`, which has no file to stamp provenance from.
     """
     if isinstance(config, ParsedConfig):
         parsed, config_file = config, None
@@ -69,15 +69,17 @@ def prepare_config(config: ConfigSource) -> tuple[ParsedConfig, Path | None]:
 class WrittenOutput:
     """One destination a run wrote, and what went into it."""
 
-    #: The ``[outputs.<label>]`` section this came from.
     label: str
-    #: Where it was actually written. Under ``[subset]`` this carries the
-    #: subset's suffix, so it is not always the path the config asked for.
+    """The `[outputs.<label>]` section this came from."""
     path: Path
+    """Where it was actually written. Under `[subset]` this carries the subset's
+    suffix, so it is not always the path the config asked for.
+    """
     variables: tuple[str, ...]
-    #: Size on disk, summed over a directory store. ``None`` if it could not be
-    #: measured.
     size_bytes: int | None = None
+    """Size on disk, summed over a directory store. `None` if it could not be
+    measured.
+    """
 
 
 @dataclass(frozen=True)
@@ -88,14 +90,15 @@ class RunReport:
     that ran to completion.
     """
 
-    #: The config's path, or ``None`` when `run` was given a `ParsedConfig`.
     config_file: Path | None
-    #: The dataset written for each ``[outputs.*]`` section, keyed by section
-    #: name. Empty for a config that declares no outputs.
+    """The config's path, or `None` when `run` was given a `ParsedConfig`."""
     outputs: dict[str, xr.Dataset] = field(default_factory=dict)
+    """The dataset written for each `[outputs.*]` section, keyed by section name.
+    Empty for a config that declares no outputs.
+    """
     written: tuple[WrittenOutput, ...] = ()
-    #: Wall-clock seconds, config parse to last byte written.
     elapsed: float = 0.0
+    """Wall-clock seconds, config parse to last byte written."""
 
 
 def run(
@@ -114,8 +117,8 @@ def run(
     allow_overrides
         Allow a later module to override a node defined by an earlier one.
     cache
-        Enable or disable result caching, overriding the config's ``[cache]``
-        section. ``None`` defers to the config.
+        Enable or disable result caching, overriding the config's `[cache]`
+        section. `None` defers to the config.
     cache_dir
         Directory for cached results. Implies caching is enabled.
 
@@ -128,8 +131,8 @@ def run(
 
     Notes
     -----
-    Progress is logged to the ``catena.pipeline`` logger at ``INFO`` as each
-    stage completes, so a caller can route it wherever it wants. ``catena run``
+    Progress is logged to the `catena.pipeline` logger at `INFO` as each
+    stage completes, so a caller can route it wherever it wants. `catena run`
     prints it.
     """
     started = time.perf_counter()
@@ -200,7 +203,7 @@ def run(
 
 
 def _size_on_disk(path: Path) -> int | None:
-    """Bytes ``path`` occupies, summed over a directory store, or None if unreadable.
+    """Bytes `path` occupies, summed over a directory store, or None if unreadable.
 
     A Zarr output is a directory, and a subset run region-writes into a shared
     store whose size is not this run's doing, so the number is best-effort.
@@ -217,9 +220,9 @@ def _size_on_disk(path: Path) -> int | None:
 class Stage:
     """One step of a dry run, and what it found.
 
-    ``detail`` is a complete phrase, e.g. "inputs loaded: 18 variable(s) from 4
-    source(s)". A ``failed`` stage carries each fault it found in ``errors``;
-    ``findings`` are soft issues, such as an input no node consumes, and do not fail
+    `detail` is a complete phrase, e.g. "inputs loaded: 18 variable(s) from 4
+    source(s)". A `failed` stage carries each fault it found in `errors`;
+    `findings` are soft issues, such as an input no node consumes, and do not fail
     the stage.
     """
 
@@ -237,8 +240,8 @@ class Stage:
 class DryRunReport:
     """The outcome of a dry run: what each stage checked and found."""
 
-    #: The config's path, or ``None`` when `dry_run` was given a `ParsedConfig`.
     config_file: Path | None
+    """The config's path, or `None` when `dry_run` was given a `ParsedConfig`."""
     stages: tuple[Stage, ...] = ()
 
     @property
@@ -250,7 +253,7 @@ class DryRunReport:
 class DryRunError(CatenaValueError):
     """A dry run found at least one fault.
 
-    The message lists every fault; ``report`` holds the full `DryRunReport`,
+    The message lists every fault; `report` holds the full `DryRunReport`,
     passing stages included.
     """
 
@@ -279,19 +282,19 @@ def dry_run(
     dims/coords/dtype + freq) against what the DAG declares, and confirm the
     output destinations are writable.
 
-    The wiring and execution plan are checked for ``final_vars`` if given, the
-    nodes you will pass to ``Driver.execute`` when driving the DAG yourself.
-    Otherwise they are checked for the nodes the ``[outputs.*]`` sections request
+    The wiring and execution plan are checked for `final_vars` if given, the
+    nodes you will pass to `Driver.execute` when driving the DAG yourself.
+    Otherwise they are checked for the nodes the `[outputs.*]` sections request
     or, with no outputs configured, for every terminal node of the DAG.
 
-    A stage that finds a fault is marked ``failed`` with the fault in
+    A stage that finds a fault is marked `failed` with the fault in
     `Stage.errors`, and the dry run carries on through every later stage that does
     not depend on it, so one run reports every fault it can reach. A stage that
-    cannot run because one it depends on failed is ``skipped``. If any stage
+    cannot run because one it depends on failed is `skipped`. If any stage
     failed, `DryRunError` is raised at the end, carrying the report. A config
     that fails to parse raises its own error at once, as nothing else can run.
 
-    Contract stages report ``skipped`` when `xarray-annotated` is switched off. No
+    Contract stages report `skipped` when `xarray-annotated` is switched off. No
     model runs and nothing is written.
     """
     from xarray_annotated import resolve_enabled
@@ -476,7 +479,7 @@ def _plan_stage(
 def _registered_sources(parsed: ParsedConfig) -> tuple[str, ...]:
     """Name each section whose module came from an installed package.
 
-    A section with no ``_import_path`` says nothing about where its code lives, so
+    A section with no `_import_path` says nothing about where its code lives, so
     the run reports what the environment supplied rather than resolving it silently.
     """
     return tuple(
@@ -488,7 +491,7 @@ def _registered_sources(parsed: ParsedConfig) -> tuple[str, ...]:
 def _run_input_checks(parsed: ParsedConfig) -> int:
     """Run the configured input-compatibility checks before the DAG is built.
 
-    Returns the number of checks run (0 if none configured). Under ``[subset]``
+    Returns the number of checks run (0 if none configured). Under `[subset]`
     the checks operate on a pixel slice rather than the full domain, so they are
     skipped with a warning recommending a full-domain dry run. A failure raises
     `catena.input_checks.InputCheckError`.
@@ -532,7 +535,7 @@ def _resolve_cache(
 ) -> CacheSpec | None:
     """Combine the config's [cache] spec with caller overrides.
 
-    ``cache=False`` always wins. ``cache=True`` or a ``cache_dir`` enable caching
+    `cache=False` always wins. `cache=True` or a `cache_dir` enable caching
     with defaults when the config has no [cache] section.
     """
     if cache_flag is False:

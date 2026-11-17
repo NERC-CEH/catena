@@ -2,7 +2,7 @@
 
 Covers:
 - reading and writing Zarr files through the format registry
-- time-dimension detection (``time_dims``) and the single-time-dim invariant
+- time-dimension detection (`time_dims`) and the single-time-dim invariant
 - get_outputs and save_outputs public API
 - Multiple-CRS-dataset lat/lon computation
 """
@@ -89,9 +89,9 @@ class TestZarrDataset:
 class TestSectionLabelsAreInert:
     """A section's label names its nodes and does nothing else.
 
-    ``load_inputs`` emits data variables only — no ``dates_{label}`` index, no
-    frequency inference. Frequency validation is opt-in via a consumer's ``Freq``
-    declaration (see tests/test_freq.py), so a section labelled ``daily`` carrying
+    `load_inputs` emits data variables only — no `dates_{label}` index, no
+    frequency inference. Frequency validation is opt-in via a consumer's `Freq`
+    declaration (see tests/test_freq.py), so a section labelled `daily` carrying
     weekly or irregular timestamps is loaded without complaint.
     """
 
@@ -296,7 +296,7 @@ class TestSaveOutputs:
 
 
 class TestOmittedVars:
-    """An input section with no ``vars`` binds every variable in the file."""
+    """An input section with no `vars` binds every variable in the file."""
 
     def test_input_section_without_vars_loads_all(self, synthetic_data_dir):
         from synthetic_data import DAILY_VARS
@@ -446,7 +446,7 @@ class TestMissingVars:
         assert "pixel" in inputs
 
     def test_non_dimension_coordinate_binds_with_its_units(self, tmp_path):
-        """The documented station-metadata example: coordinates on ``site``."""
+        """The documented station-metadata example: coordinates on `site`."""
         path = tmp_path / "stations.nc"
         xr.Dataset(
             {"t": (("time", "site"), np.zeros((3, 2)))},

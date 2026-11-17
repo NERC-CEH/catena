@@ -1,7 +1,7 @@
 """Phase 2: non-temporal, non-geospatial pipelines with arbitrary dims/labels.
 
 These exercise the generalised I/O layer: input section labels need not be known
-frequencies, variables may carry arbitrary dimensions (no ``time``, no ``pixel``,
+frequencies, variables may carry arbitrary dimensions (no `time`, no `pixel`,
 no CRS), the frequency-suffix naming is opt-out, and the geospatial stack
 (rioxarray/pyproj) is never touched when no CRS is present.
 """
@@ -29,7 +29,7 @@ def _write_scene(path) -> None:
 
 
 def test_effective_suffix_rules():
-    # The default suffix is ``_<label>`` for every label, with no special cases.
+    # The default suffix is `_<label>` for every label, with no special cases.
     assert effective_suffix("daily", IOSpec(path="", vars=[])) == "_daily"
     assert effective_suffix("static", IOSpec(path="", vars=[])) == "_static"
     assert effective_suffix("scene", IOSpec(path="", vars=[])) == "_scene"

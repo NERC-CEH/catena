@@ -1,26 +1,26 @@
 """Build a styled Graphviz visualisation of a configured pipeline.
 
-`build_graph` returns a ``graphviz.Digraph``, which renders inline in a notebook.
-Write it with ``digraph.source`` or render it with ``digraph.pipe(format=...)``.
+`build_graph` returns a `graphviz.Digraph`, which renders inline in a notebook.
+Write it with `digraph.source` or render it with `digraph.pipe(format=...)`.
 
-`GraphStyle` applies the same styling to any of Hamilton's ``Driver`` display
-methods, such as ``visualize_path_between`` or ``display_downstream_of``: pass
+`GraphStyle` applies the same styling to any of Hamilton's `Driver` display
+methods, such as `visualize_path_between` or `display_downstream_of`: pass
 `GraphStyle.hamilton_kwargs` to the method, then `GraphStyle.apply` to the
 digraph it returns.
 
 **Everything shown is read off the built DAG's contracts.**
 Node fills and edge colours come from declared `xarray_annotated.temporal.Freq`
 contracts, and node labels carry each node's declared unit in place of the
-near-universal ``DataArray`` type text. A node with no declared frequency is
+near-universal `DataArray` type text. A node with no declared frequency is
 left uncoloured.
 
 Each node's data inputs and config inputs are drawn as separate tables. A config
 input is one the driver config sets, or a keyword-only parameter of the node's
 function; its table shows the value in use, from the config or else the default.
 
-Styling defaults live in `catena.graph_style`; a ``--style`` TOML file is
-deep-merged over them, and may name a ``style_function`` composed over the
-built-in one, and a ``link_function`` that links nodes to their documentation.
+Styling defaults live in `catena.graph_style`; a `--style` TOML file is
+deep-merged over them, and may name a `style_function` composed over the
+built-in one, and a `link_function` that links nodes to their documentation.
 """
 
 import html
@@ -59,13 +59,13 @@ def make_style_function(
     freq_map: dict[str, str],
     freq_colors: dict[str, str],
 ) -> StyleFunction:
-    """Build the default ``custom_style_function`` for ``display_all_functions``.
+    """Build the default `custom_style_function` for `display_all_functions`.
 
-    Nodes are filled by their **declared frequency** (``freq_map``, read off the DAG's
+    Nodes are filled by their **declared frequency** (`freq_map`, read off the DAG's
     contracts — not guessed from name suffixes), and nodes corresponding to requested
     outputs additionally get a thick coloured border so the pipeline's end products
     stand out.  Units are *not* handled here (the style hook cannot set a node's
-    label); they are injected later by :func:`relabel_with_units`.
+    label); they are injected later by `relabel_with_units`.
     """
     palette = spec.palette
 
@@ -89,7 +89,7 @@ def make_style_function(
 
 
 def compose_styles(*style_functions: StyleFunction) -> StyleFunction:
-    r"""Combine Hamilton ``custom_style_function``\ s into one.
+    r"""Combine Hamilton `custom_style_function`\ s into one.
 
     Hamilton's display methods take a single style function. Each node's style
     dicts are merged left to right, so a later function overrides an earlier
@@ -117,9 +117,9 @@ LinkFunction = Callable[[Callable], str | None]
 
 
 def _own_functions(dr: Driver) -> dict[str, Callable]:
-    """Return ``node -> function`` for the nodes a function itself defines.
+    """Return `node -> function` for the nodes a function itself defines.
 
-    A field node (one per ``@extract_fields`` output) shares its originating
+    A field node (one per `@extract_fields` output) shares its originating
     function with the node it depends on, so it is left out; external inputs,
     which Hamilton gives the consuming function as their originating function,
     are left out too.
@@ -141,7 +141,7 @@ def _own_functions(dr: Driver) -> dict[str, Callable]:
 
 
 def _summary(fn: Callable) -> str | None:
-    """Return the first paragraph of ``fn``'s docstring, on one line."""
+    """Return the first paragraph of `fn`'s docstring, on one line."""
     doc = inspect.getdoc(fn)
     if not doc:
         return None
@@ -169,11 +169,11 @@ def _link_style(
 def link_style(
     dr: Driver, link: LinkFunction, *, tooltip: bool = True
 ) -> StyleFunction:
-    """Build a Hamilton ``custom_style_function`` that links nodes to their docs.
+    """Build a Hamilton `custom_style_function` that links nodes to their docs.
 
-    Each node a function defines gets ``URL`` set to ``link(function)``, which
+    Each node a function defines gets `URL` set to `link(function)`, which
     Graphviz renders as a link in SVG output. Field nodes from
-    ``@extract_fields`` share their parent's function and get no link, nor do
+    `@extract_fields` share their parent's function and get no link, nor do
     inputs and config.
 
     Parameters
@@ -181,30 +181,32 @@ def link_style(
     dr
         The driver whose DAG will be drawn.
     link
-        Receives a node's originating function and returns its URL, or ``None``
-        for no link. ``function.__module__`` and ``function.__qualname__`` give
+        Receives a node's originating function and returns its URL, or `None`
+        for no link. `function.__module__` and `function.__qualname__` give
         the dotted path that most API documentation tools anchor on.
     tooltip
-        Also set ``tooltip`` to the first paragraph of the function's docstring.
+        Also set `tooltip` to the first paragraph of the function's docstring.
 
     Examples
     --------
-    Compose it with catena's own styling::
+    Compose it with catena's own styling:
 
-        style = GraphStyle.from_driver(dr)
-        links = link_style(dr, lambda fn: f"api.html#{fn.__module__}.{fn.__qualname__}")
-        digraph = dr.display_all_functions(
-            **{
-                **style.hamilton_kwargs(),
-                "custom_style_function": compose_styles(style.node_style, links),
-            }
-        )
+    ```python
+    style = GraphStyle.from_driver(dr)
+    links = link_style(dr, lambda fn: f"api.html#{fn.__module__}.{fn.__qualname__}")
+    digraph = dr.display_all_functions(
+        **{
+            **style.hamilton_kwargs(),
+            "custom_style_function": compose_styles(style.node_style, links),
+        }
+    )
+    ```
     """
     return _link_style(_own_functions(dr), link, tooltip=tooltip)
 
 
 def _import_function(path: str, key: str) -> Callable:
-    """Import a ``"module:function"`` reference given under ``key``."""
+    """Import a `"module:function"` reference given under `key`."""
     module_name, _, attr = path.partition(":")
     if not module_name or not attr:
         raise CatenaValueError(
@@ -215,16 +217,16 @@ def _import_function(path: str, key: str) -> Callable:
 
 
 def _node_maps(dr: Driver) -> tuple[dict[str, str], dict[str, str]]:
-    """Return ``(name -> unit, name -> frequency)`` maps for the DAG's nodes.
+    """Return `(name -> unit, name -> frequency)` maps for the DAG's nodes.
 
     Both are read from the declarations the contract checks use. A node's
     *produced* declaration takes precedence over a *consumed* one (an input
     parameter's), so pure input nodes are covered too.
 
     The frequency map comes from **declared** `xarray_annotated.temporal.Freq`
-    contracts (``"7D"``, ``"1ME"``), not from name suffixes. Section labels are inert
+    contracts (`"7D"`, `"1ME"`), not from name suffixes. Section labels are inert
     (`catena.io.load_inputs`), so a pipeline whose resample targets are called
-    ``raw``/``smoothed`` is grouped exactly as well as one using ``daily``/``weekly``.
+    `raw`/`smoothed` is grouped exactly as well as one using `daily`/`weekly`.
     """
     produced, consumed = _collect_declarations(dr)
     units: dict[str, str] = {}
@@ -250,8 +252,8 @@ def assign_freq_colors(
 
     Frequencies are arbitrary strings, not a fixed vocabulary, so colours are
     drawn from a qualitative **cycle** in first-seen order rather than looked up in a
-    fixed ``daily``/``weekly``/``monthly`` table. A ``[palette]`` entry naming a
-    frequency (``"7D" = "#ff7f00"``) pins that one, for users who want stable colours
+    fixed `daily`/`weekly`/`monthly` table. A `[palette]` entry naming a
+    frequency (`"7D" = "#ff7f00"`) pins that one, for users who want stable colours
     across renders.
     """
     colors: dict[str, str] = {}
@@ -265,19 +267,19 @@ def assign_freq_colors(
     return colors
 
 
-# A single ``<td>name</td><td>type</td>`` cell pair inside an input table. The type is
-# not always ``DataArray``: an untyped second consumer widens it to ``Any``.
+# A single `<td>name</td><td>type</td>` cell pair inside an input table. The type is
+# not always `DataArray`: an untyped second consumer widens it to `Any`.
 _INPUT_ROW_RE = re.compile(r"<td>(?P<name>[^<]+)</td><td>[^<]*</td>")
 
 
 def _config_inputs(
     dr: Driver, driver_config: Mapping[str, Any]
 ) -> dict[str, dict[str, str]]:
-    """Return ``node -> {config input -> displayed value}`` for the DAG's nodes.
+    """Return `node -> {config input -> displayed value}` for the DAG's nodes.
 
     A config input is an external input that is a keyword-only parameter of the
     consuming function, or that the driver config sets. Its value is the
-    config's, else the signature default, else ``required``.
+    config's, else the signature default, else `required`.
     """
     result: dict[str, dict[str, str]] = {}
     for n in dr.graph.nodes.values():
@@ -325,7 +327,7 @@ def _node_id(line: str) -> str:
 
 
 def _config_table(target: str, keys: dict[str, str]) -> list[str]:
-    """Return the DOT lines for ``target``'s config table and its edge."""
+    """Return the DOT lines for `target`'s config table and its edge."""
     rows = "".join(
         f"<tr><td>{html.escape(key)}</td><td>{html.escape(value)}</td></tr>"
         for key, value in keys.items()
@@ -342,15 +344,15 @@ def separate_config_inputs(
 ) -> None:
     """Move each node's config inputs into a table of their own, in-place.
 
-    Hamilton lists every external input of a node in one ``_<fn>_inputs``
+    Hamilton lists every external input of a node in one `_<fn>_inputs`
     table, so data and config read alike. Here the config rows leave that
-    table for a ``_<fn>_config`` table in Hamilton's config style, which shows
+    table for a `_<fn>_config` table in Hamilton's config style, which shows
     each value rather than its type. Hamilton's free-floating box for a config
     key is dropped, as is the one for the Hamilton setting `catena.build_driver`
     adds, and an input table left empty is removed along with its edge.
 
-    Only nodes in ``digraph`` get a config table, so a pruned view stays pruned.
-    If Hamilton drew no input tables at all (``hide_inputs=True``), no config
+    Only nodes in `digraph` get a config table, so a pruned view stays pruned.
+    If Hamilton drew no input tables at all (`hide_inputs=True`), no config
     tables are drawn either, and the config boxes are left as Hamilton drew them.
     """
     drawn = {
@@ -430,9 +432,9 @@ def clean_legend(digraph: "graphviz.Digraph") -> None:
     """Strip per-node attributes from Hamilton's legend, in place.
 
     Hamilton draws a legend entry with the style of the last node that named
-    it, so the ``output`` swatch would carry that node's frequency fill and any
+    it, so the `output` swatch would carry that node's frequency fill and any
     entry its link. Links and tooltips are dropped from every entry, and the
-    ``output`` swatch keeps only its outline.
+    `output` swatch keeps only its outline.
     """
     in_legend = False
     for i, line in enumerate(digraph.body):
@@ -449,11 +451,11 @@ def clean_legend(digraph: "graphviz.Digraph") -> None:
 
 
 def relabel_with_units(digraph: "graphviz.Digraph", unit_map: dict[str, str]) -> None:
-    """Rewrite node labels in-place so the unit replaces the ``DataArray`` type.
+    """Rewrite node labels in-place so the unit replaces the `DataArray` type.
 
-    Hamilton renders every function node's label as ``name`` over the type string
-    ``DataArray`` (it strips the ``Annotated`` wrapper), and groups inputs into
-    tables of ``name``/type rows.  Since virtually every node is a ``DataArray``,
+    Hamilton renders every function node's label as `name` over the type string
+    `DataArray` (it strips the `Annotated` wrapper), and groups inputs into
+    tables of `name`/type rows.  Since virtually every node is a `DataArray`,
     that type text is noise; here we swap it for the declared unit in both places.
     Nodes with no declared unit keep their original (informative) type.
     """
@@ -498,13 +500,15 @@ class GraphStyle:
     """catena's styling for a driver's DAG, applicable to any Hamilton view.
 
     Build it once from a driver, pass `hamilton_kwargs` to any of Hamilton's
-    display methods, then `apply` it to the digraph that method returns::
+    display methods, then `apply` it to the digraph that method returns:
 
-        style = GraphStyle.from_driver(dr, outputs=["gpp_weekly"])
-        digraph = dr.visualize_path_between(
-            "nee_raw", "gpp_weekly", **style.hamilton_kwargs()
-        )
-        style.apply(digraph)
+    ```python
+    style = GraphStyle.from_driver(dr, outputs=["gpp_weekly"])
+    digraph = dr.visualize_path_between(
+        "nee_raw", "gpp_weekly", **style.hamilton_kwargs()
+    )
+    style.apply(digraph)
+    ```
 
     Everything shown is read off the whole DAG, so a node is styled the same
     in every view that draws it.
@@ -540,7 +544,7 @@ class GraphStyle:
         spec: GraphvizSpec | None = None,
         link: LinkFunction | None = None,
     ) -> "GraphStyle":
-        """Read the styling off ``dr``'s DAG.
+        """Read the styling off `dr`'s DAG.
 
         Parameters
         ----------
@@ -552,7 +556,7 @@ class GraphStyle:
             Styling options; the defaults when omitted. See `catena.graph_style`.
         link
             Link each node to its documentation; see `link_style`. Overrides the
-            spec's ``link_function``.
+            spec's `link_function`.
         """
         spec = spec if spec is not None else GraphvizSpec()
         if link is None and spec.link_function is not None:
@@ -571,10 +575,10 @@ class GraphStyle:
 
     @property
     def node_style(self) -> StyleFunction:
-        """The Hamilton ``custom_style_function`` for this DAG.
+        """The Hamilton `custom_style_function` for this DAG.
 
         catena's frequency fill and output outline, then the spec's
-        ``style_function`` and the links, each composed over the last.
+        `style_function` and the links, each composed over the last.
         """
         styles = [
             make_style_function(
@@ -592,7 +596,7 @@ class GraphStyle:
         return compose_styles(*styles)
 
     def hamilton_kwargs(self) -> dict[str, Any]:
-        """Keyword arguments for any of Hamilton's ``Driver`` display methods."""
+        """Keyword arguments for any of Hamilton's `Driver` display methods."""
         return {
             "custom_style_function": self.node_style,
             "graphviz_kwargs": self.spec.graphviz_kwargs,
@@ -603,14 +607,14 @@ class GraphStyle:
         """Style a digraph Hamilton drew from this DAG, in place.
 
         Separates config inputs into their own tables, puts each declared unit
-        in place of the ``DataArray`` type, colours each edge by its source
+        in place of the `DataArray` type, colours each edge by its source
         node's declared frequency, and strips per-node attributes from the
         legend.
 
         Returns
         -------
         graphviz.Digraph
-            ``digraph`` itself, for chaining.
+            `digraph` itself, for chaining.
         """
         separate_config_inputs(digraph, self._config_inputs)
         relabel_with_units(digraph, self._units)
@@ -632,7 +636,7 @@ def build_graph(
     Each node shows its declared unit, requested outputs are highlighted, and
     nodes and edges are coloured by declared temporal frequency.
 
-    By default only what the ``[outputs.*]`` sections need is drawn; a config
+    By default only what the `[outputs.*]` sections need is drawn; a config
     with no outputs draws the whole DAG.
 
     Parameters
@@ -647,19 +651,19 @@ def build_graph(
     link
         Link each node to its documentation; see `link_style`.
     outputs_only
-        Draw only the nodes the requested outputs depend on. ``False`` draws
+        Draw only the nodes the requested outputs depend on. `False` draws
         every node the config's modules define.
 
     Returns
     -------
     graphviz.Digraph
-        The styled graph. Write it with ``digraph.source`` (DOT) or render it
-        with ``digraph.pipe(format=...)``.
+        The styled graph. Write it with `digraph.source` (DOT) or render it
+        with `digraph.pipe(format=...)`.
 
     Attention
     ---------
-    This requires the ``viz`` extra:
-    ``pip install "ukceh-catena[viz] @ git+https://github.com/NERC-CEH/catena"``.
+    This requires the `viz` extra:
+    `pip install "ukceh-catena[viz] @ git+https://github.com/NERC-CEH/catena"`.
     """
     parsed, _ = prepare_config(config)
 

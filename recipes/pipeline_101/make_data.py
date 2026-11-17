@@ -1,10 +1,10 @@
 """Generate the synthetic input for the Pipeline 101 recipe.
 
-Writes 90 days of daily temperature at three sites to ``data/climate.nc``,
+Writes 90 days of daily temperature at three sites to `data/climate.nc`,
 relative to this file. The series is deterministic, so the pipeline output is
 reproducible.
 
-Run it directly, or call :func:`write_inputs` from a notebook.
+Run it directly, or call `write_inputs` from a notebook.
 """
 
 from pathlib import Path

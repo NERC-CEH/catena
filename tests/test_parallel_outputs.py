@@ -34,9 +34,9 @@ def _output_specs(path) -> dict[str, IOSpec]:
 
 
 def _create_store(parsed, output_specs, **kwargs) -> list[str]:
-    """``create_output_store`` for a pipeline with its outputs swapped out.
+    """`create_output_store` for a pipeline with its outputs swapped out.
 
-    The store builder takes the whole ``ParsedConfig`` because it probes the DAG to
+    The store builder takes the whole `ParsedConfig` because it probes the DAG to
     learn each output's real layout; these tests vary only the output specs.
     """
     return create_output_store(replace(parsed, output_specs=output_specs), **kwargs)
@@ -247,10 +247,10 @@ class TestZarrSubset:
     ):
         """The store's time axis is what the DAG produces, not what a label suggests.
 
-        The output section here is labelled ``monthly`` — matching an input section
+        The output section here is labelled `monthly` — matching an input section
         that has a genuine (and different) monthly time axis — but it carries the
         *weekly* node. The store must take the weekly axis the pipeline actually
-        produces. The old ``dates_{label}`` lookup would have taken the monthly one.
+        produces. The old `dates_{label}` lookup would have taken the monthly one.
         """
         store = tmp_path / "mislabelled.zarr"
         specs = {
@@ -512,8 +512,8 @@ class TestConcurrentZarrWrites:
     """Mirror the real deployment: N OS processes writing disjoint regions at once.
 
     The sequential tests validate correctness but not concurrency safety. Here we
-    launch genuinely independent ``catena run`` processes (as ``parallel catena
-    run`` would) against one shared store and assert no writes are lost.
+    launch genuinely independent `catena run` processes (as `parallel catena
+    run` would) against one shared store and assert no writes are lost.
     """
 
     def test_independent_processes_no_lost_writes(

@@ -361,8 +361,8 @@ class TestResample:
         assert "freq='7D'" in (by_name["gpp_weekly"].expression or "")
 
     def test_from_and_to_are_bare_suffixes_not_frequencies(self):
-        # ``from``/``to`` name the input and output nodes and mean nothing else;
-        # the frequency is ``freq`` alone.
+        # `from`/`to` name the input and output nodes and mean nothing else;
+        # the frequency is `freq` alone.
         config = Config(
             {
                 "resample": [
@@ -684,7 +684,7 @@ class TestRemovedSections:
 
 
 class TestPartitionDim:
-    """``[blocking]`` and ``[subset]`` each name their dimension."""
+    """`[blocking]` and `[subset]` each name their dimension."""
 
     def test_blocking_dim(self):
         parsed = Config({"blocking": {"block_size": 10, "dim": "location"}}).parse()

@@ -1,22 +1,22 @@
-"""Import a user's node module, named by an ``_import_path`` in the config.
+"""Import a user's node module, named by an `_import_path` in the config.
 
-A section either carries an ``_import_path``, or is named after a module some
+A section either carries an `_import_path`, or is named after a module some
 installed package has registered (see `discover_registered_modules`).
 
-An ``_import_path`` takes one of two forms, told apart by whether it ends in
-``.py``:
+An `_import_path` takes one of two forms, told apart by whether it ends in
+`.py`:
 
-- **A dotted module name** — ``mypackage.indices`` — imported normally, so it must
-  be installed in the environment (or otherwise on ``sys.path``). Use this for code
+- **A dotted module name** — `mypackage.indices` — imported normally, so it must
+  be installed in the environment (or otherwise on `sys.path`). Use this for code
   that is packaged, and for any module that imports another module of your own.
-- **A path to a ``.py`` file** — ``nodes.py``, ``lib/nodes.py``,
-  ``/shared/models/nodes.py`` — loaded straight from that file. A relative path
+- **A path to a `.py` file** — `nodes.py`, `lib/nodes.py`,
+  `/shared/models/nodes.py` — loaded straight from that file. A relative path
   resolves against the directory holding the config, the same as every other path
   in it, so a config and its module travel together. An absolute path lets many
   configs in different directories share one module.
 
 A file-form module is loaded on its own: it may import installed packages, but not
-another loose ``.py`` file beside it. `import_user_module` raises with an
+another loose `.py` file beside it. `import_user_module` raises with an
 explanation pointing at packaging when one tries.
 """
 
@@ -32,25 +32,32 @@ from types import ModuleType
 from .errors import CatenaFileNotFoundError, CatenaValueError
 from .specs import RECOGNISED_SECTIONS, RegisteredModule
 
-#: Entry-point group a package declares to give its modules a bare section name.
-#: An installed package announcing
-#: ``[project.entry-points."catena.modules"] diagnostics = "science.diagnostics"``
-#: makes ``[diagnostics]`` a valid config section with no ``_import_path``.
 ENTRY_POINT_GROUP = "catena.modules"
+"""Entry-point group a package declares to give its modules a bare section name.
 
-#: Prefix for the ``sys.modules`` name a file-form module is registered under.
-#: Hamilton resolves a node's originating function through ``sys.modules``, so the
-#: module has to be registered; keying the name on the file's resolved path keeps
-#: two same-named files in different directories apart.
+An installed package declaring
+
+```toml
+[project.entry-points."catena.modules"]
+diagnostics = "science.diagnostics"
+```
+
+makes `[diagnostics]` a valid config section with no `_import_path`.
+"""
+
+# Prefix for the `sys.modules` name a file-form module is registered under.
+# Hamilton resolves a node's originating function through `sys.modules`, so the
+# module has to be registered; keying the name on the file's resolved path keeps
+# two same-named files in different directories apart.
 _LOCAL_PREFIX = "_catena_local"
 
-#: Attribute holding the hash of the source a loaded file-form module was built
-#: from, so a later import can tell whether the file has changed.
+# Attribute holding the hash of the source a loaded file-form module was built
+# from, so a later import can tell whether the file has changed.
 _STAMP_ATTR = "__catena_source_sha256__"
 
 
 def is_file_form(import_path: str) -> bool:
-    """Return True if ``import_path`` names a ``.py`` file rather than a module."""
+    """Return True if `import_path` names a `.py` file rather than a module."""
     return import_path.endswith(".py")
 
 
@@ -60,7 +67,7 @@ def is_valid_module_path(path: str) -> bool:
 
 
 def resolve_file_form(import_path: str, base: Path | None) -> Path:
-    """Resolve a file-form ``_import_path`` against the config's directory."""
+    """Resolve a file-form `_import_path` against the config's directory."""
     path = Path(import_path)
     if path.is_absolute():
         return path
@@ -73,13 +80,13 @@ def resolve_file_form(import_path: str, base: Path | None) -> Path:
 
 
 def _module_name(path: Path) -> str:
-    """Return a ``sys.modules`` name unique to this file, readable in a traceback."""
+    """Return a `sys.modules` name unique to this file, readable in a traceback."""
     digest = hashlib.sha256(str(path).encode()).hexdigest()[:8]
     return f"{_LOCAL_PREFIX}_{path.parent.name}_{digest}.{path.stem}"
 
 
 def _load_from_file(path: Path, import_path: str) -> ModuleType:
-    """Load a module from a ``.py`` file, without touching ``sys.path``."""
+    """Load a module from a `.py` file, without touching `sys.path`."""
     resolved = path.resolve()
     if not resolved.is_file():
         raise CatenaFileNotFoundError(
@@ -128,19 +135,19 @@ def import_user_module(
     base: Path | None = None,
     registered_by: str | None = None,
 ) -> ModuleType:
-    """Import the module named by an ``_import_path``.
+    """Import the module named by an `_import_path`.
 
     Parameters
     ----------
     import_path
-        A dotted module name, or a path to a ``.py`` file.
+        A dotted module name, or a path to a `.py` file.
     base
         The directory a relative file path resolves against, normally the one
         holding the config.
     registered_by
         The distribution that registered this module, when the config named it by
         section alone. It appears in the error if the import fails, because the
-        user has no ``_import_path`` of their own to correct.
+        user has no `_import_path` of their own to correct.
     """
     if is_file_form(import_path):
         return _load_from_file(resolve_file_form(import_path, base), import_path)
@@ -214,7 +221,7 @@ def is_valid_registered_value(value: str) -> bool:
 
     A registered value is never written by the person running the pipeline, so the
     two other things an entry point may hold are rejected rather than honoured: the
-    standard ``module:attribute`` form, which catena has no use for, and a ``.py``
+    standard `module:attribute` form, which catena has no use for, and a `.py`
     path, which would otherwise resolve against *the user's* config directory and
     let a package claim a filename in someone else's project.
     """
@@ -225,13 +232,15 @@ def discover_registered_modules() -> dict[str, RegisteredModule]:
     """Return the modules installed packages have registered, keyed by section name.
 
     A package makes its modules addressable by a bare section name by declaring
-    them in its own ``pyproject.toml``::
+    them in its own `pyproject.toml`:
 
-        [project.entry-points."catena.modules"]
-        transforms = "science.transforms"
-        diagnostics = "science.diagnostics"
+    ```toml
+    [project.entry-points."catena.modules"]
+    transforms = "science.transforms"
+    diagnostics = "science.diagnostics"
+    ```
 
-    A config may then write ``[transforms]`` with no ``_import_path``. Nothing is
+    A config may then write `[transforms]` with no `_import_path`. Nothing is
     imported here: the entry point's value is read as a string, so a registered
     module costs nothing until a config names it.
 
@@ -256,7 +265,7 @@ def clear_registry_cache() -> None:
 
 
 def registered_module(section: str) -> RegisteredModule | None:
-    """Return the module registered under ``section``, if any package registers one.
+    """Return the module registered under `section`, if any package registers one.
 
     Raises if two packages register it, which is only knowable to be a problem now
     that a config has asked for this particular name.

@@ -38,8 +38,8 @@ def _da():
 def register():
     """Build Hamilton-scannable modules from functions and clean up afterwards.
 
-    Hamilton only picks up a module's functions when they live in ``sys.modules``
-    and their ``__module__`` matches the module name (mirrors ``node.py``).
+    Hamilton only picks up a module's functions when they live in `sys.modules`
+    and their `__module__` matches the module name (mirrors `node.py`).
     """
     names: list[str] = []
 
@@ -68,7 +68,7 @@ def _build(*mods) -> driver.Driver:
 
 
 def _producer(unit: str):
-    """A node producing ``gpp_weekly`` with the given declared output unit."""
+    """A node producing `gpp_weekly` with the given declared output unit."""
 
     class Out(TypedDict):
         gpp_weekly: Annotated[xr.DataArray, xra.Unit(unit)]
@@ -82,10 +82,10 @@ def _producer(unit: str):
 
 
 def _consumer(unit: str, name: str = "consumer", in_name: str = "gpp_weekly"):
-    """A node consuming ``in_name`` with the given declared input unit.
+    """A node consuming `in_name` with the given declared input unit.
 
-    Built via ``exec`` so the consumed parameter (= the upstream node name) and
-    the function name are both dynamic. The output node is named ``f"{name}_out"``
+    Built via `exec` so the consumed parameter (= the upstream node name) and
+    the function name are both dynamic. The output node is named `f"{name}_out"`
     so multiple consumers can coexist in one graph without a name collision.
     """
     src = (
@@ -106,9 +106,9 @@ def _consumer(unit: str, name: str = "consumer", in_name: str = "gpp_weekly"):
 
 
 def _bare_producer(unit: str, name: str = "flux"):
-    """A *single-output* node producing ``name`` via a bare ``Annotated`` return.
+    """A *single-output* node producing `name` via a bare `Annotated` return.
 
-    Unlike :func:`_producer` (a ``TypedDict`` + ``extract_fields`` multi-output
+    Unlike `_producer` (a `TypedDict` + `extract_fields` multi-output
     node), this exercises the static check's other producer shape: a node whose
     own name *is* the produced variable and whose unit is the bare return
     annotation. Future model components may use either shape.
@@ -127,7 +127,7 @@ def _bare_producer(unit: str, name: str = "flux"):
 
 
 def _plain_consumer(name: str = "plain_cons", in_name: str = "gpp_weekly"):
-    """A consumer of ``in_name`` that declares **no** unit on the input.
+    """A consumer of `in_name` that declares **no** unit on the input.
 
     Used to pin the opt-in contract: an un-annotated consumer of a typed
     producer contributes no declaration, so the edge is not checked.
@@ -240,9 +240,9 @@ class TestSharedInputConflict:
 
 
 class TestBareReturnProducer:
-    """A single-output node (bare ``Annotated`` return) is a checkable producer.
+    """A single-output node (bare `Annotated` return) is a checkable producer.
 
-    The existing producer tests all use ``TypedDict`` + ``extract_fields``; this
+    The existing producer tests all use `TypedDict` + `extract_fields`; this
     covers the other node shape so the static check stays robust to model
     components that emit a single declared output.
     """
@@ -386,7 +386,7 @@ def _resample(vars_, source, target, freq, **contract):
 
 
 class TestResampleDeclarations:
-    """A producer emits ``gpp_weekly`` ('g m-2 d-1'), resampled to ``gpp_monthly``."""
+    """A producer emits `gpp_weekly` ('g m-2 d-1'), resampled to `gpp_monthly`."""
 
     def _build(self, register, consumer_unit, **contract):
         register("rs_prod", _producer("g m-2 d-1"))  # produces gpp_weekly
@@ -522,7 +522,7 @@ class TestRuntimeQualname:
 
 
 def _schema_producer(name: str, *markers):
-    """A single-output node producing ``name`` with the given schema markers."""
+    """A single-output node producing `name` with the given schema markers."""
 
     def prod() -> Annotated[(xr.DataArray, *markers)]:  # type: ignore[valid-type]
         return _da()
@@ -532,7 +532,7 @@ def _schema_producer(name: str, *markers):
 
 
 def _schema_consumer(*markers, in_name: str = "arr"):
-    """A node consuming ``in_name`` declaring the given schema markers on it."""
+    """A node consuming `in_name` declaring the given schema markers on it."""
     src = (
         "from typing import Annotated\n"
         "import xarray as xr\n"
@@ -545,7 +545,7 @@ def _schema_consumer(*markers, in_name: str = "arr"):
 
 
 def _named_schema_consumer(fn_name: str, *markers, in_name: str = "arr"):
-    """A named node consuming ``in_name``, declaring the given schema markers on it."""
+    """A named node consuming `in_name`, declaring the given schema markers on it."""
     src = (
         "from typing import Annotated\n"
         "import xarray as xr\n"
@@ -562,8 +562,8 @@ class TestAllPairsEdgeCheck:
 
     Three of the four edge predicates are non-transitive: a *loose* declaration is
     compatible with everything, so it cannot serve as a base for a star-wise check.
-    ``Dims("x","y")`` is compatible with both ``Dims("x","y", ordered=True)`` and
-    ``Dims("y","x", ordered=True)`` — yet those two provably conflict. With no
+    `Dims("x","y")` is compatible with both `Dims("x","y", ordered=True)` and
+    `Dims("y","x", ordered=True)` — yet those two provably conflict. With no
     producer to anchor on, only an all-pairs comparison finds it.
     """
 
@@ -601,7 +601,7 @@ class TestAllPairsEdgeCheck:
 
 class TestSchemaDagCheck:
     """The build-time edge check compares dims and dtype markers, always raising
-    ``ValueError`` on a provable mismatch (a pipeline-definition error)."""
+    `ValueError` on a provable mismatch (a pipeline-definition error)."""
 
     def _dr(self, register, prod_markers, cons_markers):
         prod = register("scd_prod", _schema_producer("arr", *prod_markers))
@@ -667,7 +667,7 @@ class TestSchemaDagCheck:
 
 
 class TestSchemaInputCheck:
-    """``check_input_contracts`` validates a loaded array's dims/dtype/coords
+    """`check_input_contracts` validates a loaded array's dims/dtype/coords
     against its consumer's declaration, from file metadata alone."""
 
     def _dr(self, register, *markers):
@@ -795,7 +795,7 @@ class TestSchemaInputCheck:
 
 
 def _percent():
-    """A fresh node reading ``x`` and producing its output, both declared in ``%``."""
+    """A fresh node reading `x` and producing its output, both declared in `%`."""
 
     @xra.check_annotations
     def percent(
@@ -811,7 +811,7 @@ def _input_in(unit: str) -> xr.DataArray:
 
 
 class TestParameterizedNodes:
-    """Nodes generated by Hamilton's ``@parameterize_sources`` and ``@parameterize``.
+    """Nodes generated by Hamilton's `@parameterize_sources` and `@parameterize`.
 
     Neither the parameter nor the function name is a node, so declarations are read
     off the generated nodes and keyed by the nodes they bind to.
@@ -896,9 +896,9 @@ class TestParameterizedNodes:
 
 
 class TestSubdagNodes:
-    """Nodes generated by Hamilton's ``@subdag``.
+    """Nodes generated by Hamilton's `@subdag`.
 
-    Inside a sub-DAG every node is namespaced, and ``source()`` adds an identity
+    Inside a sub-DAG every node is namespaced, and `source()` adds an identity
     node carrying the inner parameter's hint, so the edge into the sub-DAG is
     checked against its real source.
     """

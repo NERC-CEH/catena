@@ -6,8 +6,8 @@ point *before any compute*: `check_dag_contracts` verifies that every internal
 edge whose producer and consumer both declare a contract is mutually consistent,
 so a mismatch surfaces as soon as the driver is built rather than part way through
 a run; `check_input_contracts` validates the metadata of the actually-loaded input
-``DataArray``\\ s against the contracts declared by their consumers, without
-executing any node (the basis of ``catena run --dry-run``).
+`DataArray`\\ s against the contracts declared by their consumers, without
+executing any node (the basis of `catena run --dry-run`).
 
 **Facets.** The checks cover every `xarray-annotated` facet — **units** (pint/CF),
 **dims** / **coords** / **dtype** (schema), and **freq** (the spacing and phase of
@@ -18,24 +18,24 @@ function no `xarray_annotated.check_annotations` has validated, raises
 `CatenaValueError`.
 
 **Switching off.** Both checks do nothing when `xarray-annotated` is switched off,
-with ``XARRAY_ANNOTATED_ENABLED=false`` or inside ``xarray_annotated.enabled(False)``.
+with `XARRAY_ANNOTATED_ENABLED=false` or inside `xarray_annotated.enabled(False)`.
 
 Two distinctions apply:
 
-- **Edge vs input.** ``coords`` declarations are lower bounds ("at least these"), so
+- **Edge vs input.** `coords` declarations are lower bounds ("at least these"), so
   two of them can never be shown inconsistent; coords participates in the input
-  check only. ``freq`` is inferred from coordinate *values*, but reading a 1-D
-  datetime coordinate executes no node, so it stays a legitimate ``--dry-run``
+  check only. `freq` is inferred from coordinate *values*, but reading a 1-D
+  datetime coordinate executes no node, so it stays a legitimate `--dry-run`
   pre-flight.
 - **Provable-only.** An edge is flagged only when the two declarations are *provably*
   inconsistent (different units, disjoint dim sets, different dtypes). An edge with a
   declaration missing at either end is not flagged, which lets a partially-annotated
   pipeline adopt the check without a wave of false positives. Units that could be
   converted still count as different, since nothing converts them between nodes.
-  An edge that passes is not proven safe: ``Freq("D", gaps_ok=True)`` is compatible
-  with ``Freq("D")``, which still raises on an axis with holes when the data arrives.
+  An edge that passes is not proven safe: `Freq("D", gaps_ok=True)` is compatible
+  with `Freq("D")`, which still raises on an axis with holes when the data arrives.
 
-**Generated nodes.** A ``[[node]]`` or ``[[resample]]`` node is checked like any
+**Generated nodes.** A `[[node]]` or `[[resample]]` node is checked like any
 other, by what it declares. An edge into or out of a node declaring nothing is not
 checked.
 """
@@ -80,7 +80,7 @@ def _output_hint(node: Node) -> Any:
     """Return the hint a node's output is declared with.
 
     `@extract_fields` types each extracted node as the bare field type, so for a
-    node fed only by a ``TypedDict`` or dataclass the field's hint is read from
+    node fed only by a `TypedDict` or dataclass the field's hint is read from
     that type instead.
     """
     if declaration_from_hint(node.type) is None and len(node.input_types) == 1:
@@ -97,7 +97,7 @@ def _collect_declarations(
 ) -> tuple[_Produced, _Consumed]:
     """Read declared contracts off the built DAG's nodes.
 
-    Returns ``(produced, consumed)``, the shared source for both
+    Returns `(produced, consumed)`, the shared source for both
     the build-time (`check_dag_contracts`) and runtime (`check_input_contracts`)
     checks. Declarations are keyed by node name, read from each node's output type
     and from the hint on each of its dependencies, so nodes that a decorator renames
@@ -174,16 +174,16 @@ def check_input_contracts(dr: driver.Driver, inputs: dict[str, Any]) -> None:
     """Validate loaded inputs' metadata against the contracts declared for them.
 
     The runtime leg that cannot be done statically, run for every facet: an input's
-    ``units`` attribute (units), its dims / coords / dtype (schema), and the inferred
+    `units` attribute (units), its dims / coords / dtype (schema), and the inferred
     frequency of its time axis (temporal), are checked against the contract declared
     by its consumer(s). Dims/coords/dtype live in the file header and a frequency
     needs only the 1-D datetime coordinate, so — like units — this executes no node
-    and is suitable as a ``run --dry-run`` pre-flight. A declared input that is not
-    a ``DataArray`` fails unless its hint allows the value, as ``| None`` allows
-    ``None``.
+    and is suitable as a `run --dry-run` pre-flight. A declared input that is not
+    a `DataArray` fails unless its hint allows the value, as `| None` allows
+    `None`.
 
     Every failing input is reported in one `CatenaValueError`, with every failing
-    facet of a ``DataArray``. A malformed declaration raises `CatenaValueError` too.
+    facet of a `DataArray`. A malformed declaration raises `CatenaValueError` too.
     This is a no-op when `xarray-annotated` is switched off.
     """
     if not resolve_enabled():

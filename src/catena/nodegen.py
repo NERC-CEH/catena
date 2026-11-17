@@ -19,7 +19,7 @@ from .specs import NodeSpec
 
 
 def _node_namespace(base: Path | None = None) -> dict[str, Any]:
-    """Build the namespace every generated node's body is ``exec``'d in."""
+    """Build the namespace every generated node's body is `exec`'d in."""
     return {
         "xr": xr,
         "xra": xra,
@@ -28,7 +28,7 @@ def _node_namespace(base: Path | None = None) -> dict[str, Any]:
         # config section does, so a relative .py path is relative to the config.
         "__import_module": partial(import_user_module, base=base),
         # Available to node expressions (e.g. the [[resample]] preset desugars to
-        # ``__transforms.resample(...)``).
+        # `__transforms.resample(...)`).
         "__transforms": import_module("catena.transforms"),
     }
 
@@ -36,13 +36,13 @@ def _node_namespace(base: Path | None = None) -> dict[str, Any]:
 def _module_name(node_specs: list[NodeSpec], base: Path | None) -> str:
     """Return a stable module name, keyed on the specs it is generated from.
 
-    Hamilton requires the generated module to live in ``sys.modules`` (it resolves a
+    Hamilton requires the generated module to live in `sys.modules` (it resolves a
     node's originating function through it), so the registration cannot simply be
     dropped. A random per-build name would therefore leak one entry *per build* —
     unbounded in a long-lived process such as a calibration loop or a test session.
 
     Keying the name on the specs' content, and on the directory a relative
-    ``_import_path`` resolves against, means rebuilding the same config reuses one
+    `_import_path` resolves against, means rebuilding the same config reuses one
     entry, while two different configs still get distinct modules.
     """
     payload = repr((str(base), [astuple(spec) for spec in node_specs])).encode()
@@ -54,16 +54,16 @@ def make_node_module(
 ) -> types.ModuleType:
     """Generate a Hamilton-compatible module with one function per node spec.
 
-    The node's *body* is built by ``exec`` (a ``[[node]]`` expression is arbitrary
+    The node's *body* is built by `exec` (a `[[node]]` expression is arbitrary
     user code), but its declared output contract is attached programmatically:
-    ``xarray_annotated.annotate`` builds the ``Annotated`` return hint from the raw
+    `xarray_annotated.annotate` builds the `Annotated` return hint from the raw
     spec values, then the decorators are applied as ordinary calls — no
-    annotation/decorator source is generated. A node declaring ``units`` has its
-    output stamped with them by ``xarray_annotated.stamp_output_units`` (which
-    replaces a present label only under ``overwrite_units``) before
-    ``xarray_annotated.check_annotations`` checks it.
+    annotation/decorator source is generated. A node declaring `units` has its
+    output stamped with them by `xarray_annotated.stamp_output_units` (which
+    replaces a present label only under `overwrite_units`) before
+    `xarray_annotated.check_annotations` checks it.
 
-    The module is registered in ``sys.modules`` under a content-derived name (see
+    The module is registered in `sys.modules` under a content-derived name (see
     `_module_name`), which Hamilton requires and which keeps repeated builds of the
     same config from accumulating entries.
     """
@@ -100,7 +100,7 @@ def make_node_module(
 
 
 def _check_function_resolves(spec: NodeSpec, ns: dict[str, Any]) -> None:
-    """Raise unless a function node's ``_import_path`` + ``function`` name a callable.
+    """Raise unless a function node's `_import_path` + `function` name a callable.
 
     The generated body looks the function up each time the node runs, so without
     this a misspelt name would pass every check that builds the DAG and fail only
@@ -124,7 +124,7 @@ def _check_function_resolves(spec: NodeSpec, ns: dict[str, Any]) -> None:
 
 
 def _decorate(fn: Any, spec: NodeSpec) -> Any:
-    """Attach the node's declared output contract to the bare ``exec``'d function."""
+    """Attach the node's declared output contract to the bare `exec`'d function."""
     # A declared unit/dims/dtype/coords/freq makes the node a typed producer: validated
     # at runtime and read by the build-time check. Without any, the node is unchecked.
     fn.__annotations__["return"] = spec.return_hint()

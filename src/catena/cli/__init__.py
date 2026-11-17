@@ -7,10 +7,10 @@ turns options into a call to the Python API — `catena.pipeline.run`,
 can do, a downstream project can do from Python, and that is the invariant this
 package exists to keep. Add behaviour to the library module and call it here.
 
-**typer is confined to this package.** It ships in the optional ``cli`` extra, so
-no catena module outside ``catena.cli`` may import it. `main` therefore imports
+**typer is confined to this package.** It ships in the optional `cli` extra, so
+no catena module outside `catena.cli` may import it. `main` therefore imports
 the typer application lazily, which is why the app lives in `catena.cli.app`
-rather than here: the ``catena`` console script is registered by every install,
+rather than here: the `catena` console script is registered by every install,
 including one without the extra, and it must answer with an install hint rather
 than an ImportError traceback.
 """

@@ -14,7 +14,7 @@ from catena.input_checks import InputCheckError
 
 
 def _config(tmp_path, synthetic_data_dir, out, extra=""):
-    """A one-node pipeline writing ``warmth`` to ``out``."""
+    """A one-node pipeline writing `warmth` to `out`."""
     cfg = tmp_path / "config.toml"
     cfg.write_text(
         f"""\

@@ -17,9 +17,9 @@ import pytest
 
 import catena
 
-#: Modules permitted to import the Hamilton API. Everything here either builds a
-#: ``Driver``, generates modules to feed one, configures one, executes one, or reads
-#: the graph one holds. A new name belongs on this list only for the same reason.
+# Modules permitted to import the Hamilton API. Everything here either builds a
+# `Driver`, generates modules to feed one, configures one, executes one, or reads
+# the graph one holds. A new name belongs on this list only for the same reason.
 HAMILTON_IMPORTERS = frozenset(
     {
         "catena.build",
@@ -60,7 +60,7 @@ class TestSubpackagesAreOptionalExtras:
 class TestHamiltonIsConfinedToTheDagModules:
     """Hamilton is an implementation detail of a named handful of modules.
 
-    Nothing stops `config.py` or `io.py` reaching for a ``Driver``, and once one
+    Nothing stops `config.py` or `io.py` reaching for a `Driver`, and once one
     does, "where does Hamilton live?" has no answer again.
     """
 
@@ -79,9 +79,9 @@ class TestHamiltonIsConfinedToTheDagModules:
 
 
 class TestTyperIsConfinedToTheCli:
-    """No catena module outside ``catena.cli`` may import typer.
+    """No catena module outside `catena.cli` may import typer.
 
-    typer ships in the optional ``cli`` extra, so a library import that reached
+    typer ships in the optional `cli` extra, so a library import that reached
     for it would break every install that did not ask for the CLI — and would
     quietly re-establish the CLI as the place logic lives.
     """
@@ -142,7 +142,7 @@ class TestOptionalExtrasStayUnimported:
 
     `build_graph` is re-exported from the package root, so `catena.graph` is
     imported on every `import catena`. Its graphviz import is therefore confined
-    to a ``TYPE_CHECKING`` block, and this is what keeps it there.
+    to a `TYPE_CHECKING` block, and this is what keeps it there.
     """
 
     @pytest.mark.parametrize("package", ["graphviz", "rioxarray", "pyproj"])

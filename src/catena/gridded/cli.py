@@ -1,4 +1,4 @@
-"""``catena gridded`` CLI: parallel Zarr store creation and subset merge."""
+"""`catena gridded` CLI: parallel Zarr store creation and subset merge."""
 
 from pathlib import Path
 from typing import Annotated
@@ -14,11 +14,11 @@ app = typer.Typer(
 
 
 def _require_geo_extra() -> None:
-    """Fail fast with an install hint if the optional ``geo`` extra is absent.
+    """Fail fast with an install hint if the optional `geo` extra is absent.
 
-    The gridded commands reproject through ``rioxarray``/``pyproj``. Checking at
-    the group level means ``catena gridded <cmd>`` reports one clear, actionable
-    message up front, rather than a deep ``ImportError`` part way through a run.
+    The gridded commands reproject through `rioxarray`/`pyproj`. Checking at
+    the group level means `catena gridded <cmd>` reports one clear, actionable
+    message up front, rather than a deep `ImportError` part way through a run.
     """
     from importlib.util import find_spec
 
@@ -64,8 +64,8 @@ def create_store(
 ) -> None:
     """Create empty Zarr stores so subset runs can region-write concurrently.
 
-    Run this once before launching independent ``catena run`` processes that
-    each handle a different ``[subset]`` of the same grid and write to a shared
+    Run this once before launching independent `catena run` processes that
+    each handle a different `[subset]` of the same grid and write to a shared
     Zarr store.
     """
     parsed = load_config(config_file)
@@ -101,12 +101,12 @@ def merge(
 ) -> None:
     """Merge per-subset outputs back into a single file per output section.
 
-    NetCDF parts (``*_<dim><start>-<stop>.nc``) are concatenated and written to the
+    NetCDF parts (`*_<dim><start>-<stop>.nc`) are concatenated and written to the
     config's declared path; a shared Zarr store is unstacked into a sibling
-    ``*_gridded.zarr`` store.  Use ``--out`` to override the destination.
+    `*_gridded.zarr` store.  Use `--out` to override the destination.
 
-    The partition dimension is read from the config's ``[subset]`` section (so the
-    part filenames match what the subset runs wrote), defaulting to ``pixel``.
+    The partition dimension is read from the config's `[subset]` section (so the
+    part filenames match what the subset runs wrote), defaulting to `pixel`.
     """
     parsed = load_config(config_file)
     dim = parsed.subset_spec.dim if parsed.subset_spec is not None else "pixel"
