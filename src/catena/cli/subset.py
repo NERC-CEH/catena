@@ -1,4 +1,4 @@
-"""`catena gridded` CLI: shared Zarr store creation and subset merge."""
+"""`catena subset`: create shared Zarr stores for subset runs, and merge the results."""
 
 from pathlib import Path
 from typing import Annotated
@@ -6,38 +6,11 @@ from typing import Annotated
 import typer
 
 from ..config import load_config
-from .io import create_output_store, merge_subset_outputs
+from ..subsets import create_output_store, merge_subset_outputs
 
 app = typer.Typer(
     help="Parallel subset runs: pre-create shared Zarr stores and merge the results."
 )
-
-
-def _require_geo_extra() -> None:
-    """Fail fast with an install hint if the optional `geo` extra is absent.
-
-    The gridded commands reproject through `rioxarray`/`pyproj`. Checking at
-    the group level means `catena gridded <cmd>` reports one clear, actionable
-    message up front, rather than a deep `ImportError` part way through a run.
-    """
-    from importlib.util import find_spec
-
-    missing = [pkg for pkg in ("rioxarray", "pyproj") if find_spec(pkg) is None]
-    if missing:
-        typer.echo(
-            f"The 'catena gridded' commands require the optional 'geo' extra "
-            f"(missing: {', '.join(missing)}). Install it with "
-            '`pip install "ukceh-catena[geo] @ '
-            'git+https://github.com/NERC-CEH/catena"`.',
-            err=True,
-        )
-        raise typer.Exit(code=1)
-
-
-@app.callback()
-def gridded() -> None:
-    """Validate the optional geospatial dependencies before any gridded command."""
-    _require_geo_extra()
 
 
 @app.command()

@@ -183,7 +183,7 @@ dim = "y"
 
     def _subset_path(self, out_path):
         """The auto-suffixed NetCDF path a [subset] run writes to."""
-        from catena.gridded.io import subset_suffix
+        from catena.subsets import subset_suffix
 
         return out_path.with_name(
             f"{out_path.stem}{subset_suffix(_ROW_A)}{out_path.suffix}"
@@ -282,7 +282,7 @@ vars = ["mean_temperature"]
             result = runner.invoke(app, ["run", str(config), "--subset", subset])
             assert result.exit_code == 0, result.output
         assert not out_path.exists()
-        result = runner.invoke(app, ["gridded", "merge", str(config), "--dim", "y"])
+        result = runner.invoke(app, ["subset", "merge", str(config), "--dim", "y"])
         assert result.exit_code == 0, result.output
         merged = xr.open_dataset(out_path).load()
         out_path.unlink()
@@ -352,7 +352,7 @@ vars = ["doubled"]
         for subset in ("site:0:2", "site:2:4"):
             result = runner.invoke(app, ["run", str(config), "--subset", subset])
             assert result.exit_code == 0, result.output
-        result = runner.invoke(app, ["gridded", "merge", str(config), "--dim", "site"])
+        result = runner.invoke(app, ["subset", "merge", str(config), "--dim", "site"])
         assert result.exit_code == 0, result.output
         np.testing.assert_array_equal(
             xr.open_dataset(out_path)["doubled"].values, np.arange(4.0) * 2

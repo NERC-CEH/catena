@@ -12,6 +12,7 @@ import xarray as xr
 from .errors import CatenaFileNotFoundError, CatenaPermissionError, CatenaValueError
 from .formats import format_for
 from .specs import IOSpec, SubsetSpec
+from .subsets import open_region_store, save_zarr_region, subset_path
 
 
 def effective_suffix(label: str, spec: IOSpec) -> str:
@@ -389,8 +390,6 @@ def save_outputs(
             written[label] = Path(path)
             continue
 
-        from .gridded.io import save_zarr_region, subset_path  # lazy: geo extra
-
         if format_for(path).needs_store:
             save_zarr_region(ds, path, subset_spec)
             written[label] = Path(path)
@@ -421,8 +420,6 @@ def assert_output_paths_writable(
         fmt = format_for(spec.path)
 
         if subset_spec is not None:
-            from .gridded.io import open_region_store, subset_path  # lazy: geo extra
-
             if fmt.needs_store:
                 open_region_store(spec.path, subset_spec)
                 continue  # the region write targets the existing store directly

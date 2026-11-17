@@ -78,10 +78,10 @@ nav = [
           "reference/modules/catena.wiring_check.md",
           "reference/modules/catena.input_checks.md",
           "reference/modules/catena.pipeline.md",
+          "reference/modules/catena.subsets.md",
           "reference/modules/catena.graph.md",
           "reference/modules/catena.graph_style.md",
           "reference/modules/catena.gridded/io.md",
-          "reference/modules/catena.gridded/cli.md",
       ]},
   ]},
 ]

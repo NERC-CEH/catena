@@ -1,4 +1,4 @@
-"""Optional gridded (CRS) geospatial + parallel-Zarr layer for catena.
+"""Optional gridded (CRS) geospatial layer for catena.
 
 **The lazy-import policy, stated once.** Everywhere else in catena, an import of
 `catena.gridded` sits inside a function body and carries at most a
@@ -8,7 +8,7 @@
   geospatial dependency, so it never imports this package at module
   load — only from inside the functions that actually need it, and only once an
   input has been found to carry CRS metadata (`has_crs`, a cheap, dependency-free
-  CF-metadata check) or a `[subset]` has been configured.
+  CF-metadata check).
 - The dependencies are optional. The CRS paths need the `geo` extra
   (`rioxarray`/`pyproj`), which is imported lazily *within* those functions
   (`catena.gridded.io._ensure_rio`). Importing this package is therefore cheap and
@@ -23,17 +23,11 @@ that (`test_arbitrary_dims.py::test_no_geospatial_deps_imported_without_crs`).
 from .io import (
     MisalignedGridError,
     compute_lat_lon,
-    create_output_store,
     has_crs,
-    merge_subset_outputs,
-    subset_suffix,
 )
 
 __all__ = [
     "MisalignedGridError",
     "compute_lat_lon",
-    "create_output_store",
     "has_crs",
-    "merge_subset_outputs",
-    "subset_suffix",
 ]

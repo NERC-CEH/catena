@@ -26,27 +26,27 @@ Each subcommand wraps a [Python API](python-api.md) function, so anything below 
     :width: 80
     :prompt: ❯
 
-## `catena gridded`
+## `catena subset`
 
-Commands that bracket a set of parallel `[subset]` runs (needs the `geo` extra): create the shared store, then merge the parts.
+Commands that bracket a set of parallel `[subset]` runs: create the shared store, then merge the parts.
 See [Scale up](../guides/run/scale-up.md#parallel-subset-runs) for the workflow.
 
-### `catena gridded create-store`
+### `catena subset create-store`
 
 ::: mkdocs-typer2
     :module: catena.cli.app
     :name: catena
-    :command: gridded create-store
+    :command: subset create-store
     :termynal: true
     :width: 80
     :prompt: ❯
 
-### `catena gridded merge`
+### `catena subset merge`
 
 ::: mkdocs-typer2
     :module: catena.cli.app
     :name: catena
-    :command: gridded merge
+    :command: subset merge
     :termynal: true
     :width: 80
     :prompt: ❯

@@ -81,13 +81,13 @@ For non-gridded data it is whatever the files call it, such as `location` or `si
 Every input that has the dimension must have the same length along it.
 
 Each process reads only its slice and writes its outputs in the usual layout.
-The processes share one output `path`, so catena keeps their writes apart, and `catena gridded merge` (in the `geo` extra) finishes the job.
+The processes share one output `path`, so catena keeps their writes apart, and `catena subset merge` finishes the job.
 
 **NetCDF** — each process writes its own part (`weekly.nc` → `weekly_y0-50.nc`), with no setup needed:
 
 ```sh
 parallel catena run config.toml --subset y:{} ::: 0:50 50:100 100:150
-catena gridded merge config.toml --dim y          # concatenate the parts into weekly.nc
+catena subset merge config.toml --dim y          # concatenate the parts into weekly.nc
 ```
 
 `merge` refuses to run unless the parts cover the dimension end to end, so a run that died cannot leave a silent gap.
@@ -97,9 +97,9 @@ Pass `--out <path>` (single-output configs only) to choose a destination.
 **Zarr** — all processes write regions of one shared store, created once up front:
 
 ```sh
-catena gridded create-store config.toml --dim y --chunk 50   # build the empty store(s)
+catena subset create-store config.toml --dim y --chunk 50   # build the empty store(s)
 parallel catena run config.toml --subset y:{} ::: 0:50 50:100 100:150
-catena gridded merge config.toml                  # check every region was written
+catena subset merge config.toml                    # check every region was written
 ```
 
 The store is the finished output, in the layout an ordinary run writes, so nothing is copied afterwards.

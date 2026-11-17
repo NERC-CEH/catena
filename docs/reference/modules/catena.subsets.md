@@ -1,0 +1,3 @@
+# `subsets`
+
+::: catena.subsets

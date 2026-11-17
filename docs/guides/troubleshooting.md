@@ -17,10 +17,6 @@ brew install graphviz         # macOS
 sudo dnf install graphviz     # Fedora
 ```
 
-### `catena gridded` reports a missing extra
-
-Install the `geo` extra; see [Installation](install.md#extras).
-
 ## Wiring and contracts
 
 ### "Required input X not provided" / an unbound input
@@ -74,7 +70,7 @@ A subset run produced a time axis that differs from the shared store's, so the c
 Re-create the store from the current config:
 
 ```sh
-catena gridded create-store config.toml --overwrite
+catena subset create-store config.toml --overwrite
 ```
 
 `--overwrite` erases what other subset runs have written, so re-run them all afterwards.

@@ -55,7 +55,7 @@ class Format:
     write: Writer
     needs_store: bool = False
     """Whether subset runs write into one shared store, which must be created up front
-    with `catena gridded create-store`. If false, each subset writes its own file.
+    with `catena subset create-store`. If false, each subset writes its own file.
     """
 
 

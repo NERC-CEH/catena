@@ -48,30 +48,6 @@ def test_help_keeps_bracketed_section_names():
     assert "[outputs.*] sections" in result.output
 
 
-class TestGriddedGeoExtraGuard:
-    """`catena gridded` fails fast with an install hint when `geo` is absent."""
-
-    def test_missing_extra_exits_with_hint(self, monkeypatch):
-        import importlib.util as importutil
-
-        real = importutil.find_spec
-
-        def fake_find_spec(name, *args, **kwargs):
-            if name in ("rioxarray", "pyproj"):
-                return None
-            return real(name, *args, **kwargs)
-
-        monkeypatch.setattr(importutil, "find_spec", fake_find_spec)
-
-        result = runner.invoke(app, ["gridded", "merge", "tests/test_config.toml"])
-        assert result.exit_code == 1
-        assert (
-            '"ukceh-catena[geo] @ git+https://github.com/NERC-CEH/catena"'
-            in result.output
-        )
-        assert "rioxarray" in result.output
-
-
 class TestMissingTyperExtra:
     """Without the extra, `catena` must explain itself, not traceback.
 

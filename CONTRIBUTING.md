@@ -98,7 +98,7 @@ Please consider the following design principles:
 
 - **Expose Hamilton and xarray rather than wrapping them.** Strongly prefer a thin passthrough to a new abstraction.
 - **The core should remain domain-agnostic.** Don't build in assumptions about data structure or attributes (e.g. requiring a time axis).
-  - The exception to this rule: geospatial and parallel-Zarr code lives in `catena.gridded` behind lazy imports.
+  - The exception to this rule: geospatial code lives in `catena.gridded` behind lazy imports.
 - **The CLI should stay a thin wrapper.** Don't build functionality _into_ the CLI.
 - **Contract checks should run at build time.** A feature that only works by deferring validation to runtime needs a different design.
 - **Minimise dependency bloat.** Self-explanatory.

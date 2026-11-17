@@ -255,7 +255,7 @@ dim   = "y"
 `catena run --subset DIM:START:STOP` (and the `subset` argument of `catena.run`) replaces this section, so parallel runs can share one config.
 
 Each NetCDF part is written to its own suffixed file (`out_location0-500.nc`).
-A Zarr output is region-written into a shared store that [`catena gridded create-store`](cli.md#catena-gridded-create-store) builds first.
+A Zarr output is region-written into a shared store that [`catena subset create-store`](cli.md#catena-subset-create-store) builds first.
 
 ## Validation
 

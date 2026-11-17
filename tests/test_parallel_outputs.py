@@ -10,19 +10,19 @@ import xarray as xr
 
 from catena.config import IOSpec, SubsetSpec
 from catena.errors import CatenaFileExistsError, CatenaValueError
-from catena.gridded.io import (
-    _find_subset_parts,
-    create_output_store,
-    merge_subset_outputs,
-    save_zarr_region,
-    subset_suffix,
-)
 from catena.io import (
     assert_output_paths_writable,
     get_final_vars,
     get_outputs,
     load_inputs,
     save_outputs,
+)
+from catena.subsets import (
+    _find_subset_parts,
+    create_output_store,
+    merge_subset_outputs,
+    save_zarr_region,
+    subset_suffix,
 )
 
 VAR = "mean_temperature"
@@ -463,19 +463,19 @@ class TestCLIParallelWorkflow:
         config.write_text(_config_text(synthetic_data_dir, store))
 
         r = runner.invoke(
-            app, ["gridded", "create-store", str(config), "--dim", "y", "--chunk", "1"]
+            app, ["subset", "create-store", str(config), "--dim", "y", "--chunk", "1"]
         )
         assert r.exit_code == 0, r.output
         assert store.exists()
 
         r = runner.invoke(app, ["run", str(config), "--subset", "y:0:1"])
         assert r.exit_code == 0, r.output
-        r = runner.invoke(app, ["gridded", "merge", str(config)])
+        r = runner.invoke(app, ["subset", "merge", str(config)])
         assert r.exit_code != 0  # half the store is still unwritten
 
         r = runner.invoke(app, ["run", str(config), "--subset", "y:1:2"])
         assert r.exit_code == 0, r.output
-        r = runner.invoke(app, ["gridded", "merge", str(config)])
+        r = runner.invoke(app, ["subset", "merge", str(config)])
         assert r.exit_code == 0, r.output
 
         filled = xr.open_zarr(store, consolidated=False).compute()
@@ -516,14 +516,12 @@ dim = "site"
 """
         )
         runner = CliRunner()
-        r = runner.invoke(
-            app, ["gridded", "create-store", str(config), "--dim", "site"]
-        )
+        r = runner.invoke(app, ["subset", "create-store", str(config), "--dim", "site"])
         assert r.exit_code == 0, r.output
         for subset in ("site:0:2", "site:2:6"):
             r = runner.invoke(app, ["run", str(config), "--subset", subset])
             assert r.exit_code == 0, r.output
-        r = runner.invoke(app, ["gridded", "merge", str(config)])
+        r = runner.invoke(app, ["subset", "merge", str(config)])
         assert r.exit_code == 0, r.output
         np.testing.assert_array_equal(
             xr.open_zarr(store, consolidated=False)["doubled"].values,
@@ -560,7 +558,7 @@ class TestConcurrentZarrWrites:
 
         # One process per row of the 2x2 grid, each writing its own chunk.
         r = CliRunner().invoke(
-            app, ["gridded", "create-store", str(config), "--dim", "y", "--chunk", "1"]
+            app, ["subset", "create-store", str(config), "--dim", "y", "--chunk", "1"]
         )
         assert r.exit_code == 0, r.output
 

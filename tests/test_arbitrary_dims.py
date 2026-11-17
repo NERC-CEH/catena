@@ -141,8 +141,8 @@ class TestSubsetArbitraryDim:
 
     def test_subset_over_non_pixel_dim(self, tmp_path):
         """Subset parts over `location` merge back to the full run, exactly."""
-        from catena.gridded.io import merge_subset_outputs
         from catena.io import save_outputs
+        from catena.subsets import merge_subset_outputs
 
         # Reference: the whole thing in one go.
         parsed = load_config(self._config(tmp_path))
@@ -180,7 +180,7 @@ class TestSubsetArbitraryDim:
     def test_zarr_store_partitioned_over_non_pixel_dim(self, tmp_path):
         """A shared Zarr store works over `location` as it does over a grid row."""
         from catena import run
-        from catena.gridded.io import create_output_store, merge_subset_outputs
+        from catena.subsets import create_output_store, merge_subset_outputs
 
         cfg = self._config(
             tmp_path, subset='\n[subset]\nstart = 0\nstop = 2\ndim = "location"\n'
