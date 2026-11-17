@@ -159,7 +159,7 @@ class TestCLISubset:
     def subset_config_toml(self, tmp_path, synthetic_data_dir):
         out_path = tmp_path / "outputs.nc"
         # Load only what the pipeline consumes (temperature_daily), so a real
-        # ``catena run`` stays free of the unused-input WiringWarning. Broad
+        # `catena run` stays free of the unused-input WiringWarning. Broad
         # multi-section configs are exercised by the parser tests instead.
         content = f"""\
 [[node]]

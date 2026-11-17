@@ -1,8 +1,8 @@
 """Tests for modules an installed package registers by entry point.
 
-A downstream package declares its own modules under the ``catena.modules``
+A downstream package declares its own modules under the `catena.modules`
 entry-point group, and a config may then name one as a bare section with no
-``_import_path``. These tests build `importlib.metadata.EntryPoint` objects
+`_import_path`. These tests build `importlib.metadata.EntryPoint` objects
 directly rather than installing packages, so they exercise catena's handling of
 what the metadata says without a real install.
 """
@@ -251,7 +251,7 @@ class TestARealInstalledDistribution:
 
     The tests above monkeypatch `entry_points`, so they check catena's handling of
     what the metadata says without checking that real metadata is read correctly.
-    This builds a ``.dist-info`` directory on ``sys.path`` and lets
+    This builds a `.dist-info` directory on `sys.path` and lets
     `importlib.metadata` discover it, which is the mechanism a downstream package
     actually uses.
     """

@@ -1,14 +1,14 @@
-"""Tests for the ``freq`` contract facet (xarray-annotated's temporal domain).
+"""Tests for the `freq` contract facet (xarray-annotated's temporal domain).
 
 The frequency (and phase) of a node's time axis is one more facet of the whole-DAG
-contract check: declared with ``Annotated[DataArray, Freq("7D")]`` (or a ``freq``
-key on a ``[[node]]``), compared marker-vs-marker at build time and marker-vs-array
-in ``--dry-run``. A ``[[resample]]`` is exactly what changes it, so it declares its
+contract check: declared with `Annotated[DataArray, Freq("7D")]` (or a `freq`
+key on a `[[node]]`), compared marker-vs-marker at build time and marker-vs-array
+in `--dry-run`. A `[[resample]]` is exactly what changes it, so it declares its
 own output frequency.
 
 Frequency validation is opt-in: an input is only checked where a consumer declares
-a ``Freq`` for it. The old label-magic validator (``_validate_dates``, keyed on the
-section being called ``daily``/``weekly``/``monthly``) is gone.
+a `Freq` for it. The old label-magic validator (`_validate_dates`, keyed on the
+section being called `daily`/`weekly`/`monthly`) is gone.
 """
 
 import sys
@@ -66,7 +66,7 @@ def _build(*mods) -> driver.Driver:
 
 
 def _producer(name: str, marker: Freq | None):
-    """A single-output node producing ``name``, optionally declaring a frequency."""
+    """A single-output node producing `name`, optionally declaring a frequency."""
     hint = Annotated[xr.DataArray, marker] if marker else xr.DataArray
 
     def prod() -> hint:  # type: ignore[valid-type]
@@ -77,7 +77,7 @@ def _producer(name: str, marker: Freq | None):
 
 
 def _consumer(marker: Freq, in_name: str = "flux", name: str = "cons"):
-    """A node consuming ``in_name`` and declaring the given frequency for it."""
+    """A node consuming `in_name` and declaring the given frequency for it."""
     src = (
         "from typing import Annotated\n"
         "import xarray as xr\n"
@@ -465,8 +465,8 @@ class TestCalendarSteps:
 def _write_config(tmp_path, module: str) -> str:
     """A one-input pipeline whose sole (user-module) node consumes the daily input.
 
-    The input is *daily*; what ``module``'s node declares about it is the variable
-    under test. A ``[[node]]``'s ``freq`` key declares its *output*, so the input leg
+    The input is *daily*; what `module`'s node declares about it is the variable
+    under test. A `[[node]]`'s `freq` key declares its *output*, so the input leg
     of the check is reached the same way it is for units: from a user module's
     parameter annotation.
     """
@@ -490,7 +490,7 @@ vars = ["mean_temperature"]
 
 
 def _model(declared: Freq):
-    """A user-module node consuming ``temperature_daily`` at a declared frequency."""
+    """A user-module node consuming `temperature_daily` at a declared frequency."""
     src = (
         "from typing import Annotated\n"
         "import xarray as xr\n"

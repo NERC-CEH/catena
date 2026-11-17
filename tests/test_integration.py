@@ -84,7 +84,7 @@ class TestGridInputs:
 
 
 class TestLatLonUnitContract:
-    """A node may declare a unit on the computed ``latitude``."""
+    """A node may declare a unit on the computed `latitude`."""
 
     @staticmethod
     def _config(tmp_path, synthetic_data_dir, monkeypatch):
@@ -171,7 +171,7 @@ class TestDriverExecution:
 
 
 class TestGappyAndCalendarDeclarations:
-    """A pipeline whose axes only the 0.8 ``Freq`` declarations can describe."""
+    """A pipeline whose axes only the 0.8 `Freq` declarations can describe."""
 
     def test_gaps_ok_python_node_and_month_toml_node(self, tmp_path, monkeypatch):
         gappy = pd.date_range("2025-01-01", periods=31, freq="D").append(

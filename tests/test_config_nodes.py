@@ -1,16 +1,16 @@
 """[[node]] entries must inject their declared contracts into the built functions.
 
-The existing ``test_config.toml`` defines a ``[[node]]`` entry, but it declares no
+The existing `test_config.toml` defines a `[[node]]` entry, but it declares no
 contracts (no units, freq, dims, or dtype), so the full integration suite never
 exercises the annotation-injection-and-decorator-wrapping path. These tests build
 nodes with the same shapes that real pipelines rely on and assert the declared
 contract survives the entire chain: TOML → parse → NodeSpec → make_node_module →
-build_driver → Hamilton Node.callable → ``typing.get_type_hints``.
+build_driver → Hamilton Node.callable → `typing.get_type_hints`.
 
-Reading the hints back through ``get_type_hints(include_extras=True)`` catches
-the injection being lost across ``functools.wraps`` — the Python 3.14 failure
-mode where PEP 749 swapped ``__annotations__`` for ``__annotate__`` in
-``functools.WRAPPER_ASSIGNMENTS``. Fixed in xarray-annotated 0.4.1.
+Reading the hints back through `get_type_hints(include_extras=True)` catches
+the injection being lost across `functools.wraps` — the Python 3.14 failure
+mode where PEP 749 swapped `__annotations__` for `__annotate__` in
+`functools.WRAPPER_ASSIGNMENTS`. Fixed in xarray-annotated 0.4.1.
 """
 
 import textwrap
@@ -130,7 +130,7 @@ def node_driver(node_config):
 
 
 def _node_hints(driver):
-    """Return ``get_type_hints`` for every real node in the graph."""
+    """Return `get_type_hints` for every real node in the graph."""
     return {
         name: typing.get_type_hints(
             driver.graph.nodes[name].callable, include_extras=True
@@ -143,9 +143,9 @@ def _node_hints(driver):
 class TestNodeLowering:
     """The contract must survive exec, injection, and decorator wrapping.
 
-    Reading the hints through ``get_type_hints(include_extras=True)`` on
+    Reading the hints through `get_type_hints(include_extras=True)` on
     Hamilton's own node callable catches the Python 3.14 failure mode where
-    PEP 749 dropped the injected return annotation across ``functools.wraps``.
+    PEP 749 dropped the injected return annotation across `functools.wraps`.
     """
 
     def test_driver_builds(self, node_driver):

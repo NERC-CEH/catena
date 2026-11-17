@@ -47,7 +47,7 @@ def _build(*mods) -> driver.Driver:
 
 
 def _consumer_module(register):
-    """A node ``out`` requiring external input ``x``."""
+    """A node `out` requiring external input `x`."""
 
     def out(x: xr.DataArray) -> xr.DataArray:
         return x

@@ -1,6 +1,6 @@
 """Tests for the resample transform and the [[resample]] preset pipeline.
 
-``[[resample]]`` is a preset that desugars to fan-out ``[[node]]`` entries applying
+`[[resample]]` is a preset that desugars to fan-out `[[node]]` entries applying
 `catena.transforms.resample`; there is no dedicated DAG module.
 These tests cover the transform directly and end-to-end via a built driver.
 """
@@ -74,7 +74,7 @@ class TestResampleTransform:
 
 
 class TestResampleTimeDim:
-    """The time axis is detected, not assumed to be called ``time``."""
+    """The time axis is detected, not assumed to be called `time`."""
 
     def test_time_axis_need_not_be_called_time(self):
         da = _daily_da(14, 1).rename({"time": "acquired"})
@@ -130,7 +130,7 @@ class TestResamplePresetPipeline:
         np.testing.assert_allclose(out.isel(time=0).values, expected)
 
     def test_freq_is_independent_of_the_to_label(self):
-        # ``to`` only names the output node; ``freq`` alone sets the frequency.
+        # `to` only names the output node; `freq` alone sets the frequency.
         dr = self._driver(
             {
                 "vars": ["temperature"],
@@ -220,7 +220,7 @@ class TestResampleSpecValidation:
 
     def test_any_direction_is_allowed_given_a_freq(self):
         # There is no table of "supported directions" any more: the labels are
-        # arbitrary and ``freq`` says what actually happens.
+        # arbitrary and `freq` says what actually happens.
         from catena.config import ResampleSpec
 
         spec = ResampleSpec.from_config(

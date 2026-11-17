@@ -1,8 +1,8 @@
-"""Tests for resolving an ``_import_path`` to a module.
+"""Tests for resolving an `_import_path` to a module.
 
-Two forms, told apart by the ``.py`` suffix: a dotted name imported from the
+Two forms, told apart by the `.py` suffix: a dotted name imported from the
 environment, or a file loaded from a path that is relative to the config. The file
-form deliberately does not support importing another loose ``.py`` file, so the
+form deliberately does not support importing another loose `.py` file, so the
 error a user gets when they try is part of the contract.
 """
 
@@ -59,9 +59,9 @@ class TestFileForm:
 
 
 class TestNoCollisionBetweenDirectories:
-    """Two configs, each with its own ``nodes.py``, in one process.
+    """Two configs, each with its own `nodes.py`, in one process.
 
-    Appending each directory to ``sys.path`` and importing ``nodes`` would hand the
+    Appending each directory to `sys.path` and importing `nodes` would hand the
     second config the first one's module, silently. Loading by file location under
     a path-derived name is what prevents that.
     """
@@ -88,9 +88,9 @@ class TestNoCollisionBetweenDirectories:
 
 
 class TestSiblingImportsAreUnsupported:
-    """A loose ``.py`` file may import installed packages, and nothing else.
+    """A loose `.py` file may import installed packages, and nothing else.
 
-    Supporting it would mean putting the config's directory on ``sys.path``, which
+    Supporting it would mean putting the config's directory on `sys.path`, which
     is what makes two same-named siblings collide. The error has to send the user
     to packaging instead of failing as a bare ModuleNotFoundError.
     """
@@ -153,8 +153,8 @@ class TestThroughTheConfig:
 class TestAChangedFileIsReloaded:
     """A file-form module must not be pinned to the code it had when first loaded.
 
-    Editing ``nodes.py`` and re-running is the documented notebook workflow, and
-    the ``sys.modules`` key is a hash of the path, so a user cannot evict a stale
+    Editing `nodes.py` and re-running is the documented notebook workflow, and
+    the `sys.modules` key is a hash of the path, so a user cannot evict a stale
     module by hand even knowing it is there.
     """
 

@@ -65,9 +65,9 @@ class TestSyntheticDataGeneration:
 class TestSyntheticDataValues:
     """Tests for the fixture generator's explicit per-variable value contracts.
 
-    Each variable is assigned a value shape: ``humidity``/``cloud_fraction`` are
-    bounded to [0, 1]; ``precipitation``/``wind_speed`` are non-negative;
-    ``surface_type`` is integer-valued.
+    Each variable is assigned a value shape: `humidity`/`cloud_fraction` are
+    bounded to [0, 1]; `precipitation`/`wind_speed` are non-negative;
+    `surface_type` is integer-valued.
     """
 
     def test_bounded_vars_in_unit_interval(self, daily_ds):

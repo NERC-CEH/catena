@@ -17,7 +17,7 @@ OVERVIEW_NAMES = sorted(set(re.findall(r"\| \[`(\w+)`\]", OVERVIEW)))
 
 
 class TestPythonApiPage:
-    """``docs/reference/python-api.md`` is hand-written, and nothing regenerates it.
+    """`docs/reference/python-api.md` is hand-written, and nothing regenerates it.
 
     It names a subset of the API in its overview table and maps every module in
     the section below, so both halves can drift out of step with the package.
@@ -42,7 +42,7 @@ class TestPythonApiPage:
         """The reverse direction: a module with no page is invisible in the docs.
 
         AGENTS.md requires every top-level module to be listed under
-        ``docs/reference/modules/``. Only the forward direction was checked, so
+        `docs/reference/modules/`. Only the forward direction was checked, so
         `catena.errors` -- the exception types a downstream package catches --
         went undocumented.
         """
@@ -83,7 +83,7 @@ class TestPythonApiPage:
             importlib.import_module(name)
 
     def test_nothing_is_rendered_from_the_catena_root(self):
-        """A ``::: catena`` block would re-render symbols the module pages own.
+        """A `::: catena` block would re-render symbols the module pages own.
 
         Two renderings of one object produce two pages carrying the same anchor,
         so cross-references and search results land on an arbitrary one of them.
@@ -94,6 +94,6 @@ class TestPythonApiPage:
 
 
 def test_decision_records_are_not_rendered():
-    """``docs/adr/`` is for maintainers, so the docs site must not publish it."""
+    """`docs/adr/` is for maintainers, so the docs site must not publish it."""
     config = tomllib.loads(ZENSICAL.read_text())["project"]
     assert "adr/" in config.get("exclude_docs", "").split()

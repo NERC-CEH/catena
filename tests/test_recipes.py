@@ -95,7 +95,7 @@ def test_flux_notebook_executes(tmp_path: Path) -> None:
 
 
 def _write_inputs(recipe: Path) -> None:
-    """Call the recipe's own ``make_data.write_inputs``, loaded by path."""
+    """Call the recipe's own `make_data.write_inputs`, loaded by path."""
     spec = importlib.util.spec_from_file_location(
         f"{recipe.name}_make_data", recipe / "make_data.py"
     )

@@ -64,17 +64,17 @@ class TestLoadInputsGrid:
 
 
 class TestRenamedSpatialDims:
-    """Grids whose spatial dims are not literally named ``x``/``y``.
+    """Grids whose spatial dims are not literally named `x`/`y`.
 
-    `compute_lat_lon` used to build its intermediate grid with hardcoded ``x``/``y``
+    `compute_lat_lon` used to build its intermediate grid with hardcoded `x`/`y`
     dims, so for an easting/northing input the lat/lon MultiIndex levels were named
-    ``y``/``x`` while every data variable's were named ``northing``/``easting`` —
-    alignment on ``pixel`` then quietly produced NaNs.
+    `y`/`x` while every data variable's were named `northing`/`easting` —
+    alignment on `pixel` then quietly produced NaNs.
     """
 
     @pytest.fixture
     def easting_northing_nc(self, tmp_path):
-        """A CRS-bearing NetCDF whose spatial dims are ``easting``/``northing``."""
+        """A CRS-bearing NetCDF whose spatial dims are `easting`/`northing`."""
         import rioxarray as _rioxarray  # noqa: F401  (registers .rio)
         import xarray as xr
 

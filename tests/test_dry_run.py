@@ -1,14 +1,14 @@
-"""Tests for the :func:`catena.dry_run` pre-flight and its building blocks.
+"""Tests for the `catena.dry_run` pre-flight and its building blocks.
 
 Three layers:
 
-- direct tests of :func:`catena.contract_check.check_input_contracts` (the runtime,
-  data-dependent unit check), built on tiny Hamilton drivers so the inputs' ``units``
+- direct tests of `catena.contract_check.check_input_contracts` (the runtime,
+  data-dependent unit check), built on tiny Hamilton drivers so the inputs' `units`
   attributes and the active mode are fully under test control;
-- direct tests of :func:`catena.io.assert_output_paths_writable`;
+- direct tests of `catena.io.assert_output_paths_writable`;
 - tests of the broader pre-flight (config / inputs / DAG plan / output paths) against
-  the :class:`catena.DryRunReport` that ``dry_run`` returns, plus a thin layer
-  checking that ``catena run --dry-run`` renders every stage of it.
+  the `catena.DryRunReport` that `dry_run` returns, plus a thin layer
+  checking that `catena run --dry-run` renders every stage of it.
 """
 
 import os
@@ -41,7 +41,7 @@ runner = CliRunner()
 
 @pytest.fixture
 def register():
-    """Register synthetic modules in ``sys.modules`` and clean them up afterwards."""
+    """Register synthetic modules in `sys.modules` and clean them up afterwards."""
     names: list[str] = []
 
     def _make(name: str, *funcs) -> types.ModuleType:
@@ -60,7 +60,7 @@ def register():
 
 
 def _consumer(unit: str, name: str = "consumer", in_name: str = "vpd_weekly"):
-    """A node consuming ``in_name`` with the given declared input unit."""
+    """A node consuming `in_name` with the given declared input unit."""
     src = (
         "from typing import Annotated, TypedDict\n"
         "import xarray as xr\n"
@@ -93,7 +93,7 @@ def _input(units_attr: str | None = None) -> xr.DataArray:
 class TestCheckInputUnitsDirect:
     @pytest.fixture
     def dr(self, register):
-        """Driver with external input ``vpd_weekly`` consumed declaring ``Pa``."""
+        """Driver with external input `vpd_weekly` consumed declaring `Pa`."""
         register("vpd_cons", _consumer("Pa"))
         return build_driver(["vpd_cons"], {})
 
@@ -161,7 +161,7 @@ class TestCheckInputUnitsDirect:
 
 class TestCheckInputUnitsThroughNodes:
     def _resample_driver(self, register, **contract):
-        """External ``gpp_weekly`` -> resample -> ``gpp_monthly`` (rate)."""
+        """External `gpp_weekly` -> resample -> `gpp_monthly` (rate)."""
         register("rs_cons", _consumer("g m-2 d-1", in_name="gpp_monthly"))
         specs = ResampleSpec(
             vars=["gpp"],
@@ -407,7 +407,7 @@ def total(
 
 
 def _unbound_config(tmp_path, units: str = "degC", outputs: bool = False) -> str:
-    """The issue #26 reproduction: nothing provides ``total``'s ``offset``."""
+    """The issue #26 reproduction: nothing provides `total`'s `offset`."""
     (tmp_path / "nodes.py").write_text(_TOTAL_MODULE)
     xr.Dataset(
         {"t": ("time", [0.0, 1.0, 2.0], {"units": "degC"})},
@@ -550,7 +550,7 @@ class TestSwitchedOff:
 
 
 class TestDryRunRendering:
-    """Captured CLI output carries no escape codes, because ``typer.echo`` strips them
+    """Captured CLI output carries no escape codes, because `typer.echo` strips them
     when stdout is not a terminal.
     """
 

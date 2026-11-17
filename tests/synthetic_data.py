@@ -1,6 +1,6 @@
 """Synthetic input-data generation for the test suite.
 
-A small, self-contained replacement for the old ``catena.setup_utils``
+A small, self-contained replacement for the old `catena.setup_utils`
 generator. It writes four gridded NetCDF files (daily / weekly / monthly /
 static) on a regular lat/lon grid, using a domain-neutral geophysical
 vocabulary and a handful of explicit value shapes (gaussian, non-negative,
@@ -8,8 +8,8 @@ bounded [0, 1], integer).
 
 Unlike the generator it replaces, this builds the datasets with plain
 numpy/xarray rather than routing through the Hamilton DAG. The only catena
-code it reuses is ``unstack_if_gridded`` from the IO layer, so the on-disk
-grid/CRS layout matches exactly what ``catena.io.load_inputs`` reads back.
+code it reuses is `unstack_if_gridded` from the IO layer, so the on-disk
+grid/CRS layout matches exactly what `catena.io.load_inputs` reads back.
 """
 
 import numpy as np
@@ -53,7 +53,7 @@ START_DATE = "2020-01-01"
 
 
 def _noise(kind: str, shape: tuple[int, ...]) -> np.ndarray:
-    """Random values for the given value ``kind``."""
+    """Random values for the given value `kind`."""
     if kind == "bounded":
         return np.clip(np.random.normal(0.5, 0.2, shape), 0.0, 1.0)
     if kind == "positive":
@@ -64,7 +64,7 @@ def _noise(kind: str, shape: tuple[int, ...]) -> np.ndarray:
 
 
 def _pixel_index(n_lat: int, n_lon: int) -> pd.MultiIndex:
-    """Stacked ``pixel`` MultiIndex from the lat/lon cartesian product."""
+    """Stacked `pixel` MultiIndex from the lat/lon cartesian product."""
     lat = np.linspace(50.0, 54.0, n_lat)
     lon = np.linspace(-4.0, 2.0, n_lon)
     lat_grid, lon_grid = np.meshgrid(lat, lon, indexing="ij")
@@ -109,17 +109,17 @@ def write_synthetic_inputs(
     n_days: int = 365,
     seed: int = 42,
 ) -> None:
-    """Write synthetic ``daily``/``weekly``/``monthly``/``static`` NetCDF files.
+    """Write synthetic `daily`/`weekly`/`monthly`/`static` NetCDF files.
 
     Parameters
     ----------
     paths
-        Mapping of group name (``"daily"``, ``"weekly"``, ``"monthly"``,
-        ``"static"``) to the output ``.nc`` file path.
+        Mapping of group name (`"daily"`, `"weekly"`, `"monthly"`,
+        `"static"`) to the output `.nc` file path.
     grid
-        ``(n_lat, n_lon)``; the product is the number of pixels.
+        `(n_lat, n_lon)`; the product is the number of pixels.
     n_days
-        Length of the daily time axis (from ``2020-01-01``).
+        Length of the daily time axis (from `2020-01-01`).
     seed
         Seed for reproducibility.
     """
