@@ -853,6 +853,20 @@ class TestCheckSpecs:
         with pytest.raises(ValueError, match="exactly 2 input"):
             cfg.parse()
 
+    def test_key_the_check_does_not_take_rejected(self):
+        with pytest.raises(CatenaValueError, match=r"'time_equal'.*atol"):
+            self._cfg([{"check": "time_equal", "inputs": ["*"], "atol": 1.0}]).parse()
+
+    def test_missing_required_key_rejected(self):
+        with pytest.raises(CatenaValueError, match=r"'coords_equal'.*coords"):
+            self._cfg([{"check": "coords_equal", "inputs": ["*"]}]).parse()
+
+    def test_repeated_input_rejected(self):
+        with pytest.raises(CatenaValueError, match="more than once"):
+            self._cfg(
+                [{"check": "time_equal", "inputs": ["climate", "climate"]}]
+            ).parse()
+
     def test_missing_inputs_key_rejected(self):
         with pytest.raises(ValueError, match="missing a non-empty 'inputs'"):
             self._cfg([{"check": "time_equal"}]).parse()

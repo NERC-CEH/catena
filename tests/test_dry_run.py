@@ -339,6 +339,18 @@ class TestDryRunReport:
         assert _stage(report, "contracts").status == "skipped"
         assert "inputs unavailable" in _stage(report, "plan").detail
 
+    def test_misspelt_function_node_fails_the_dag_stage(
+        self, tmp_path, synthetic_data_dir
+    ):
+        node = (
+            '[[node]]\nname = "root"\ninputs = ["temperature_daily"]\n'
+            '_import_path = "numpy"\nfunction = "sqroot"\n'
+        )
+        cfg = _config(tmp_path, synthetic_data_dir, node)
+        with pytest.raises(DryRunError, match="no attribute 'sqroot'") as excinfo:
+            dry_run(cfg)
+        assert "dag" in [s.name for s in excinfo.value.report.failed]
+
     def test_unreachable_output_var_raises(self, tmp_path, synthetic_data_dir):
         out = tmp_path / "out.nc"
         outputs = f'[outputs.daily]\npath = "{out}"\nvars = ["not_a_real_variable"]\n'
