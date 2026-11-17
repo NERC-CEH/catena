@@ -10,10 +10,9 @@ def stack_spatial_dims(ds: xr.Dataset) -> xr.Dataset:
     (`x`/`y`, `easting`/`northing`, …) — nothing is assumed from their position
     or name. They are stacked in `(y, x)` order.
 
-    The resulting `pixel` coordinate keeps its `(y, x)` **MultiIndex**: that is what
-    `catena.gridded.io.unstack_pixel` reverses to rebuild the grid, and what
-    `catena.gridded.io.flatten_pixel_index` converts to plain 1-D level coords for
-    serialisation (a MultiIndex cannot be written to NetCDF/Zarr).
+    The resulting `pixel` coordinate keeps its `(y, x)` **MultiIndex**, which is
+    what `catena.gridded.io.unstack_if_gridded` reverses to rebuild the grid before
+    an output is written.
 
     Requires the optional `geo` extra (`rioxarray`/`pyproj`), which is only
     imported when geospatial inputs are actually used.

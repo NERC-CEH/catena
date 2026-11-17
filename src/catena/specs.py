@@ -522,12 +522,10 @@ class SubsetSpec:
     independent `catena run` processes can each handle a different chunk of the same
     input files. `stop` is exclusive (Python slice convention).
 
-    `dim` mirrors `BlockingSpec.dim`: the two mechanisms partition the same way
-    and differ only in *who* runs the parts (one process sequentially vs. many
-    processes concurrently), so a non-gridded pipeline can subset over `location`
-    or `site` just as it can block over it. The one place `pixel` is still
-    special is the gridded Zarr store (`catena.gridded.io.create_output_store`),
-    whose layout *is* the pixel grid; it rejects any other `dim`.
+    `dim` is a dimension of the input files, which are sliced as they are opened:
+    `location` or `site` in a non-gridded pipeline, a spatial dimension such as
+    `y` in a gridded one. `BlockingSpec.dim` differs here: it partitions the
+    loaded arrays, where a grid has already been stacked into `pixel`.
     """
 
     start: int

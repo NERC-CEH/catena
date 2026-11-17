@@ -120,12 +120,7 @@ class TestBlockingArbitraryDim:
 
 
 class TestSubsetArbitraryDim:
-    """[subset] partitions any dim, mirroring [blocking] — it is not pixel-only.
-
-    The two mechanisms slice the same way and differ only in *who* runs the parts
-    (one process sequentially vs. many processes concurrently), so the asymmetry
-    where only [blocking] had a `dim` was accidental.
-    """
+    """[subset] partitions any dimension of the input files."""
 
     def _config(self, tmp_path, subset: str = "") -> Path:
         _write_scene(tmp_path / "scene.nc")
@@ -167,7 +162,7 @@ class TestSubsetArbitraryDim:
             assert inputs["reflectance_scene"].sizes["location"] == 2
             results = dr.execute(final, inputs=inputs)  # type: ignore[reportArgumentType]
             save_outputs(
-                get_outputs(results, parsed.output_specs, stacked=True),
+                get_outputs(results, parsed.output_specs),
                 parsed.output_specs,
                 subset_spec=spec,
             )
@@ -182,22 +177,37 @@ class TestSubsetArbitraryDim:
             reference["scaled"],
         )
 
-    def test_create_store_rejects_non_pixel_subset_dim(self, tmp_path):
-        """A Zarr store *is* the pixel grid, so it cannot be partitioned otherwise."""
-        import pytest
-
-        from catena.gridded.io import create_output_store
+    def test_zarr_store_partitioned_over_non_pixel_dim(self, tmp_path):
+        """A shared Zarr store works over `location` as it does over a grid row."""
+        from catena import run
+        from catena.gridded.io import create_output_store, merge_subset_outputs
 
         cfg = self._config(
             tmp_path, subset='\n[subset]\nstart = 0\nstop = 2\ndim = "location"\n'
         )
         parsed = load_config(cfg)
-        # Point the output at a Zarr store, which is what needs a shared store.
-        zarr_specs = {"scene": IOSpec(path=str(tmp_path / "out.zarr"), vars=["scaled"])}
-        parsed = replace(parsed, output_specs=zarr_specs)
+        store = tmp_path / "out.zarr"
+        zarr_specs = {"scene": IOSpec(path=str(store), vars=["scaled"])}
+        parsed = replace(parsed, output_specs=zarr_specs, subset_spec=None)
 
-        with pytest.raises(ValueError, match="can only be partitioned over 'pixel'"):
-            create_output_store(parsed)
+        create_output_store(parsed, dim="location", chunk=2)
+        for start, stop in ((0, 2), (2, 4)):
+            run(parsed, subset=SubsetSpec(start=start, stop=stop, dim="location"))
+        merge_subset_outputs(zarr_specs)
+
+        reference = tmp_path / "reference.zarr"
+        run(
+            replace(
+                parsed,
+                output_specs={
+                    "scene": replace(zarr_specs["scene"], path=str(reference))
+                },
+            )
+        )
+        xr.testing.assert_allclose(
+            xr.open_zarr(store, consolidated=False).compute(),
+            xr.open_zarr(reference, consolidated=False).compute(),
+        )
 
 
 def test_no_geospatial_deps_imported_without_crs(tmp_path):
