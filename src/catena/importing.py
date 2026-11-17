@@ -38,13 +38,6 @@ from .specs import RECOGNISED_SECTIONS, RegisteredModule
 #: makes ``[diagnostics]`` a valid config section with no ``_import_path``.
 ENTRY_POINT_GROUP = "catena.modules"
 
-#: Module names catena itself claims, which no package may register. ``node`` is
-#: generated from the config's ``[[node]]`` entries rather than imported, and is
-#: handled directly in `catena.build.build_driver`.
-BUILTIN_MODULES: dict[str, str] = {
-    "node": "catena.nodegen",
-}
-
 #: Prefix for the ``sys.modules`` name a file-form module is registered under.
 #: Hamilton resolves a node's originating function through ``sys.modules``, so the
 #: module has to be registered; keying the name on the file's resolved path keeps
@@ -185,7 +178,7 @@ def _discover() -> tuple[
         module = RegisteredModule(
             section=entry.name, import_path=entry.value, distribution=distribution
         )
-        if entry.name in BUILTIN_MODULES or entry.name in RECOGNISED_SECTIONS:
+        if entry.name in RECOGNISED_SECTIONS:
             # Catena parses this section itself, so the registration can never be
             # reached by any config. A warning rather than an error: the mistake is
             # the package author's, and erroring would break every unrelated config

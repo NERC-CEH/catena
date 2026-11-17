@@ -543,7 +543,7 @@ class CheckSpec:
 
 @dataclass
 class ParsedConfig:
-    """Parsed pipeline configuration, ready to pass to build_driver."""
+    """Parsed pipeline configuration, ready to pass to build_driver_from_config."""
 
     modules: list[str]
     driver_config: dict[str, Any]

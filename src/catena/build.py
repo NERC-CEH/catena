@@ -1,6 +1,5 @@
-"""Build Hamilton drivers from configured module lists."""
+"""Build Hamilton drivers from a parsed config or a list of modules."""
 
-from importlib import import_module
 from pathlib import Path
 from typing import Any
 
@@ -8,8 +7,8 @@ from hamilton import driver
 from hamilton.settings import ENABLE_POWER_USER_MODE
 
 from .errors import CatenaValueError
-from .importing import BUILTIN_MODULES, import_user_module
-from .specs import CacheSpec, NodeSpec, RegisteredModule
+from .importing import import_user_module
+from .specs import CacheSpec, NodeSpec, ParsedConfig, RegisteredModule
 
 
 def build_driver(
@@ -74,8 +73,6 @@ def build_driver(
     for mod in modules:
         if mod == "node":
             modules_.append(make_node_module(node_specs or [], base))
-        elif mod in BUILTIN_MODULES:
-            modules_.append(import_module(BUILTIN_MODULES[mod]))
         else:
             modules_.append(import_user_module(mod, base, by.get(mod)))
 
@@ -99,3 +96,29 @@ def build_driver(
         check_dag_contracts(built)
 
     return built
+
+
+def build_driver_from_config(
+    parsed: ParsedConfig,
+    *,
+    allow_module_overrides: bool = False,
+    cache: CacheSpec | None = None,
+    check_contracts: bool = True,
+) -> driver.Driver:
+    """Build the Hamilton driver a parsed config describes.
+
+    Calls `build_driver` with the config's modules, driver config, ``[[node]]``
+    specs, base directory and registered modules; the remaining parameters are
+    passed through unchanged. ``cache`` is not read from ``parsed.cache_spec``, so
+    that building a driver creates a cache directory only when asked to.
+    """
+    return build_driver(
+        modules=parsed.modules,
+        config=parsed.driver_config,
+        allow_module_overrides=allow_module_overrides,
+        cache=cache,
+        node_specs=parsed.node_specs,
+        base=parsed.base,
+        registered=parsed.registered_modules,
+        check_contracts=check_contracts,
+    )

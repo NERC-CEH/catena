@@ -77,15 +77,11 @@ Hamilton's `Driver` has more, such as `visualize_path_between` and `display_down
 Pass its `hamilton_kwargs()` to the method, then `apply` it to the digraph the method returns:
 
 ```python
-from catena import build_driver, load_config
+from catena import build_driver_from_config, load_config
 from catena.graph import GraphStyle
 
 parsed = load_config("config.toml")
-dr = build_driver(
-    modules=parsed.modules,
-    config=parsed.driver_config,
-    node_specs=parsed.node_specs,
-)
+dr = build_driver_from_config(parsed)
 style = GraphStyle.from_driver(dr, outputs=["aridity_index_daily"])
 digraph = dr.visualize_path_between(
     "temperature_daily", "aridity_index_daily", **style.hamilton_kwargs()
