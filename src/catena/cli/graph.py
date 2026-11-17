@@ -1,4 +1,4 @@
-"""``catena graph``: write the pipeline visualisation to a file.
+"""`catena graph`: write the pipeline visualisation to a file.
 
 Options in, `catena.graph.build_graph` out, rendered to disk. The graph itself
 is built and styled in `catena.graph`; picking formats and destinations is what
@@ -59,11 +59,11 @@ def graph(
 ) -> None:
     """Visualise a pipeline defined in a configuration file.
 
-    Draws what the ``[outputs.*]`` sections need, or the whole DAG with
-    ``--all-nodes`` or when the config has no outputs. Each node shows its
+    Draws what the `[outputs.*]` sections need, or the whole DAG with
+    `--all-nodes` or when the config has no outputs. Each node shows its
     declared unit; requested outputs are highlighted and edges are coloured by
-    temporal frequency.  Pass ``--style`` to override the default styling (see
-    ``catena.graph_style``).
+    temporal frequency.  Pass `--style` to override the default styling (see
+    `catena.graph_style`).
 
     Attention
     ---------
@@ -86,10 +86,10 @@ def graph(
 
 
 def _render(digraph: "graphviz.Digraph", dest: Path, fmt: str) -> None:
-    """Render ``digraph`` to ``dest`` via the graphviz API.
+    """Render `digraph` to `dest` via the graphviz API.
 
-    A missing ``dot`` binary or a graph ``dot`` rejects is reported as a usage
-    error naming ``dest``.
+    A missing `dot` binary or a graph `dot` rejects is reported as a usage
+    error naming `dest`.
     """
     import graphviz
 

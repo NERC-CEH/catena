@@ -16,8 +16,8 @@ from .specs import IOSpec, SubsetSpec
 def effective_suffix(label: str, spec: IOSpec) -> str:
     """Resolve the node-name suffix for an input/output section.
 
-    Honours an explicit ``IOSpec.suffix`` when set; otherwise defaults to
-    ``_<label>``. Set ``suffix = ""`` for bare names.
+    Honours an explicit `IOSpec.suffix` when set; otherwise defaults to
+    `_<label>`. Set `suffix = ""` for bare names.
     """
     if spec.suffix is not None:
         return spec.suffix
@@ -27,14 +27,14 @@ def effective_suffix(label: str, spec: IOSpec) -> str:
 def var_mapping(
     label: str, spec: IOSpec, available: "list[str] | None" = None
 ) -> dict[str, str]:
-    """Resolve a section's ``node_name -> file_var`` mapping.
+    """Resolve a section's `node_name -> file_var` mapping.
 
     The two `IOSpec.vars` forms are reconciled here:
 
-    - a **mapping** ``{node_name: file_var}`` is used verbatim (suffix-free);
-    - a **list** yields ``{f"{var}{suffix}": var}`` using `effective_suffix`;
-    - ``vars is None`` — an input section that omits ``vars`` — maps every name in
-      ``available`` (the file's variables) through the suffix.
+    - a **mapping** `{node_name: file_var}` is used verbatim (suffix-free);
+    - a **list** yields `{f"{var}{suffix}": var}` using `effective_suffix`;
+    - `vars is None` — an input section that omits `vars` — maps every name in
+      `available` (the file's variables) through the suffix.
     """
     if isinstance(spec.vars, dict):
         return dict(spec.vars)
@@ -48,7 +48,7 @@ def _check_requested_vars(
 ) -> None:
     """Raise if a section names variables the file does not contain.
 
-    Without this, a typo in ``vars`` surfaces as an ``xarray`` ``KeyError`` from
+    Without this, a typo in `vars` surfaces as an `xarray` `KeyError` from
     deep inside `load_inputs`, naming neither the config section nor the file.
     Every missing name in the section is reported at once, so fixing a config
     with several typos takes one run rather than several.
@@ -93,14 +93,14 @@ def _load_raw(path: str) -> xr.Dataset:
 
 
 def time_dims(obj: xr.Dataset | xr.DataArray) -> list[str]:
-    """Names of ``obj``'s dimensions whose coordinate is datetime-like.
+    """Names of `obj`'s dimensions whose coordinate is datetime-like.
 
     A dimension counts as temporal when its dimension coordinate is a NumPy
-    ``datetime64`` array or a cftime index (``CFTimeIndex``). Only true
+    `datetime64` array or a cftime index (`CFTimeIndex`). Only true
     dimensions qualify.
 
     This is how catena finds *the* time axis without hardcoding the name
-    ``time``, and it backs the "at most one time dimension per input dataset"
+    `time`, and it backs the "at most one time dimension per input dataset"
     rule enforced in `load_inputs`.
     """
     dims: list[str] = []
@@ -115,9 +115,9 @@ def time_dims(obj: xr.Dataset | xr.DataArray) -> list[str]:
 
 
 def sole_time_dim(obj: xr.Dataset | xr.DataArray, what: str) -> str:
-    """Return the name of ``obj``'s one time dimension, or raise.
+    """Return the name of `obj`'s one time dimension, or raise.
 
-    ``what`` names the object in the error message (e.g. a node name).
+    `what` names the object in the error message (e.g. a node name).
     """
     dims = time_dims(obj)
     if len(dims) == 1:
@@ -139,7 +139,7 @@ def sole_time_dim(obj: xr.Dataset | xr.DataArray, what: str) -> str:
 
 
 def _save(ds: xr.Dataset, path: str | os.PathLike) -> None:
-    """Write ``ds`` to any supported format (`catena.formats` picks the writer)."""
+    """Write `ds` to any supported format (`catena.formats` picks the writer)."""
     format_for(path).write(ds, path)
 
 
@@ -149,7 +149,7 @@ def _save(ds: xr.Dataset, path: str | os.PathLike) -> None:
 
 
 def load_raw_datasets(input_specs: dict[str, IOSpec]) -> dict[str, xr.Dataset]:
-    """Open every configured input as a raw ``Dataset`` (pre-stack, pre-subset).
+    """Open every configured input as a raw `Dataset` (pre-stack, pre-subset).
 
     `load_inputs` calls this internally, and so does the input-checks pre-flight.
     Opens are lazy (metadata only), so calling it twice per run is cheap.
@@ -174,29 +174,29 @@ def load_inputs(
     """Load all configured inputs and return them as a flat dict of named DataArrays.
 
     Node names are formed from each section's variables and its
-    `effective_suffix` (``{var}{suffix}``, e.g. ``temperature_daily``, or
-    ``elevation`` for a section that sets ``suffix = ""``). A section label
+    `effective_suffix` (`{var}{suffix}`, e.g. `temperature_daily`, or
+    `elevation` for a section that sets `suffix = ""`). A section label
     supplies that suffix and nothing else; an input's frequency is validated
     where a consumer declares a `xarray_annotated.temporal.Freq` contract for it.
 
     A section naming a variable the file does not contain raises a catena error
     reporting the section, the file, and every missing name at once.
 
-    The geospatial layer (CRS-aware ``(y, x)`` → ``pixel`` stacking plus computed
-    ``latitude``/``longitude``) is **opt-in**: it activates only when an input carries
-    CRS metadata (see `catena.gridded`). Pass ``geospatial=True``/``False`` to force
+    The geospatial layer (CRS-aware `(y, x)` → `pixel` stacking plus computed
+    `latitude`/`longitude`) is **opt-in**: it activates only when an input carries
+    CRS metadata (see `catena.gridded`). Pass `geospatial=True`/`False` to force
     it on or off.
 
     Parameters
     ----------
     input_specs:
-        Mapping from section label to ``IOSpec`` (path, vars, suffix).
-        Typically ``parsed_config.input_specs``.
+        Mapping from section label to `IOSpec` (path, vars, suffix).
+        Typically `parsed_config.input_specs`.
     subset_spec:
-        If provided, slice every input carrying its ``dim`` to the specified
-        range after loading.  Typically ``parsed_config.subset_spec``.
+        If provided, slice every input carrying its `dim` to the specified
+        range after loading.  Typically `parsed_config.subset_spec`.
     geospatial:
-        Force the geospatial path on (``True``) or off (``False``). When ``None``
+        Force the geospatial path on (`True`) or off (`False`). When `None`
         (default) it is auto-detected from the presence of CRS metadata.
     """
     from .gridded.io import (  # lazy: optional geo extra (see catena.gridded)
@@ -249,9 +249,9 @@ def load_inputs(
 
 
 def assert_dim_in_inputs(inputs: dict[str, Any], dim: str, section: str) -> None:
-    """Raise a catena error unless at least one input has the dimension ``dim``.
+    """Raise a catena error unless at least one input has the dimension `dim`.
 
-    ``section`` names the config section that asked for ``dim``, for the message.
+    `section` names the config section that asked for `dim`, for the message.
     """
     available = sorted(
         {str(d) for val in inputs.values() for d in getattr(val, "dims", ())}
@@ -266,7 +266,7 @@ def assert_dim_in_inputs(inputs: dict[str, Any], dim: str, section: str) -> None
 def subset_inputs(
     inputs: dict[str, xr.DataArray], subset_spec: SubsetSpec
 ) -> dict[str, xr.DataArray]:
-    """Slice every input carrying ``subset_spec.dim`` to that spec's range.
+    """Slice every input carrying `subset_spec.dim` to that spec's range.
 
     Inputs without the dimension pass through untouched, but at least one must have
     it (see `assert_dim_in_inputs`).
@@ -290,13 +290,13 @@ def get_outputs(
     Parameters
     ----------
     results:
-        Dict returned by ``driver.execute()``, keyed by Hamilton node name.
+        Dict returned by `driver.execute()`, keyed by Hamilton node name.
     output_specs:
-        Mapping from section label to ``IOSpec``.
-        Typically ``parsed_config.output_specs``.
+        Mapping from section label to `IOSpec`.
+        Typically `parsed_config.output_specs`.
     stacked:
-        If ``False`` (default) gridded results are unstacked to a ``(y, x)`` grid.
-        If ``True`` the stacked ``pixel`` layout is kept (with the MultiIndex
+        If `False` (default) gridded results are unstacked to a `(y, x)` grid.
+        If `True` the stacked `pixel` layout is kept (with the MultiIndex
         flattened to serialisable 1D coords) so that subset processes can write
         partial outputs that are reassembled later — see `unstack_pixel`.
     """
@@ -331,10 +331,10 @@ def save_outputs(
     Parameters
     ----------
     output_datasets:
-        Dict returned by ``get_outputs()``.
+        Dict returned by `get_outputs()`.
     output_specs:
-        Mapping from section label to ``IOSpec``.
-        Typically ``parsed_config.output_specs``.
+        Mapping from section label to `IOSpec`.
+        Typically `parsed_config.output_specs`.
     subset_spec:
         If provided, the datasets are partial (a stacked pixel subset) and are
         written so independent processes don't collide: NetCDF outputs go to a
@@ -344,12 +344,12 @@ def save_outputs(
         Optional attributes stamped onto every written dataset (e.g. the config
         text and its hash), so a store is self-describing. Ignored for the
         subset/Zarr-region path, whose store attrs are written once by
-        ``create-store``.
+        `create-store`.
 
     Returns
     -------
     dict
-        The path actually written for each section label. Under ``[subset]`` a
+        The path actually written for each section label. Under `[subset]` a
         NetCDF path carries the subset's suffix, so this is not always the path
         the config asked for.
     """
@@ -387,7 +387,7 @@ def assert_output_paths_writable(
     unsupported file extension, a parent directory that cannot be written to or
     created, or a subset run targeting a Zarr store that has not been pre-created.
     A clean pass here means `save_outputs` will accept the path. Creates nothing:
-    `save_outputs` makes any missing directories. Used by ``catena run --dry-run``.
+    `save_outputs` makes any missing directories. Used by `catena run --dry-run`.
     """
     for label, spec in output_specs.items():
         path = Path(spec.path)
@@ -422,7 +422,7 @@ def assert_output_paths_writable(
 def auxiliary_input_names(inputs: dict[str, Any]) -> set[str]:
     """Names of auto-derived inputs `load_inputs` emits that nodes needn't consume.
 
-    The geospatial ``latitude`` / ``longitude`` arrays are computed from the input
+    The geospatial `latitude` / `longitude` arrays are computed from the input
     files' CRS, so a pipeline may legitimately ignore them. The wiring check
     (`catena.wiring_check.check_wiring`) excludes them from its "unused
     input" diagnostic.
@@ -434,20 +434,20 @@ def get_final_vars(output_specs: dict[str, IOSpec]) -> list[str]:
     """Build Hamilton node names from output specifications.
 
     Converts each section's variable list into the flat list of node names
-    expected by ``driver.execute(final_vars=...)``.
+    expected by `driver.execute(final_vars=...)`.
 
     Parameters
     ----------
     output_specs:
-        Mapping from section label to ``IOSpec``.  Pass the full
-        ``parsed_config.output_specs`` for all outputs, or a subset
-        (e.g. ``{"monthly": parsed.output_specs["monthly"]}``) to
+        Mapping from section label to `IOSpec`.  Pass the full
+        `parsed_config.output_specs` for all outputs, or a subset
+        (e.g. `{"monthly": parsed.output_specs["monthly"]}`) to
         request a single section's nodes.
 
     Returns
     -------
     list[str]
-        Flat list of Hamilton node names (e.g. ``["gpp_daily", ...]``).
+        Flat list of Hamilton node names (e.g. `["gpp_daily", ...]`).
     """
     names: list[str] = []
     seen: set[str] = set()

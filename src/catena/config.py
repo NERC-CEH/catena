@@ -44,15 +44,15 @@ class Config:
     """Configuration class with loading, parsing, and serialization.
 
     The raw TOML data is held exactly as written. Relative paths are resolved
-    against ``base`` (the config file's directory) as the specs are built in
+    against `base` (the config file's directory) as the specs are built in
     `parse`, so `dumps` round-trips: it emits the relative paths you wrote.
     """
 
     def __init__(self, data: dict[str, Any], base: Path | None = None) -> None:
         """Initialize with a config dict, and the base its paths resolve against."""
-        # ``_data`` is never rewritten: paths are resolved against ``_base`` by
-        # ``_resolve`` as the specs are built in ``parse``. Absolutising them here
-        # instead would make ``dumps`` emit absolute paths and break round-tripping.
+        # `_data` is never rewritten: paths are resolved against `_base` by
+        # `_resolve` as the specs are built in `parse`. Absolutising them here
+        # instead would make `dumps` emit absolute paths and break round-tripping.
         self._data = data
         self._base = base
 
@@ -75,9 +75,9 @@ class Config:
     def loads(cls, toml_str: str, base: str | os.PathLike | None = None) -> Self:
         """Load config from a TOML string.
 
-        A string has no file to anchor relative paths against, so pass ``base`` to
+        A string has no file to anchor relative paths against, so pass `base` to
         say what they resolve against. Without it, every path in the config must be
-        absolute and every ``_import_path`` must be a dotted module name.
+        absolute and every `_import_path` must be a dotted module name.
         """
         return cls(tomllib.loads(toml_str), base=Path(base).resolve() if base else None)
 
@@ -105,7 +105,7 @@ class Config:
     def _parse_inputs(self, data: dict, input_specs: dict) -> None:
         """Handle [inputs.*] sections.
 
-        An input section may omit ``vars`` entirely, which binds every variable in
+        An input section may omit `vars` entirely, which binds every variable in
         the file through the section's suffix. It may not list *no* variables,
         which would bind nothing.
         """
@@ -152,10 +152,10 @@ class Config:
             )
 
     def _parse_nodes(self, data: dict) -> list["NodeSpec"]:
-        """Handle [[node]] and [[resample]] — both generate ``node`` module specs.
+        """Handle [[node]] and [[resample]] — both generate `node` module specs.
 
-        ``[[node]]`` entries are fan-out-expanded (`expand_node_entries`) and built
-        into `NodeSpec` objects, and each ``[[resample]]`` into its own
+        `[[node]]` entries are fan-out-expanded (`expand_node_entries`) and built
+        into `NodeSpec` objects, and each `[[resample]]` into its own
         (`ResampleSpec.node_specs`), with a single node-name-uniqueness check across the
         combined set.
         """
@@ -177,7 +177,7 @@ class Config:
         """Handle the [cache] section.
 
         Returns None if there is no [cache] section, or if it sets
-        ``enabled = false``.
+        `enabled = false`.
         """
         entry = data.pop("cache", None)
         if entry is None:
@@ -210,13 +210,13 @@ class Config:
     def _parse_checks(
         self, data: dict, input_specs: dict[str, "IOSpec"]
     ) -> list["CheckSpec"]:
-        """Handle the ``[validation]`` table's ``checks`` array.
+        """Handle the `[validation]` table's `checks` array.
 
-        ``[validation]`` groups declared expectations to validate (as opposed to
-        DAG structure). For each entry in its ``checks`` list this validates the
-        check name (against the registry), expands ``["*"]`` to all input labels,
+        `[validation]` groups declared expectations to validate (as opposed to
+        DAG structure). For each entry in its `checks` list this validates the
+        check name (against the registry), expands `["*"]` to all input labels,
         checks every named input exists, and validates arity — all at parse time.
-        Remaining inline-table keys become forwarded ``kwargs``, and must be ones
+        Remaining inline-table keys become forwarded `kwargs`, and must be ones
         the check takes.
         """
         section = data.pop("validation", {})
@@ -293,13 +293,13 @@ class Config:
     ) -> list[str]:
         """Handle remaining sections as external modules.
 
-        A section names its module with an ``_import_path``, or is itself the name
+        A section names its module with an `_import_path`, or is itself the name
         of a module an installed package registered (`catena.importing`). An
-        explicit ``_import_path`` always wins, so a config can never be silently
+        explicit `_import_path` always wins, so a config can never be silently
         redirected by something in the environment.
 
         Module params share one flat `driver_config` namespace (that is how Hamilton
-        resolves a node's keyword-only config arguments), so ``defined_by`` tracks
+        resolves a node's keyword-only config arguments), so `defined_by` tracks
         which section contributed each key — enough to name *both* sides of a
         collision rather than just the key.
         """

@@ -4,18 +4,18 @@ import xarray as xr
 
 
 def stack_spatial_dims(ds: xr.Dataset) -> xr.Dataset:
-    """Stack a dataset's two spatial dimensions into a single ``pixel`` dimension.
+    """Stack a dataset's two spatial dimensions into a single `pixel` dimension.
 
-    The spatial dims are whatever ``rioxarray`` infers from the dataset's CF metadata
-    (``x``/``y``, ``easting``/``northing``, …) — nothing is assumed from their position
-    or name. They are stacked in ``(y, x)`` order.
+    The spatial dims are whatever `rioxarray` infers from the dataset's CF metadata
+    (`x`/`y`, `easting`/`northing`, …) — nothing is assumed from their position
+    or name. They are stacked in `(y, x)` order.
 
-    The resulting ``pixel`` coordinate keeps its ``(y, x)`` **MultiIndex**: that is what
+    The resulting `pixel` coordinate keeps its `(y, x)` **MultiIndex**: that is what
     `catena.gridded.io.unstack_pixel` reverses to rebuild the grid, and what
     `catena.gridded.io.flatten_pixel_index` converts to plain 1-D level coords for
     serialisation (a MultiIndex cannot be written to NetCDF/Zarr).
 
-    Requires the optional ``geo`` extra (``rioxarray``/``pyproj``), which is only
+    Requires the optional `geo` extra (`rioxarray`/`pyproj`), which is only
     imported when geospatial inputs are actually used.
     """
     import rioxarray as rioxarray

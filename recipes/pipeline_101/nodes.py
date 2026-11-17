@@ -25,7 +25,7 @@ def temperature_anomaly_climate(
 ) -> Temperature:
     """Departure of each day's temperature from the mean of a baseline period.
 
-    The baseline is the first ``baseline_days`` days, or the whole record if unset.
+    The baseline is the first `baseline_days` days, or the whole record if unset.
     """
     baseline = temperature_climate.isel(time=slice(0, baseline_days))
     return temperature_climate - baseline.mean("time")

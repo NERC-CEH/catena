@@ -1,4 +1,4 @@
-"""Reusable DAG transforms referenced from ``[[node]]``/preset config.
+"""Reusable DAG transforms referenced from `[[node]]`/preset config.
 
 A transform is a plain function applied to a node's inputs by a config-generated
 node (see `catena.nodegen`), whose contract is the one its config entry declares.
@@ -18,18 +18,18 @@ def resample(
     aggfunc: str = "mean",
     dim: str | None = None,
 ) -> xr.DataArray:
-    """Resample a DataArray along its time axis to a coarser ``freq``.
+    """Resample a DataArray along its time axis to a coarser `freq`.
 
-    ``aggfunc`` must be a valid xarray ``DataArrayResample`` method (e.g. ``'mean'``,
-    ``'sum'``). ``freq`` must be a valid pandas offset alias (e.g. ``'7D'``, ``'1ME'``).
+    `aggfunc` must be a valid xarray `DataArrayResample` method (e.g. `'mean'`,
+    `'sum'`). `freq` must be a valid pandas offset alias (e.g. `'7D'`, `'1ME'`).
 
-    ``dim`` names the time axis. When omitted it is detected from the array's
+    `dim` names the time axis. When omitted it is detected from the array's
     coordinates (`catena.io.sole_time_dim`), so an axis need not be called
-    ``time``; pass ``dim`` explicitly to override.
+    `time`; pass `dim` explicitly to override.
 
     !!! warning
-        Units are preserved unchanged, so ``aggfunc`` must match the *kind* of
-        quantity: ``mean`` for a rate, ``sum`` for an amount-per-period. Summing
+        Units are preserved unchanged, so `aggfunc` must match the *kind* of
+        quantity: `mean` for a rate, `sum` for an amount-per-period. Summing
         a rate is dimensionally consistent — so **no contract check can catch
         it** — and physically meaningless. See the "Resampling & units" guide.
     """

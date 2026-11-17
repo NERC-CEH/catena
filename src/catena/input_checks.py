@@ -1,11 +1,11 @@
 """Intrinsic input-Dataset compatibility checks.
 
-A small library of predicates over input ``Dataset``s,
-``check_X(datasets, **kwargs) -> None`` (raise on failure, return ``None`` on
+A small library of predicates over input `Dataset`s,
+`check_X(datasets, **kwargs) -> None` (raise on failure, return `None` on
 pass), plus a registry (`CHECKS`) and a runner (`run_input_checks`) that applies
-a parsed ``[validation].checks`` config block and aggregates failures.
+a parsed `[validation].checks` config block and aggregates failures.
 
-``datasets`` maps a name to each dataset; the name is what a failure message
+`datasets` maps a name to each dataset; the name is what a failure message
 calls it. The first entry is the reference the others are compared against.
 
 Every check here is a statement about the inputs *alone*. Anything coupled to a
@@ -47,7 +47,7 @@ def _single_time_index(name: str, ds: xr.Dataset) -> pd.DatetimeIndex:
 
     Uses `catena.io.time_dims` so arbitrarily-labelled time dimensions are
     handled; the "at most one time dimension per input" invariant (enforced in
-    `load_inputs`) guarantees ``len(tdims) <= 1``.
+    `load_inputs`) guarantees `len(tdims) <= 1`.
     """
     tdims = time_dims(ds)
     if not tdims:
@@ -109,9 +109,9 @@ def time_subset(datasets: Datasets) -> None:
 
 
 def coords_equal(datasets: Datasets, *, coords: list[str], atol: float = 1e-6) -> None:
-    """Assert the named ``coords`` match across every dataset.
+    """Assert the named `coords` match across every dataset.
 
-    Float coordinates are compared with ``atol``; other dtypes (datetime,
+    Float coordinates are compared with `atol`; other dtypes (datetime,
     string, integer) are compared exactly.
     """
     if len(datasets) < 2:
@@ -151,9 +151,9 @@ def coords_equal(datasets: Datasets, *, coords: list[str], atol: float = 1e-6) -
 class Check:
     """A registry entry: the predicate plus its expected arity.
 
-    ``arity`` is ``"variadic"`` (any number, ``>=1``) or an exact integer. The
-    config parser uses it to reject an ill-sized ``inputs`` list at parse time,
-    and ``func``'s signature to reject keys the check does not take.
+    `arity` is `"variadic"` (any number, `>=1`) or an exact integer. The
+    config parser uses it to reject an ill-sized `inputs` list at parse time,
+    and `func`'s signature to reject keys the check does not take.
     """
 
     func: Callable[..., None]
@@ -172,7 +172,7 @@ def run_input_checks(
 ) -> None:
     """Apply each `CheckSpec` to the loaded raw Datasets, aggregating failures.
 
-    Each dataset is named ``[inputs.<label>]`` in a failure message. A variadic
+    Each dataset is named `[inputs.<label>]` in a failure message. A variadic
     check that receives fewer than two datasets is a quiet no-op. Individual check
     failures are collected and raised together as a single `InputCheckError`
     naming every failed check.

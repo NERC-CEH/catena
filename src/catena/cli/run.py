@@ -1,4 +1,4 @@
-"""``catena run``: execute or validate a pipeline, and print what happened.
+"""`catena run`: execute or validate a pipeline, and print what happened.
 
 Options in, `catena.pipeline.run` or `catena.pipeline.dry_run` out. The
 pipeline logic lives in `catena.pipeline`; everything here is presentation —
@@ -144,7 +144,7 @@ def _format_size(size_bytes: int) -> str:
 def _echo_report(report: DryRunReport) -> None:
     """Print a `DryRunReport` per stage, with errors and findings indented under.
 
-    ``typer.echo`` strips the escape codes when stdout is not a terminal, so piped
+    `typer.echo` strips the escape codes when stdout is not a terminal, so piped
     and captured output (the documentation build among them) stays plain.
     """
     glyphs = {

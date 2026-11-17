@@ -1,13 +1,13 @@
 """Gridded (CRS/pixel) I/O: the optional geospatial + parallel-Zarr layer.
 
 This is the domain-specific counterpart to the domain-agnostic `catena.io`. It
-owns everything to do with the stacked ``pixel`` model:
+owns everything to do with the stacked `pixel` model:
 
-- **CRS-aware stacking**: collapsing a ``(y, x)`` grid into a 1-D ``pixel``
-  dimension and reconstructing it, plus computing ``latitude``/``longitude`` by
+- **CRS-aware stacking**: collapsing a `(y, x)` grid into a 1-D `pixel`
+  dimension and reconstructing it, plus computing `latitude`/`longitude` by
   reprojecting to EPSG:4326 (`stack_if_gridded`, `unstack_pixel`, `compute_lat_lon`);
 - **parallel Zarr I/O**: pre-creating a shared stacked Zarr store and region-writing
-  independent ``[subset]`` slices into it, then reassembling
+  independent `[subset]` slices into it, then reassembling
   (`create_output_store`, `save_zarr_region`, `merge_subset_outputs`).
 
 See `catena.gridded` for why every import of this module is lazy, and why importing
@@ -38,10 +38,10 @@ class MisalignedGridError(CatenaValueError):
 
 
 def _ensure_rio() -> None:
-    """Import rioxarray (registering the ``.rio`` accessor) or raise a clear error.
+    """Import rioxarray (registering the `.rio` accessor) or raise a clear error.
 
     The geospatial layer (CRS-aware stacking + lat/lon reprojection) is optional;
-    ``rioxarray``/``pyproj`` are only needed when CRS-bearing inputs are present.
+    `rioxarray`/`pyproj` are only needed when CRS-bearing inputs are present.
     """
     try:
         import rioxarray as rioxarray  # registers the .rio accessor
@@ -57,9 +57,9 @@ def _ensure_rio() -> None:
 def has_crs(ds: xr.Dataset) -> bool:
     """Cheaply detect CRS metadata without importing rioxarray.
 
-    Looks for the markers CF/rioxarray round-trips through NetCDF/Zarr: a ``crs``
-    global attribute, a ``spatial_ref`` grid-mapping coordinate, or a per-variable
-    ``grid_mapping`` attribute. Used to decide whether to activate the (lazy)
+    Looks for the markers CF/rioxarray round-trips through NetCDF/Zarr: a `crs`
+    global attribute, a `spatial_ref` grid-mapping coordinate, or a per-variable
+    `grid_mapping` attribute. Used to decide whether to activate the (lazy)
     geospatial path, so non-gridded pipelines never touch rioxarray/pyproj.
     """
     if ds.attrs.get("crs") or "spatial_ref" in ds.coords:
@@ -90,16 +90,16 @@ def unstack_if_gridded(ds: xr.Dataset) -> xr.Dataset:
 
 
 def _pixel_level_coords(ds: xr.Dataset) -> list[str]:
-    """Names of the non-index coords that vary along ``pixel`` (the grid levels)."""
+    """Names of the non-index coords that vary along `pixel` (the grid levels)."""
     return [str(c) for c in ds.coords if c != "pixel" and ds[c].dims == ("pixel",)]
 
 
 def flatten_pixel_index(ds: xr.Dataset) -> xr.Dataset:
-    """Turn a (y, x) MultiIndex ``pixel`` coord into plain 1D level coords.
+    """Turn a (y, x) MultiIndex `pixel` coord into plain 1D level coords.
 
-    A pandas ``MultiIndex`` cannot be serialised to NetCDF/Zarr, so this resets
-    it: the (y, x) levels become ordinary 1D coordinate variables along ``pixel``
-    and ``pixel`` itself becomes an unlabelled dimension.  The inverse of
+    A pandas `MultiIndex` cannot be serialised to NetCDF/Zarr, so this resets
+    it: the (y, x) levels become ordinary 1D coordinate variables along `pixel`
+    and `pixel` itself becomes an unlabelled dimension.  The inverse of
     `unstack_pixel`.
     """
     if "pixel" in ds.dims and isinstance(ds.indexes.get("pixel"), pd.MultiIndex):
@@ -108,11 +108,11 @@ def flatten_pixel_index(ds: xr.Dataset) -> xr.Dataset:
 
 
 def unstack_pixel(ds: xr.Dataset) -> xr.Dataset:
-    """Reconstruct a (y, x) grid from a stacked/flattened ``pixel`` dataset.
+    """Reconstruct a (y, x) grid from a stacked/flattened `pixel` dataset.
 
-    Handles both a live ``pixel`` MultiIndex and a flattened dataset (as produced
+    Handles both a live `pixel` MultiIndex and a flattened dataset (as produced
     by `flatten_pixel_index` and read back from disk), where the grid levels
-    are stored as ordinary 1D coords along ``pixel``.
+    are stored as ordinary 1D coords along `pixel`.
     """
     if "pixel" not in ds.dims:
         return ds
@@ -162,9 +162,9 @@ def compute_lat_lon(
 ) -> tuple[xr.DataArray, xr.DataArray]:
     """Compute stacked latitude and longitude DataArrays from CRS-bearing datasets.
 
-    Both are in EPSG:4326 and carry CF metadata: ``units`` of ``degrees_north`` /
-    ``degrees_east`` and the matching ``standard_name``. Under the CF unit registry
-    either satisfies a declared ``Unit("degrees")``.
+    Both are in EPSG:4326 and carry CF metadata: `units` of `degrees_north` /
+    `degrees_east` and the matching `standard_name`. Under the CF unit registry
+    either satisfies a declared `Unit("degrees")`.
     """
     from pyproj import Transformer
 
@@ -212,7 +212,7 @@ def compute_lat_lon(
 
 
 def subset_suffix(spec: SubsetSpec) -> str:
-    """Filename suffix that uniquely identifies a subset, e.g. ``_pixel0-500``."""
+    """Filename suffix that uniquely identifies a subset, e.g. `_pixel0-500`."""
     return f"_{spec.dim}{spec.start}-{spec.stop}"
 
 
@@ -225,9 +225,9 @@ def subset_path(path: str, spec: SubsetSpec) -> Path:
 def _assert_coords_match(
     ds: xr.Dataset, store: xr.Dataset, path: str, partition_dim: str = "pixel"
 ) -> None:
-    """Raise unless ``ds``'s coordinates match the store's, outside the partition dim.
+    """Raise unless `ds`'s coordinates match the store's, outside the partition dim.
 
-    ``partition_dim`` is excluded: it is the one axis a subset run *does* partition,
+    `partition_dim` is excluded: it is the one axis a subset run *does* partition,
     so its coordinate is legitimately a slice of the store's.
     """
     for dim in ds.dims:
@@ -254,12 +254,12 @@ def _assert_coords_match(
 def save_zarr_region(ds: xr.Dataset, path: str, spec: SubsetSpec) -> None:
     """Write a subset into an existing Zarr store via a region write.
 
-    The store must already exist (see ``catena gridded create-store``).  Only the
+    The store must already exist (see `catena gridded create-store`).  Only the
     data variables are written; coordinates already live in the store, and writing
     them in region mode is both unnecessary and disallowed by xarray.
 
     Because the coordinates are *not* written, they are checked instead: a store
-    whose other coordinates (notably ``time``) disagree with the data being written
+    whose other coordinates (notably `time`) disagree with the data being written
     into it would be silently mislabelled. `_assert_coords_match` turns that into an
     error at the write, rather than a wrong answer at the merge.
     """
@@ -304,10 +304,10 @@ def save_zarr_region(ds: xr.Dataset, path: str, spec: SubsetSpec) -> None:
 
 
 def _pixel_template(inputs: dict[str, Any]) -> xr.Dataset:
-    """Coordinate-only Dataset capturing the full stacked ``pixel`` grid.
+    """Coordinate-only Dataset capturing the full stacked `pixel` grid.
 
     Derived from a representative pixel-bearing input so the level coordinates
-    match exactly what subset ``run`` processes write.  The MultiIndex is
+    match exactly what subset `run` processes write.  The MultiIndex is
     flattened to serialisable 1D coords.
     """
     da_first = next(
@@ -334,27 +334,27 @@ def create_output_store(
 ) -> list[str]:
     """Pre-create empty stacked Zarr stores for parallel subset runs.
 
-    For each Zarr output, build an all-NaN template with a 1D ``pixel`` layout
-    matching what subset ``run`` processes region-write, then write only the
+    For each Zarr output, build an all-NaN template with a 1D `pixel` layout
+    matching what subset `run` processes region-write, then write only the
     metadata and coordinates (data arrays are dask-backed and deferred, so the
     full grid is never materialised).  NetCDF outputs are skipped —
     they don't need a shared store.  Returns the list of store paths created.
 
-    The store's non-``pixel`` axes (notably ``time``) are **computed from the
+    The store's non-`pixel` axes (notably `time`) are **computed from the
     outputs**, by running the pipeline over a single pixel and reading the real
     coordinates, dims and dtype off the result. That makes the store's layout what
     the subset runs will actually write *by construction* — the store cannot be
-    mislabelled, and a derived axis (a ``[[resample]]``'s weekly time axis, say)
+    mislabelled, and a derived axis (a `[[resample]]`'s weekly time axis, say)
     needs no input file to have that axis already. Nothing is inferred from a
     section's label.
 
-    Refuses to clobber an existing store unless ``overwrite`` is set: re-running
+    Refuses to clobber an existing store unless `overwrite` is set: re-running
     this after subset processes have populated a store would erase their data.
 
-    Unlike the rest of the ``[subset]`` path, this is ``pixel``-only: the store *is*
+    Unlike the rest of the `[subset]` path, this is `pixel`-only: the store *is*
     the stacked pixel grid (that is what `_pixel_template` builds and what `merge`
-    unstacks back to ``(y, x)``). A ``[blocking]`` or ``[subset]`` over any other
-    ``dim`` is rejected alongside a Zarr output rather than silently building a
+    unstacks back to `(y, x)`). A `[blocking]` or `[subset]` over any other
+    `dim` is rejected alongside a Zarr output rather than silently building a
     mislabelled store — such a pipeline should use a NetCDF output, whose parts need
     no shared store.
     """
@@ -418,7 +418,7 @@ def create_output_store(
         for node, file_var in var_mapping(label, spec).items():
             probed = probe[node]
             # Take dims (and their order), dtype and coords from what the pipeline
-            # actually produced; only ``pixel`` is resized to the full grid.
+            # actually produced; only `pixel` is resized to the full grid.
             dims = tuple(str(d) for d in probed.dims)
             shape = tuple(n_pixel if d == "pixel" else probed.sizes[d] for d in dims)
             chunks = tuple(chunk if d == "pixel" else probed.sizes[d] for d in dims)
@@ -438,17 +438,17 @@ def create_output_store(
 
 
 def _find_subset_parts(path: Path, dim: str = "pixel") -> list[Path]:
-    """Discover, order and validate the NetCDF subset parts written for ``path``.
+    """Discover, order and validate the NetCDF subset parts written for `path`.
 
-    Parts are named ``{stem}_{dim}{start}-{stop}{suffix}`` (`subset_suffix`). They
-    are ordered by their integer ``start`` — a lexicographic sort puts
-    ``_pixel1000-1500`` before ``_pixel500-1000`` — and the ranges must *chain*:
+    Parts are named `{stem}_{dim}{start}-{stop}{suffix}` (`subset_suffix`). They
+    are ordered by their integer `start` — a lexicographic sort puts
+    `_pixel1000-1500` before `_pixel500-1000` — and the ranges must *chain*:
     start at 0, then each start equal to the previous stop. A failed subset run (a
     gap) or a double-written region (an overlap) therefore raises here, rather than
     becoming silent NaN stripes in the merged output.
 
-    Matching on the full ``_{dim}<int>-<int>`` shape also means a neighbouring
-    ``{stem}_partial.nc`` is not swept into the merge.
+    Matching on the full `_{dim}<int>-<int>` shape also means a neighbouring
+    `{stem}_partial.nc` is not swept into the merge.
     """
     pattern = re.compile(rf"{re.escape(path.stem)}_{re.escape(dim)}(\d+)-(\d+)")
     found: list[tuple[int, int, Path]] = []
@@ -488,15 +488,15 @@ def merge_subset_outputs(
 ) -> list[str]:
     """Reassemble subset outputs into whole files.
 
-    For NetCDF outputs, concatenates the per-subset ``*_{dim}<start>-<stop>.nc``
-    parts; for Zarr outputs, reads the shared store.  A ``pixel`` layout is then
-    unstacked back to a ``(y, x)`` grid; any other ``dim`` (a non-gridded pipeline
-    subsetting over ``location``, say) is left as the flat concatenation, since
+    For NetCDF outputs, concatenates the per-subset `*_{dim}<start>-<stop>.nc`
+    parts; for Zarr outputs, reads the shared store.  A `pixel` layout is then
+    unstacked back to a `(y, x)` grid; any other `dim` (a non-gridded pipeline
+    subsetting over `location`, say) is left as the flat concatenation, since
     there is no grid to rebuild.  Returns the list of files written.
 
     By default NetCDF results are written to the config's declared (un-suffixed)
-    path and Zarr results to a sibling store with ``out_suffix`` appended.  Pass
-    ``out`` to write to an explicit path instead; this is only valid when there is
+    path and Zarr results to a sibling store with `out_suffix` appended.  Pass
+    `out` to write to an explicit path instead; this is only valid when there is
     a single output section (otherwise the destination would be ambiguous).
 
     Completeness is only verified on the **NetCDF** path, where the parts are

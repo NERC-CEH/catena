@@ -38,9 +38,9 @@ def build_driver(
     node_specs
         The `[[node]]` specs to generate the built-in "node" module from
         (`catena.config.ParsedConfig.node_specs`). Required whenever "node"
-        appears in ``modules``.
+        appears in `modules`.
     base
-        The directory a relative .py path in ``modules`` resolves against, normally
+        The directory a relative .py path in `modules` resolves against, normally
         the one holding the config (`catena.specs.ParsedConfig.base`).
     registered
         The modules an installed package supplied
@@ -48,7 +48,7 @@ def build_driver(
         responsible distribution if one of them fails to import.
     check_contracts
         Run `catena.contract_check.check_dag_contracts` on the built driver.
-        Pass ``False`` only to run that check separately, as `catena.dry_run`
+        Pass `False` only to run that check separately, as `catena.dry_run`
         does to record its failure alongside the other stages.
 
     Returns
@@ -107,9 +107,9 @@ def build_driver_from_config(
 ) -> driver.Driver:
     """Build the Hamilton driver a parsed config describes.
 
-    Calls `build_driver` with the config's modules, driver config, ``[[node]]``
+    Calls `build_driver` with the config's modules, driver config, `[[node]]`
     specs, base directory and registered modules; the remaining parameters are
-    passed through unchanged. ``cache`` is not read from ``parsed.cache_spec``, so
+    passed through unchanged. `cache` is not read from `parsed.cache_spec`, so
     that building a driver creates a cache directory only when asked to.
     """
     return build_driver(

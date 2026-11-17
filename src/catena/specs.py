@@ -26,7 +26,7 @@ RESERVED_NODE_NAMES: frozenset[str] = frozenset(
     {"xr", "xra", "Any", "__import_module", "__transforms"}
 )
 """Node names and node inputs a config may not use. Each one names a helper bound in
-every generated node module's namespace, so a node called ``xr`` would shadow that
+every generated node module's namespace, so a node called `xr` would shadow that
 helper for every later node's expression.
 """
 
@@ -88,7 +88,7 @@ def _assert_valid_per_var_tables(
 ) -> None:
     """Reject a per-variable contract table naming a variable that is not fanned out.
 
-    A table value is ``{var = value}``. Only fan-out can resolve one, so a table on
+    A table value is `{var = value}`. Only fan-out can resolve one, so a table on
     an entry with no variables is rejected too.
     """
     for key in keys:
@@ -109,18 +109,18 @@ def _assert_valid_per_var_tables(
 
 
 def expand_node_entries(entries: list[dict], where: str | None = None) -> list[dict]:
-    """Expand ``for_each`` fan-out entries into concrete per-variable node entries.
+    """Expand `for_each` fan-out entries into concrete per-variable node entries.
 
-    An entry with ``for_each = ["a", "b"]`` produces one entry per value, with
-    every ``{var}`` in its string fields (``name``, ``inputs``, ``expression``)
+    An entry with `for_each = ["a", "b"]` produces one entry per value, with
+    every `{var}` in its string fields (`name`, `inputs`, `expression`)
     substituted. A contract key given as a table keyed by variable
-    (``units = {a = "K", b = "mm"}``) gives each node its own value, and a variable
+    (`units = {a = "K", b = "mm"}`) gives each node its own value, and a variable
     the table leaves out declares nothing for that key. Entries without
-    ``for_each`` pass through unchanged. This is the config-level equivalent of
-    Hamilton's ``@parameterize``.
+    `for_each` pass through unchanged. This is the config-level equivalent of
+    Hamilton's `@parameterize`.
 
-    ``where`` names the entries in an error, for a caller whose entries were not
-    written as ``[[node]]``.
+    `where` names the entries in an error, for a caller whose entries were not
+    written as `[[node]]`.
     """
     out: list[dict] = []
     for entry in entries:
@@ -151,7 +151,7 @@ def expand_node_entries(entries: list[dict], where: str | None = None) -> list[d
 
 
 def _subst_var(value: Any, var: str) -> Any:
-    """Substitute ``{var}`` in a string, or each string in a list."""
+    """Substitute `{var}` in a string, or each string in a list."""
     if isinstance(value, str):
         return value.replace("{var}", var)
     if isinstance(value, list):
@@ -168,8 +168,8 @@ def _subst_var(value: Any, var: str) -> Any:
 class RegisteredModule:
     """A config section resolved to a module by an installed package.
 
-    Produced when a section carries no ``_import_path`` and its name matches one an
-    installed package declares in the ``catena.modules`` entry-point group (see
+    Produced when a section carries no `_import_path` and its name matches one an
+    installed package declares in the `catena.modules` entry-point group (see
     `catena.importing`). `run` and `dry_run` report these, so a section whose code
     comes from somewhere the config does not name is still visible.
     """
@@ -186,15 +186,15 @@ class RegisteredModule:
 class ResampleSpec:
     """Specification for a single [[resample]] entry.
 
-    ``source`` and ``target`` (TOML ``from`` / ``to``) are **node-name suffixes**, not
-    frequencies: ``from = "daily"`` reads ``{var}_daily``, ``to = "weekly"`` writes
-    ``{var}_weekly``, and nothing is inferred from either (see `catena.io.load_inputs`
-    on inert labels). ``from = ""`` reads the bare name ``{var}``; ``to`` must not be
-    empty. ``freq`` alone says what happens to the time axis, and is each output's
+    `source` and `target` (TOML `from` / `to`) are **node-name suffixes**, not
+    frequencies: `from = "daily"` reads `{var}_daily`, `to = "weekly"` writes
+    `{var}_weekly`, and nothing is inferred from either (see `catena.io.load_inputs`
+    on inert labels). `from = ""` reads the bare name `{var}`; `to` must not be
+    empty. `freq` alone says what happens to the time axis, and is each output's
     declared frequency.
 
-    ``contract`` holds the rest of each output's declared contract (``units``,
-    ``dims``, ``dtype``, ``coords``, ``overwrite_units``), as on a `NodeSpec`, each
+    `contract` holds the rest of each output's declared contract (`units`,
+    `dims`, `dtype`, `coords`, `overwrite_units`), as on a `NodeSpec`, each
     one value for every variable or a table keyed by variable. A facet left
     undeclared is not checked.
 
@@ -255,7 +255,7 @@ class ResampleSpec:
         """Build the node specs this resample generates, one per variable.
 
         The contract is validated here, as for any other generated node, with
-        errors naming the ``[[resample]]``.
+        errors naming the `[[resample]]`.
         """
         where = f"[[resample]] of {self.vars}"
         return [
@@ -264,13 +264,13 @@ class ResampleSpec:
         ]
 
     def node_entry(self) -> dict[str, Any]:
-        """Desugar into one ``[[node]]`` entry fanned out over ``vars``.
+        """Desugar into one `[[node]]` entry fanned out over `vars`.
 
-        Each variable ``v`` becomes a node ``{v}_{target}`` applying
-        `catena.transforms.resample` to ``{v}_{source}``, or to ``{v}`` when
-        ``source`` is empty. The node declares the resample's ``freq`` as its output
-        frequency, so a fat-fingered ``W-WED`` is caught when the driver is built,
-        together with whatever else the spec declares for ``v``.
+        Each variable `v` becomes a node `{v}_{target}` applying
+        `catena.transforms.resample` to `{v}_{source}`, or to `{v}` when
+        `source` is empty. The node declares the resample's `freq` as its output
+        frequency, so a fat-fingered `W-WED` is caught when the driver is built,
+        together with whatever else the spec declares for `v`.
         """
         src = f"{{var}}_{self.source}" if self.source else "{var}"
         return {
@@ -312,10 +312,10 @@ class ResampleSpec:
 def _assert_node_identifier(value: Any, field_: str, node_name: Any) -> None:
     """Reject a node name / input that is unsafe to interpolate into node source.
 
-    `catena.nodegen` builds each node's ``def`` line by string formatting, so a
-    name that is not a plain Python identifier fails as an opaque ``SyntaxError``
+    `catena.nodegen` builds each node's `def` line by string formatting, so a
+    name that is not a plain Python identifier fails as an opaque `SyntaxError`
     deep in module generation (or, worse, injects statements). The generated
-    module's own namespace names are reserved too: a node called ``xr`` would
+    module's own namespace names are reserved too: a node called `xr` would
     shadow the helper for every later node's expression.
     """
     where = f"[[node]] '{node_name}' {field_}"
@@ -335,7 +335,7 @@ def _assert_node_identifier(value: Any, field_: str, node_name: Any) -> None:
 
 
 def _assert_valid_overwrite_units(entry: dict, where: str) -> None:
-    """Reject an ``overwrite_units`` the node cannot apply."""
+    """Reject an `overwrite_units` the node cannot apply."""
     if "overwrite_units" not in entry:
         return
     value = entry["overwrite_units"]
@@ -354,10 +354,10 @@ def _assert_valid_overwrite_units(entry: dict, where: str) -> None:
 class NodeSpec:
     """Specification for a single (already fan-out-expanded) [[node]] entry.
 
-    ``units`` / ``dims`` / ``dtype`` / ``coords`` / ``freq`` declare the node's output
+    `units` / `dims` / `dtype` / `coords` / `freq` declare the node's output
     contract: validated at runtime, and read by the build-time check. An output with no
-    ``units`` label is stamped with the declared unit; one that keeps its input's label
-    still has to match, unless ``overwrite_units`` replaces it with the declared unit.
+    `units` label is stamped with the declared unit; one that keeps its input's label
+    still has to match, unless `overwrite_units` replaces it with the declared unit.
     A node declaring none of them is not checked.
     """
 
@@ -377,8 +377,8 @@ class NodeSpec:
     def from_config(cls, entry: dict, where: str | None = None) -> Self:
         """Construct and validate from a raw (expanded) [[node]] TOML entry.
 
-        ``where`` names what generated the entry in a contract error, for an entry
-        that was not written as ``[[node]]``.
+        `where` names what generated the entry in a contract error, for an entry
+        that was not written as `[[node]]`.
         """
         name = entry.get("name")
         contract_where = f"{where}, '{name}'" if where else f"node '{name}'"
@@ -422,7 +422,7 @@ class NodeSpec:
     def return_hint(self) -> Any:
         """Return the node's declared output contract as a return annotation.
 
-        An empty ``dims`` or ``coords`` list declares nothing, like leaving it out.
+        An empty `dims` or `coords` list declares nothing, like leaving it out.
         """
         from xarray_annotated import annotate
 
@@ -452,7 +452,7 @@ class NodeSpec:
 class CacheSpec:
     """Specification for the [cache] section.
 
-    ``recompute`` and ``disable`` follow Hamilton's caching API: each is either
+    `recompute` and `disable` follow Hamilton's caching API: each is either
     a boolean (apply to all nodes) or a list of node names.
     """
 
@@ -483,7 +483,7 @@ class CacheSpec:
 
 
 def assert_dim_name(value: Any, where: str) -> str:
-    """Validate a required dimension-name key (``[blocking].dim``, ``[subset].dim``)."""
+    """Validate a required dimension-name key (`[blocking].dim`, `[subset].dim`)."""
     if not isinstance(value, str) or not value:
         raise CatenaValueError(f"{where} must be a non-empty string, got {value!r}.")
     return value
@@ -493,9 +493,9 @@ def assert_dim_name(value: Any, where: str) -> str:
 class BlockingSpec:
     """Specification for the [blocking] section.
 
-    Controls how a partition dimension (``dim``) is split into fixed-size
-    sequential blocks to bound peak memory usage. ``dim`` may be any dimension:
-    ``pixel`` for gridded data, or ``location``, say, for non-gridded pipelines.
+    Controls how a partition dimension (`dim`) is split into fixed-size
+    sequential blocks to bound peak memory usage. `dim` may be any dimension:
+    `pixel` for gridded data, or `location`, say, for non-gridded pipelines.
     """
 
     block_size: int
@@ -518,16 +518,16 @@ class BlockingSpec:
 class SubsetSpec:
     """Specification for the [subset] section.
 
-    Selects a contiguous slice ``[start, stop)`` of one dimension (``dim``) so that
-    independent ``catena run`` processes can each handle a different chunk of the same
-    input files. ``stop`` is exclusive (Python slice convention).
+    Selects a contiguous slice `[start, stop)` of one dimension (`dim`) so that
+    independent `catena run` processes can each handle a different chunk of the same
+    input files. `stop` is exclusive (Python slice convention).
 
-    ``dim`` mirrors `BlockingSpec.dim`: the two mechanisms partition the same way
+    `dim` mirrors `BlockingSpec.dim`: the two mechanisms partition the same way
     and differ only in *who* runs the parts (one process sequentially vs. many
-    processes concurrently), so a non-gridded pipeline can subset over ``location``
-    or ``site`` just as it can block over it. The one place ``pixel`` is still
+    processes concurrently), so a non-gridded pipeline can subset over `location`
+    or `site` just as it can block over it. The one place `pixel` is still
     special is the gridded Zarr store (`catena.gridded.io.create_output_store`),
-    whose layout *is* the pixel grid; it rejects any other ``dim``.
+    whose layout *is* the pixel grid; it rejects any other `dim`.
     """
 
     start: int
@@ -560,25 +560,25 @@ class SubsetSpec:
 class IOSpec:
     """I/O specification for a single input or output section.
 
-    ``vars`` maps this section's file variables to Hamilton node names, in one of
+    `vars` maps this section's file variables to Hamilton node names, in one of
     three forms:
 
-    - a **list** ``["temperature", ...]`` — the node name is derived from the file
-      variable and the section's suffix (``{var}{suffix}``), the convenient default;
-    - a **mapping** ``{node_name: file_var}`` — an explicit, suffix-free alias, e.g.
-      ``{temperature_daily = "t2m"}`` (input: read file var ``t2m`` as node
-      ``temperature_daily``) or ``{gpp_daily = "gpp"}`` (output: write node
-      ``gpp_daily`` to file var ``gpp``). Use this to decouple file naming from DAG
+    - a **list** `["temperature", ...]` — the node name is derived from the file
+      variable and the section's suffix (`{var}{suffix}`), the convenient default;
+    - a **mapping** `{node_name: file_var}` — an explicit, suffix-free alias, e.g.
+      `{temperature_daily = "t2m"}` (input: read file var `t2m` as node
+      `temperature_daily`) or `{gpp_daily = "gpp"}` (output: write node
+      `gpp_daily` to file var `gpp`). Use this to decouple file naming from DAG
       naming, or to alias a variable without renaming the file;
-    - **omitted** (``None``) — *inputs only*: bind **every** variable in the file,
+    - **omitted** (`None`) — *inputs only*: bind **every** variable in the file,
       through the suffix. An empty list is rejected:
       binding nothing is never what a section is for.
 
-    ``suffix`` controls the list/load-everything forms' node names. When ``None``
+    `suffix` controls the list/load-everything forms' node names. When `None`
     (the default) the effective suffix is derived from the section label
-    (``_<label>``). Set ``suffix = ""`` on any section for bare names, or
-    ``suffix = "_x"`` to choose an explicit suffix. It is ignored for the mapping
-    form (which is already explicit). See ``catena.io.effective_suffix``.
+    (`_<label>`). Set `suffix = ""` on any section for bare names, or
+    `suffix = "_x"` to choose an explicit suffix. It is ignored for the mapping
+    form (which is already explicit). See `catena.io.effective_suffix`.
     """
 
     path: str
@@ -587,7 +587,7 @@ class IOSpec:
 
 
 def _validate_vars(label: str, vars_: Any) -> list[str] | dict[str, str]:
-    """Validate a section's ``vars`` is a list[str] or a dict[str, str]."""
+    """Validate a section's `vars` is a list[str] or a dict[str, str]."""
     if isinstance(vars_, dict):
         bad = [
             (k, v)
@@ -610,11 +610,11 @@ def _validate_vars(label: str, vars_: Any) -> list[str] | dict[str, str]:
 
 @dataclass
 class CheckSpec:
-    """One entry of ``[validation].checks``: a named input-compatibility check.
+    """One entry of `[validation].checks`: a named input-compatibility check.
 
-    ``check`` is a key in `catena.input_checks.CHECKS`; ``inputs`` are the resolved
-    ``[inputs.*]`` section labels to pass (``["*"]`` already expanded at parse
-    time); ``kwargs`` are the remaining inline-table keys forwarded verbatim.
+    `check` is a key in `catena.input_checks.CHECKS`; `inputs` are the resolved
+    `[inputs.*]` section labels to pass (`["*"]` already expanded at parse
+    time); `kwargs` are the remaining inline-table keys forwarded verbatim.
     """
 
     check: str
@@ -637,10 +637,10 @@ class ParsedConfig:
     checks: list["CheckSpec"] = field(default_factory=list)
     base: Path | None = None
     """The directory relative paths in the config resolve against, normally the one
-    holding the config file. ``None`` for a config with no file, which can then only use
-    absolute paths and dotted ``_import_path`` names.
+    holding the config file. `None` for a config with no file, which can then only use
+    absolute paths and dotted `_import_path` names.
     """
     registered_modules: list["RegisteredModule"] = field(default_factory=list)
     """Sections whose module came from an installed package rather than an
-    ``_import_path``, in config order.
+    `_import_path`, in config order.
     """

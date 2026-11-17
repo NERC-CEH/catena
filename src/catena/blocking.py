@@ -1,7 +1,7 @@
 """Blocked driver execution for memory management.
 
-Partitions a chosen dimension (``dim``) into fixed-size blocks and calls
-``dr.execute`` per block sequentially, then concatenates results along that
+Partitions a chosen dimension (`dim`) into fixed-size blocks and calls
+`dr.execute` per block sequentially, then concatenates results along that
 dimension. Intermediate nodes are held for one block at a time; the requested
 outputs of every block are held until they are concatenated.
 """
@@ -18,7 +18,7 @@ from .specs import BlockingSpec
 
 
 def _block_input_names(inputs: dict[str, Any], dim: str) -> list[str]:
-    """Return the names of inputs that have the ``dim`` dimension."""
+    """Return the names of inputs that have the `dim` dimension."""
     return [
         name
         for name, val in inputs.items()
@@ -27,7 +27,7 @@ def _block_input_names(inputs: dict[str, Any], dim: str) -> list[str]:
 
 
 def _block_dim_size(inputs: dict[str, Any], block_names: list[str], dim: str) -> int:
-    """Return the size of ``dim``, shared by every blocked input.
+    """Return the size of `dim`, shared by every blocked input.
 
     Taking the first input's length on trust would silently clamp a longer input to
     a shorter one's slices, surfacing (if at all) as a confusing broadcast error
@@ -50,7 +50,7 @@ def _make_blocks(
     block_size: int,
     dim: str,
 ) -> Generator[dict[str, Any]]:
-    """Yield sliced input dicts, one per block along ``dim``.
+    """Yield sliced input dicts, one per block along `dim`.
 
     Partition is deterministic and fixed-size (independent of worker count)
     so cache keys are stable across machines and restarts.
@@ -69,7 +69,7 @@ def _concat_results(
     final_vars: list[str],
     dim: str,
 ) -> dict[str, Any]:
-    """Concatenate per-block results along the ``dim`` dimension."""
+    """Concatenate per-block results along the `dim` dimension."""
     out: dict[str, Any] = {}
     for var in final_vars:
         first = block_results[0][var]
@@ -91,18 +91,18 @@ def execute_blocked(
     final_vars: list[str],
     spec: BlockingSpec,
 ) -> dict[str, Any]:
-    """Execute the driver in blocks along ``spec.dim`` and concatenate results.
+    """Execute the driver in blocks along `spec.dim` and concatenate results.
 
     Parameters
     ----------
     dr
         A built Hamilton driver.
     inputs
-        Full-grid input dict as returned by ``load_inputs``.
+        Full-grid input dict as returned by `load_inputs`.
     final_vars
-        Node names to compute, as returned by ``get_final_vars``.
+        Node names to compute, as returned by `get_final_vars`.
     spec
-        Blocking configuration (``block_size`` and ``dim``).
+        Blocking configuration (`block_size` and `dim`).
     """
     assert_dim_in_inputs(inputs, spec.dim, "blocking")
     block_names = _block_input_names(inputs, spec.dim)

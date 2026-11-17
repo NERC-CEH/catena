@@ -1,8 +1,8 @@
 """The typer application: the root callback, its options, and the subcommands.
 
-Lives beside `catena.cli.main` rather than in ``catena/cli/__init__.py`` so that
-importing `catena.cli` needs no typer. That is what lets the ``catena`` console
-script exist in an install without the ``cli`` extra and answer with an install
+Lives beside `catena.cli.main` rather than in `catena/cli/__init__.py` so that
+importing `catena.cli` needs no typer. That is what lets the `catena` console
+script exist in an install without the `cli` extra and answer with an install
 hint instead of an ImportError traceback.
 """
 

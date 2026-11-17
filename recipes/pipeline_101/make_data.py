@@ -1,6 +1,6 @@
 """Generate the synthetic input for the Pipeline 101 recipe.
 
-Writes 90 days of daily temperature at three sites to ``data/climate.nc``,
+Writes 90 days of daily temperature at three sites to `data/climate.nc`,
 relative to this file. The series is deterministic, so the pipeline output is
 reproducible.
 

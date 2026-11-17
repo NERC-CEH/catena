@@ -1,7 +1,7 @@
 """The file-format registry.
 
 Every extension-based decision catena makes — which reader to call, which writer,
-whether a format needs a pre-created store for a ``[subset]`` run — is an entry in
+whether a format needs a pre-created store for a `[subset]` run — is an entry in
 `FORMATS`, looked up through `format_for`.
 """
 
@@ -55,7 +55,7 @@ class Format:
     write: Writer
     needs_store: bool = False
     """Whether subset runs write into one shared store, which must be created up front
-    with ``catena gridded create-store``. If false, each subset writes its own file.
+    with `catena gridded create-store`. If false, each subset writes its own file.
     """
 
 
@@ -71,10 +71,10 @@ def supported_suffixes() -> list[str]:
 
 
 def format_for(path: str | PathLike) -> Format:
-    """Return the `Format` handling ``path``, by extension.
+    """Return the `Format` handling `path`, by extension.
 
     A suffix-less path that is an existing directory is read as Zarr — that is the
-    shape a Zarr store takes on disk. Anything unrecognised raises a ``ValueError``
+    shape a Zarr store takes on disk. Anything unrecognised raises a `ValueError`
     naming every supported extension.
     """
     p = Path(path)

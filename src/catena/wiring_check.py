@@ -2,18 +2,18 @@
 
 The contract check (`catena.contract_check`) covers the *declared* contracts;
 this covers the *wiring*. It compares the external inputs the built DAG requires (to
-produce the requested ``final_vars``) against the inputs actually loaded from the
+produce the requested `final_vars`) against the inputs actually loaded from the
 config, and reports the two failure modes that otherwise only surface part way
 through a run:
 
 - **unbound** — a node requires an external input that was neither loaded nor set
   in the config (an error: the run cannot proceed);
 - **unused** — a loaded input that no node consumes (a warning: usually a
-  suffix/alias typo, e.g. loading ``temperature_daily`` for a node that wants
-  ``temperature_weekly``).
+  suffix/alias typo, e.g. loading `temperature_daily` for a node that wants
+  `temperature_weekly`).
 
 It reads the graph structure only, so it needs no compute. The unbound check is
-Hamilton's own ``Driver.validate_execution``, which names the nodes that need
+Hamilton's own `Driver.validate_execution`, which names the nodes that need
 each missing input.
 """
 
@@ -67,7 +67,7 @@ def check_wiring(
         The loaded input dict (as from `catena.io.load_inputs`).
     exempt
         Loaded input names to exclude from the *unused* check — auto-derived
-        inputs (date indices, lat/lon) that ``load_inputs`` always emits but no
+        inputs (date indices, lat/lon) that `load_inputs` always emits but no
         node is required to consume. See `catena.io.auxiliary_input_names`.
 
     Raises
