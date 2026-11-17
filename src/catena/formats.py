@@ -49,13 +49,14 @@ class Format:
     """One supported file format."""
 
     key: str
-    #: Recognised extensions, lowercase and dot-prefixed. The first is canonical.
     suffixes: tuple[str, ...]
+    """Recognised extensions, lowercase and dot-prefixed. The first is canonical."""
     read: Reader
     write: Writer
-    #: Whether a subset write targets a store that must be created up front
-    #: (``catena gridded create-store``) rather than a file per subset.
     needs_store: bool = False
+    """Whether subset runs write into one shared store, which must be created up front
+    with ``catena gridded create-store``. If false, each subset writes its own file.
+    """
 
 
 FORMATS: tuple[Format, ...] = (

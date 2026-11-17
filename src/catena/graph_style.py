@@ -48,11 +48,12 @@ FREQ_COLOR_CYCLE: tuple[str, ...] = (
     "#e5c494",
 )
 
-#: Colours for the fixed, non-frequency categories. A ``[palette]`` entry may also
-#: name a *frequency* (``"7D"``) to pin it against `FREQ_COLOR_CYCLE`.
 DEFAULT_PALETTE: dict[str, str] = {
     "output": "#e7298a",  # border highlight on requested output nodes
 }
+"""Colours for the fixed, non-frequency categories. A ``[palette]`` entry may also name
+a *frequency* (``"7D"``) to pin it against `FREQ_COLOR_CYCLE`.
+"""
 
 # Top-level keys accepted in a ``--style`` TOML file.
 _GRAPHVIZ_ATTR_KEYS = ("graph_attr", "node_attr", "edge_attr")

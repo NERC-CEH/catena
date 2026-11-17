@@ -47,8 +47,8 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-#: Either a path to a TOML config file or an already-parsed config.
 ConfigSource = str | Path | ParsedConfig
+"""Either a path to a TOML config file or an already-parsed config."""
 
 
 def prepare_config(config: ConfigSource) -> tuple[ParsedConfig, Path | None]:
@@ -69,15 +69,17 @@ def prepare_config(config: ConfigSource) -> tuple[ParsedConfig, Path | None]:
 class WrittenOutput:
     """One destination a run wrote, and what went into it."""
 
-    #: The ``[outputs.<label>]`` section this came from.
     label: str
-    #: Where it was actually written. Under ``[subset]`` this carries the
-    #: subset's suffix, so it is not always the path the config asked for.
+    """The ``[outputs.<label>]`` section this came from."""
     path: Path
+    """Where it was actually written. Under ``[subset]`` this carries the subset's
+    suffix, so it is not always the path the config asked for.
+    """
     variables: tuple[str, ...]
-    #: Size on disk, summed over a directory store. ``None`` if it could not be
-    #: measured.
     size_bytes: int | None = None
+    """Size on disk, summed over a directory store. ``None`` if it could not be
+    measured.
+    """
 
 
 @dataclass(frozen=True)
@@ -88,14 +90,15 @@ class RunReport:
     that ran to completion.
     """
 
-    #: The config's path, or ``None`` when `run` was given a `ParsedConfig`.
     config_file: Path | None
-    #: The dataset written for each ``[outputs.*]`` section, keyed by section
-    #: name. Empty for a config that declares no outputs.
+    """The config's path, or ``None`` when `run` was given a `ParsedConfig`."""
     outputs: dict[str, xr.Dataset] = field(default_factory=dict)
+    """The dataset written for each ``[outputs.*]`` section, keyed by section name.
+    Empty for a config that declares no outputs.
+    """
     written: tuple[WrittenOutput, ...] = ()
-    #: Wall-clock seconds, config parse to last byte written.
     elapsed: float = 0.0
+    """Wall-clock seconds, config parse to last byte written."""
 
 
 def run(
@@ -237,8 +240,8 @@ class Stage:
 class DryRunReport:
     """The outcome of a dry run: what each stage checked and found."""
 
-    #: The config's path, or ``None`` when `dry_run` was given a `ParsedConfig`.
     config_file: Path | None
+    """The config's path, or ``None`` when `dry_run` was given a `ParsedConfig`."""
     stages: tuple[Stage, ...] = ()
 
     @property

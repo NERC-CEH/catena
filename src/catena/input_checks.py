@@ -33,8 +33,8 @@ class InputCheckError(CatenaValueError):
     """Raised (by `run_input_checks`) when one or more input checks fail."""
 
 
-#: Name -> dataset, in the order the check compares them.
 Datasets = Mapping[str, xr.Dataset]
+"""Name -> dataset, in the order the check compares them."""
 
 
 # ---------------------------------------------------------------------------

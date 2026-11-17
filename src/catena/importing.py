@@ -32,20 +32,27 @@ from types import ModuleType
 from .errors import CatenaFileNotFoundError, CatenaValueError
 from .specs import RECOGNISED_SECTIONS, RegisteredModule
 
-#: Entry-point group a package declares to give its modules a bare section name.
-#: An installed package announcing
-#: ``[project.entry-points."catena.modules"] diagnostics = "science.diagnostics"``
-#: makes ``[diagnostics]`` a valid config section with no ``_import_path``.
 ENTRY_POINT_GROUP = "catena.modules"
+"""Entry-point group a package declares to give its modules a bare section name.
 
-#: Prefix for the ``sys.modules`` name a file-form module is registered under.
-#: Hamilton resolves a node's originating function through ``sys.modules``, so the
-#: module has to be registered; keying the name on the file's resolved path keeps
-#: two same-named files in different directories apart.
+An installed package declaring
+
+```toml
+[project.entry-points."catena.modules"]
+diagnostics = "science.diagnostics"
+```
+
+makes ``[diagnostics]`` a valid config section with no ``_import_path``.
+"""
+
+# Prefix for the ``sys.modules`` name a file-form module is registered under.
+# Hamilton resolves a node's originating function through ``sys.modules``, so the
+# module has to be registered; keying the name on the file's resolved path keeps
+# two same-named files in different directories apart.
 _LOCAL_PREFIX = "_catena_local"
 
-#: Attribute holding the hash of the source a loaded file-form module was built
-#: from, so a later import can tell whether the file has changed.
+# Attribute holding the hash of the source a loaded file-form module was built
+# from, so a later import can tell whether the file has changed.
 _STAMP_ATTR = "__catena_source_sha256__"
 
 

@@ -19,18 +19,17 @@ _VALID_AGGFUNCS: frozenset[str] = frozenset(
     {"mean", "sum", "max", "min", "first", "last"}
 )
 
-#: Node names and node inputs a config may not use. Each one names a helper bound
-#: in every generated node module's namespace, so a node called ``xr`` would shadow
-#: that helper for every later node's expression. `catena.nodegen` binds them and
-#: `NodeSpec.from_config` rejects them at parse time; the two are kept in step by
-#: ``test_nodegen.py::test_reserved_names_match_generated_namespace``.
+# `catena.nodegen` binds these names and `NodeSpec.from_config` rejects them at parse
+# time; test_nodegen.py::test_reserved_names_match_generated_namespace keeps the two in
+# step.
 RESERVED_NODE_NAMES: frozenset[str] = frozenset(
     {"xr", "xra", "Any", "__import_module", "__transforms"}
 )
+"""Node names and node inputs a config may not use. Each one names a helper bound in
+every generated node module's namespace, so a node called ``xr`` would shadow that
+helper for every later node's expression.
+"""
 
-#: Top-level config sections and keys catena parses itself. A section named here is
-#: never treated as a user module, so a package registering one of these names would
-#: register something no config could ever reach.
 RECOGNISED_SECTIONS: frozenset[str] = frozenset(
     {
         "inputs",
@@ -43,9 +42,11 @@ RECOGNISED_SECTIONS: frozenset[str] = frozenset(
         "subset",
     }
 )
+"""Top-level config sections and keys catena parses itself. A section named here is
+never treated as a user module, so a package registering one of these names would
+register something no config could ever reach.
+"""
 
-#: Keys declaring a generated node's output contract. Under fan-out, each may be a
-#: table keyed by variable instead of one value for every variable.
 CONTRACT_KEYS: tuple[str, ...] = (
     "units",
     "dims",
@@ -54,6 +55,9 @@ CONTRACT_KEYS: tuple[str, ...] = (
     "freq",
     "overwrite_units",
 )
+"""Keys declaring a generated node's output contract. Under fan-out, each may be a table
+keyed by variable instead of one value for every variable.
+"""
 
 _NODE_KEYS: frozenset[str] = frozenset(
     {"name", "inputs", "expression", "_import_path", "function", "for_each"}
@@ -170,12 +174,12 @@ class RegisteredModule:
     comes from somewhere the config does not name is still visible.
     """
 
-    #: The config section that named it.
     section: str
-    #: The dotted module path the package registered.
+    """The config section that named it."""
     import_path: str
-    #: The distribution that registered it.
+    """The dotted module path the package registered."""
     distribution: str
+    """The distribution that registered it."""
 
 
 @dataclass
@@ -631,10 +635,12 @@ class ParsedConfig:
     blocking_spec: "BlockingSpec | None" = None
     subset_spec: "SubsetSpec | None" = None
     checks: list["CheckSpec"] = field(default_factory=list)
-    #: The directory relative paths in the config resolve against, normally the
-    #: one holding the config file. ``None`` for a config with no file, which can
-    #: then only use absolute paths and dotted ``_import_path`` names.
     base: Path | None = None
-    #: Sections whose module came from an installed package rather than an
-    #: ``_import_path``, in config order.
+    """The directory relative paths in the config resolve against, normally the one
+    holding the config file. ``None`` for a config with no file, which can then only use
+    absolute paths and dotted ``_import_path`` names.
+    """
     registered_modules: list["RegisteredModule"] = field(default_factory=list)
+    """Sections whose module came from an installed package rather than an
+    ``_import_path``, in config order.
+    """
