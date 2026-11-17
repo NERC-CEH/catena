@@ -4,7 +4,7 @@ Writes a year of half-hourly eddy-covariance data to ``data/flux.nc`` and
 weekly satellite GPP to ``data/satellite.nc``, both relative to this file.
 The series are deterministic, so the pipeline products are reproducible.
 
-Run it directly, or call :func:`write_inputs` from a notebook.
+Run it directly, or call `write_inputs` from a notebook.
 """
 
 from pathlib import Path

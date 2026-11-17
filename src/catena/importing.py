@@ -225,11 +225,13 @@ def discover_registered_modules() -> dict[str, RegisteredModule]:
     """Return the modules installed packages have registered, keyed by section name.
 
     A package makes its modules addressable by a bare section name by declaring
-    them in its own ``pyproject.toml``::
+    them in its own ``pyproject.toml``:
 
-        [project.entry-points."catena.modules"]
-        transforms = "science.transforms"
-        diagnostics = "science.diagnostics"
+    ```toml
+    [project.entry-points."catena.modules"]
+    transforms = "science.transforms"
+    diagnostics = "science.diagnostics"
+    ```
 
     A config may then write ``[transforms]`` with no ``_import_path``. Nothing is
     imported here: the entry point's value is read as a string, so a registered

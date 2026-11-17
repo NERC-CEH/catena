@@ -65,7 +65,7 @@ def make_style_function(
     contracts — not guessed from name suffixes), and nodes corresponding to requested
     outputs additionally get a thick coloured border so the pipeline's end products
     stand out.  Units are *not* handled here (the style hook cannot set a node's
-    label); they are injected later by :func:`relabel_with_units`.
+    label); they are injected later by `relabel_with_units`.
     """
     palette = spec.palette
 
@@ -189,16 +189,18 @@ def link_style(
 
     Examples
     --------
-    Compose it with catena's own styling::
+    Compose it with catena's own styling:
 
-        style = GraphStyle.from_driver(dr)
-        links = link_style(dr, lambda fn: f"api.html#{fn.__module__}.{fn.__qualname__}")
-        digraph = dr.display_all_functions(
-            **{
-                **style.hamilton_kwargs(),
-                "custom_style_function": compose_styles(style.node_style, links),
-            }
-        )
+    ```python
+    style = GraphStyle.from_driver(dr)
+    links = link_style(dr, lambda fn: f"api.html#{fn.__module__}.{fn.__qualname__}")
+    digraph = dr.display_all_functions(
+        **{
+            **style.hamilton_kwargs(),
+            "custom_style_function": compose_styles(style.node_style, links),
+        }
+    )
+    ```
     """
     return _link_style(_own_functions(dr), link, tooltip=tooltip)
 
@@ -498,13 +500,15 @@ class GraphStyle:
     """catena's styling for a driver's DAG, applicable to any Hamilton view.
 
     Build it once from a driver, pass `hamilton_kwargs` to any of Hamilton's
-    display methods, then `apply` it to the digraph that method returns::
+    display methods, then `apply` it to the digraph that method returns:
 
-        style = GraphStyle.from_driver(dr, outputs=["gpp_weekly"])
-        digraph = dr.visualize_path_between(
-            "nee_raw", "gpp_weekly", **style.hamilton_kwargs()
-        )
-        style.apply(digraph)
+    ```python
+    style = GraphStyle.from_driver(dr, outputs=["gpp_weekly"])
+    digraph = dr.visualize_path_between(
+        "nee_raw", "gpp_weekly", **style.hamilton_kwargs()
+    )
+    style.apply(digraph)
+    ```
 
     Everything shown is read off the whole DAG, so a node is styled the same
     in every view that draws it.

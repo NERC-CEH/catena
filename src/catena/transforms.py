@@ -27,11 +27,11 @@ def resample(
     coordinates (`catena.io.sole_time_dim`), so an axis need not be called
     ``time``; pass ``dim`` explicitly to override.
 
-    .. warning::
-       Units are preserved unchanged, so ``aggfunc`` must match the *kind* of
-       quantity: ``mean`` for a rate, ``sum`` for an amount-per-period. Summing a
-       rate is dimensionally consistent — so **no contract check can catch it** —
-       and physically meaningless. See the "Resampling & units" guide.
+    !!! warning
+        Units are preserved unchanged, so ``aggfunc`` must match the *kind* of
+        quantity: ``mean`` for a rate, ``sum`` for an amount-per-period. Summing
+        a rate is dimensionally consistent — so **no contract check can catch
+        it** — and physically meaningless. See the "Resampling & units" guide.
     """
     dim = dim or sole_time_dim(var_in, f"resample input {var_in.name!r}")
     # keep_attrs: the CF 'units' must survive for contract validation downstream.

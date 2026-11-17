@@ -19,7 +19,7 @@ MolarFlux = Annotated[xr.DataArray, Unit("umol m-2 s-1")]
 
 
 class PartitionedFluxes(TypedDict):
-    """Fluxes returned by :func:`partition_fluxes`."""
+    """Fluxes returned by `partition_fluxes`."""
 
     gpp: MolarFlux
     reco: MolarFlux

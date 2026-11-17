@@ -1,28 +1,31 @@
 """Styling configuration for the ``catena graph`` DAG visualisation.
 
-The canonical default styling lives in :class:`GraphvizSpec`, a typed dataclass
-that is the single source of truth.  Users may supply an optional TOML file via
+The canonical default styling lives in
+[`GraphvizSpec`][catena.graph_style.GraphvizSpec], a typed dataclass that is the
+single source of truth.  Users may supply an optional TOML file via
 ``catena graph --style <file>`` whose keys are deep-merged over these defaults,
 so one style can be reused across many science configs without duplicating it.
 
-Recognised top-level keys in a ``--style`` file::
+Recognised top-level keys in a ``--style`` file:
 
-    style_function = "my_pkg.styling:my_style"   # composed over the built-in style
-    link_function = "my_pkg.docs:api_url"        # node function -> URL, or None
-    link_tooltip = true                          # docstring summary on hover
-    show_legend = true
+```toml
+style_function = "my_pkg.styling:my_style"   # composed over the built-in style
+link_function = "my_pkg.docs:api_url"        # node function -> URL, or None
+link_tooltip = true                          # docstring summary on hover
+show_legend = true
 
-    [palette]                                    # pin a colour to a frequency
-    "7D" = "#ff7f00"                             # ... or override `output`
+[palette]                                    # pin a colour to a frequency
+"7D" = "#ff7f00"                             # ... or override `output`
 
-    [graph_attr]                                 # graphviz graph attributes
-    rankdir = "TB"
+[graph_attr]                                 # graphviz graph attributes
+rankdir = "TB"
 
-    [node_attr]                                  # graphviz node attributes
-    fontname = "Courier"
+[node_attr]                                  # graphviz node attributes
+fontname = "Courier"
 
-    [edge_attr]                                  # graphviz edge attributes
-    color = "#444444"
+[edge_attr]                                  # graphviz edge attributes
+color = "#444444"
+```
 """
 
 import tomllib
@@ -72,7 +75,8 @@ class GraphvizSpec:
     Attributes
     ----------
     palette
-        Category → hex-colour map (see :data:`DEFAULT_PALETTE`).
+        Category → hex-colour map (see
+        [`DEFAULT_PALETTE`][catena.graph_style.DEFAULT_PALETTE]).
     style_function
         Optional ``"module:function"`` import path to a Hamilton
         ``custom_style_function``, composed over the built-in one.
