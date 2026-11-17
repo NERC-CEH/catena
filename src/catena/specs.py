@@ -104,6 +104,57 @@ def _assert_valid_per_var_tables(
             )
 
 
+def expand_node_entries(entries: list[dict], where: str | None = None) -> list[dict]:
+    """Expand ``for_each`` fan-out entries into concrete per-variable node entries.
+
+    An entry with ``for_each = ["a", "b"]`` produces one entry per value, with
+    every ``{var}`` in its string fields (``name``, ``inputs``, ``expression``)
+    substituted. A contract key given as a table keyed by variable
+    (``units = {a = "K", b = "mm"}``) gives each node its own value, and a variable
+    the table leaves out declares nothing for that key. Entries without
+    ``for_each`` pass through unchanged. This is the config-level equivalent of
+    Hamilton's ``@parameterize``.
+
+    ``where`` names the entries in an error, for a caller whose entries were not
+    written as ``[[node]]``.
+    """
+    out: list[dict] = []
+    for entry in entries:
+        label = where or f"[[node]] '{entry.get('name')}'"
+        for_each = entry.get("for_each")
+        if for_each is not None and not for_each:
+            raise CatenaValueError(
+                f"{label} has for_each = [], which would "
+                f"generate no nodes. List the variables to fan out over, or drop "
+                f"'for_each' for a single node."
+            )
+        _assert_valid_per_var_tables(entry, CONTRACT_KEYS, list(for_each or []), label)
+        if for_each is None:
+            out.append(entry)
+            continue
+        for var in for_each:
+            concrete: dict = {}
+            for key, value in entry.items():
+                if key == "for_each":
+                    continue
+                if key in CONTRACT_KEYS and isinstance(value, dict):
+                    if var not in value:
+                        continue
+                    value = value[var]
+                concrete[key] = _subst_var(value, var)
+            out.append(concrete)
+    return out
+
+
+def _subst_var(value: Any, var: str) -> Any:
+    """Substitute ``{var}`` in a string, or each string in a list."""
+    if isinstance(value, str):
+        return value.replace("{var}", var)
+    if isinstance(value, list):
+        return [x.replace("{var}", var) if isinstance(x, str) else x for x in value]
+    return value
+
+
 # ---------------------------------------------------------------------------
 # Spec dataclasses (the parsed data model)
 # ---------------------------------------------------------------------------
@@ -143,7 +194,7 @@ class ResampleSpec:
     one value for every variable or a table keyed by variable. A facet left
     undeclared is not checked.
 
-    Built into node specs by `catena.config.resample_node_specs`.
+    Built into node specs by `node_specs`.
     """
 
     vars: list[str]
@@ -165,6 +216,11 @@ class ResampleSpec:
         _assert_known_keys(
             self.contract, frozenset(_RESAMPLE_CONTRACT_KEYS), f"{where} contract"
         )
+        if not self.vars:
+            raise CatenaValueError(
+                "[[resample]] has vars = [], which would generate no nodes. List "
+                "the variables to resample."
+            )
         if self.aggfunc not in _VALID_AGGFUNCS:
             raise CatenaValueError(
                 f"{where}: Unsupported aggfunc '{self.aggfunc}'. "
@@ -189,23 +245,41 @@ class ResampleSpec:
                 f"alias, as {self.freq!r} says how often to sample but not where to "
                 f"stamp it. Use one such as '1ME' or 'YE'."
             )
-        _assert_valid_per_var_tables(
-            self.contract, _RESAMPLE_CONTRACT_KEYS, self.vars, where
-        )
-        for var in self.vars:
-            _assert_valid_contract(self.contract_for(var), f"{where}, '{var}'")
-            _assert_valid_overwrite_units(self.contract_for(var), f"{where}, '{var}'")
+        self.node_specs()
 
-    def contract_for(self, var: str) -> dict[str, Any]:
-        """Return the contract declared for one variable, tables resolved."""
-        out: dict[str, Any] = {}
-        for key, value in self.contract.items():
-            if isinstance(value, dict):
-                if var not in value:
-                    continue
-                value = value[var]
-            out[key] = value
-        return out
+    def node_specs(self) -> "list[NodeSpec]":
+        """Build the node specs this resample generates, one per variable.
+
+        The contract is validated here, as for any other generated node, with
+        errors naming the ``[[resample]]``.
+        """
+        where = f"[[resample]] of {self.vars}"
+        return [
+            NodeSpec.from_config(entry, where=where)
+            for entry in expand_node_entries([self.node_entry()], where=where)
+        ]
+
+    def node_entry(self) -> dict[str, Any]:
+        """Desugar into one ``[[node]]`` entry fanned out over ``vars``.
+
+        Each variable ``v`` becomes a node ``{v}_{target}`` applying
+        `catena.transforms.resample` to ``{v}_{source}``, or to ``{v}`` when
+        ``source`` is empty. The node declares the resample's ``freq`` as its output
+        frequency, so a fat-fingered ``W-WED`` is caught when the driver is built,
+        together with whatever else the spec declares for ``v``.
+        """
+        src = f"{{var}}_{self.source}" if self.source else "{var}"
+        return {
+            **self.contract,
+            "for_each": self.vars,
+            "name": f"{{var}}_{self.target}",
+            "inputs": [src],
+            "expression": (
+                f"__transforms.resample({src}, freq={self.freq!r}, "
+                f"aggfunc={self.aggfunc!r})"
+            ),
+            "freq": self.freq,
+        }
 
     @classmethod
     def from_config(cls, entry: dict) -> Self:
@@ -256,32 +330,6 @@ def _assert_node_identifier(value: Any, field_: str, node_name: Any) -> None:
         )
 
 
-def _assert_valid_contract(entry: dict, where: str) -> None:
-    """Reject a generated node's malformed output contract at parse time."""
-    from xarray_annotated import (
-        annotate,
-        assert_valid_declaration,
-        declaration_from_hint,
-    )
-
-    try:
-        declared = declaration_from_hint(
-            annotate(
-                unit=entry.get("units"),
-                dims=entry.get("dims"),
-                dtype=entry.get("dtype"),
-                coords=entry.get("coords"),
-                freq=entry.get("freq"),
-            )
-        )
-        if declared is not None:
-            assert_valid_declaration(declared, where)
-    except TypeError as exc:
-        raise CatenaValueError(f"{where}: {exc}") from exc
-    except ValueError as exc:
-        raise CatenaValueError(str(exc)) from exc
-
-
 def _assert_valid_overwrite_units(entry: dict, where: str) -> None:
     """Reject an ``overwrite_units`` the node cannot apply."""
     if "overwrite_units" not in entry:
@@ -322,9 +370,14 @@ class NodeSpec:
     overwrite_units: bool = False
 
     @classmethod
-    def from_config(cls, entry: dict) -> Self:
-        """Construct and validate from a raw (expanded) [[node]] TOML entry."""
+    def from_config(cls, entry: dict, where: str | None = None) -> Self:
+        """Construct and validate from a raw (expanded) [[node]] TOML entry.
+
+        ``where`` names what generated the entry in a contract error, for an entry
+        that was not written as ``[[node]]``.
+        """
         name = entry.get("name")
+        contract_where = f"{where}, '{name}'" if where else f"node '{name}'"
         _assert_known_keys(entry, _NODE_KEYS - {"for_each"}, f"[[node]] '{name}'")
         _assert_node_identifier(name, "name", name)
         for inp in entry.get("inputs", []):
@@ -350,21 +403,45 @@ class NodeSpec:
                 f"'{missing}'. A function node needs both keys: "
                 f"'_import_path' (the module) and 'function' (the name within it)."
             )
-        _assert_valid_contract(entry, f"node '{name}'")
-        _assert_valid_overwrite_units(entry, f"node '{name}'")
-        return cls(
+        _assert_valid_overwrite_units(entry, contract_where)
+        spec = cls(
             name=entry["name"],
             inputs=entry["inputs"],
             expression=entry.get("expression"),
             import_path=entry.get("_import_path"),
             function=entry.get("function"),
-            units=entry.get("units"),
-            dims=entry.get("dims"),
-            dtype=entry.get("dtype"),
-            coords=entry.get("coords"),
-            freq=entry.get("freq"),
-            overwrite_units=entry.get("overwrite_units", False),
+            **{key: entry[key] for key in CONTRACT_KEYS if key in entry},
         )
+        spec._assert_valid_contract(contract_where)
+        return spec
+
+    def return_hint(self) -> Any:
+        """Return the node's declared output contract as a return annotation.
+
+        An empty ``dims`` or ``coords`` list declares nothing, like leaving it out.
+        """
+        from xarray_annotated import annotate
+
+        return annotate(
+            unit=self.units,
+            dims=None if self.dims == [] else self.dims,
+            dtype=self.dtype,
+            coords=None if self.coords == [] else self.coords,
+            freq=self.freq,
+        )
+
+    def _assert_valid_contract(self, where: str) -> None:
+        """Reject a malformed output contract at parse time."""
+        from xarray_annotated import assert_valid_declaration, declaration_from_hint
+
+        try:
+            declared = declaration_from_hint(self.return_hint())
+            if declared is not None:
+                assert_valid_declaration(declared, where)
+        except TypeError as exc:
+            raise CatenaValueError(f"{where}: {exc}") from exc
+        except ValueError as exc:
+            raise CatenaValueError(str(exc)) from exc
 
 
 @dataclass
