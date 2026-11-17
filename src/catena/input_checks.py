@@ -104,7 +104,7 @@ def time_subset(datasets: Datasets) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Coordinate checks
+# Coordinate and CRS checks
 # ---------------------------------------------------------------------------
 
 
@@ -142,6 +142,51 @@ def coords_equal(datasets: Datasets, *, coords: list[str], atol: float = 1e-6) -
                 )
 
 
+def _crs_text(name: str, ds: xr.Dataset) -> str:
+    """Return the dataset's CRS as stored in the file; raise unless it has exactly one.
+
+    Read from the CF grid-mapping variable each data variable names (its
+    `crs_wkt`, or rioxarray's `spatial_ref` attribute), else from a global `crs`
+    attribute.
+    """
+    found: set[str] = set()
+    for var in ds.data_vars.values():
+        mapping = var.encoding.get("grid_mapping") or var.attrs.get("grid_mapping")
+        if mapping is None or mapping not in ds.variables:
+            continue
+        attrs = ds[mapping].attrs
+        text = attrs.get("crs_wkt") or attrs.get("spatial_ref")
+        if text is None:
+            raise CatenaValueError(
+                f"{name} grid mapping {mapping!r} has no 'crs_wkt' attribute to compare"
+            )
+        found.add(str(text))
+    if not found and ds.attrs.get("crs"):
+        found.add(str(ds.attrs["crs"]))
+    if not found:
+        raise CatenaValueError(
+            f"{name} has no CRS (no grid mapping or 'crs' attribute)"
+        )
+    if len(found) > 1:
+        raise CatenaValueError(f"{name} has {len(found)} different CRSs")
+    return found.pop()
+
+
+def crs_equal(datasets: Datasets) -> None:
+    """Assert every dataset declares the same CRS.
+
+    The CRS is compared as the text stored in the file, so two equivalent CRSs
+    written differently (by different tools, say) count as different.
+    """
+    if len(datasets) < 2:
+        return
+    (ref_name, ref_ds), *others = datasets.items()
+    ref = _crs_text(ref_name, ref_ds)
+    for name, ds in others:
+        if _crs_text(name, ds) != ref:
+            raise CatenaValueError(f"{name} CRS differs from {ref_name}")
+
+
 # ---------------------------------------------------------------------------
 # Registry + runner
 # ---------------------------------------------------------------------------
@@ -164,6 +209,7 @@ CHECKS: dict[str, Check] = {
     "time_equal": Check(time_equal, "variadic"),
     "time_subset": Check(time_subset, 2),
     "coords_equal": Check(coords_equal, "variadic"),
+    "crs_equal": Check(crs_equal, "variadic"),
 }
 
 

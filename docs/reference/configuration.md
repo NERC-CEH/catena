@@ -286,11 +286,12 @@ Available checks:
 | `time_equal` | any | all inputs share an identical time index |
 | `time_subset` | exactly 2 | the second input's timestamps are a subset of the first's |
 | `coords_equal` | any | the named `coords` match across all inputs (`atol` for float coords) |
+| `crs_equal` | any | all inputs declare the same CRS, compared as the text stored in the files |
 
 There is no grid check to declare: gridded inputs must all share one CRS and grid, and catena [checks that whenever it loads them](data-formats.md#spatial-handling).
 
 The checks live in [`catena.input_checks`](modules/catena.input_checks.md) and can be called directly from Python, with a mapping from a name to each dataset.
-Under [`[subset]`](#subset) they are skipped with a warning, since they describe the whole domain rather than one shard.
+They check the whole input files, also under [`[subset]`](#subset).
 
 ## Contract checks
 

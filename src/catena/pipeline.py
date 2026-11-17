@@ -442,10 +442,6 @@ def _checks_stage(parsed: ParsedConfig, *, inputs_loaded: bool) -> Stage:
         n_checks = _run_input_checks(parsed)
     except CatenaError as exc:
         return _failed("checks", "input checks failed", exc)
-    if not n_checks:
-        return Stage(
-            "checks", "skipped", "input checks: skipped (running under [subset])"
-        )
     return Stage("checks", "ok", f"input checks passed ({n_checks})")
 
 
@@ -502,19 +498,11 @@ def _registered_sources(parsed: ParsedConfig) -> tuple[str, ...]:
 def _run_input_checks(parsed: ParsedConfig) -> int:
     """Run the configured input-compatibility checks before the DAG is built.
 
-    Returns the number of checks run (0 if none configured). Under `[subset]`
-    the checks operate on a slice rather than the full domain, so they are
-    skipped with a warning recommending a full-domain dry run. A failure raises
+    Returns the number of checks run (0 if none configured). The checks see the
+    whole input files, also under `[subset]`. A failure raises
     `catena.input_checks.InputCheckError`.
     """
     if not parsed.checks:
-        return 0
-    if parsed.subset_spec is not None:
-        warnings.warn(
-            "input checks skipped under [subset]; run `catena run --dry-run` on "
-            "the full domain to validate them",
-            stacklevel=2,
-        )
         return 0
     from .input_checks import run_input_checks
     from .io import load_raw_datasets
