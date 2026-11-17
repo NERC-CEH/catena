@@ -555,6 +555,18 @@ class SubsetSpec:
         dim = assert_dim_name(entry.get("dim"), "[subset] 'dim'")
         return cls(start=start, stop=stop, dim=dim)
 
+    @classmethod
+    def from_string(cls, text: str) -> Self:
+        """Construct and validate from `DIM:START:STOP`, e.g. `pixel:0:500`."""
+        parts = text.split(":")
+        if len(parts) != 3 or not (parts[1].isdecimal() and parts[2].isdecimal()):
+            raise CatenaValueError(
+                f"A subset is written DIM:START:STOP with integer bounds, e.g. "
+                f"'pixel:0:500'; got {text!r}."
+            )
+        dim, start, stop = parts
+        return cls.from_config({"dim": dim, "start": int(start), "stop": int(stop)})
+
 
 @dataclass
 class IOSpec:
