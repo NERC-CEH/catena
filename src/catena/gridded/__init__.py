@@ -1,11 +1,11 @@
-"""Optional gridded (CRS/pixel) geospatial + parallel-Zarr layer for catena.
+"""Optional gridded (CRS) geospatial + parallel-Zarr layer for catena.
 
 **The lazy-import policy, stated once.** Everywhere else in catena, an import of
 `catena.gridded` sits inside a function body and carries at most a
 `# lazy: optional geo extra` tag. This is why:
 
-- The core is domain-agnostic. `catena.io` must not require a CRS, a `pixel`
-  dimension, or a geospatial dependency, so it never imports this package at module
+- The core is domain-agnostic. `catena.io` must not require a CRS or a
+  geospatial dependency, so it never imports this package at module
   load — only from inside the functions that actually need it, and only once an
   input has been found to carry CRS metadata (`has_crs`, a cheap, dependency-free
   CF-metadata check) or a `[subset]` has been configured.
@@ -26,9 +26,7 @@ from .io import (
     create_output_store,
     has_crs,
     merge_subset_outputs,
-    stack_if_gridded,
     subset_suffix,
-    unstack_if_gridded,
 )
 
 __all__ = [
@@ -37,7 +35,5 @@ __all__ = [
     "create_output_store",
     "has_crs",
     "merge_subset_outputs",
-    "stack_if_gridded",
     "subset_suffix",
-    "unstack_if_gridded",
 ]

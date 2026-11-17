@@ -18,7 +18,7 @@ from catena.config import IOSpec
 from catena.io import get_final_vars
 from catena.pipeline import dry_run, run
 
-N_PIXELS = 4  # 2x2 grid
+GRID = {"y": 2, "x": 2}
 N_DAYS = 365
 N_MONTHS = 12
 
@@ -29,21 +29,21 @@ class TestLoadedInputs:
     def test_daily_input_shape(self, pipeline_inputs):
         da = pipeline_inputs["temperature_daily"]
         assert da.sizes["time"] == N_DAYS
-        assert da.sizes["pixel"] == N_PIXELS
+        assert {d: da.sizes[d] for d in GRID} == GRID
 
     def test_weekly_input_shape(self, pipeline_inputs):
         da = pipeline_inputs["pressure_weekly"]
         assert 50 <= da.sizes["time"] <= 54
-        assert da.sizes["pixel"] == N_PIXELS
+        assert {d: da.sizes[d] for d in GRID} == GRID
 
     def test_monthly_input_shape(self, pipeline_inputs):
         da = pipeline_inputs["dummy_variable_monthly"]
         assert da.sizes["time"] == N_MONTHS
-        assert da.sizes["pixel"] == N_PIXELS
+        assert {d: da.sizes[d] for d in GRID} == GRID
 
     def test_static_input_shape(self, pipeline_inputs):
         da = pipeline_inputs["elevation"]
-        assert da.sizes["pixel"] == N_PIXELS
+        assert {d: da.sizes[d] for d in GRID} == GRID
         assert "time" not in da.dims
 
     def test_no_nan_in_daily_inputs(self, pipeline_inputs):
@@ -74,9 +74,9 @@ class TestGridInputs:
         assert np.all(lon >= -5.0)
         assert np.all(lon <= 3.0)
 
-    def test_grid_pixel_count(self, pipeline_inputs):
-        assert pipeline_inputs["latitude"].sizes["pixel"] == N_PIXELS
-        assert pipeline_inputs["longitude"].sizes["pixel"] == N_PIXELS
+    def test_lat_lon_on_the_grid(self, pipeline_inputs):
+        assert {d: pipeline_inputs["latitude"].sizes[d] for d in GRID} == GRID
+        assert {d: pipeline_inputs["longitude"].sizes[d] for d in GRID} == GRID
 
     def test_lat_lon_carry_cf_units(self, pipeline_inputs):
         assert pipeline_inputs["latitude"].attrs["units"] == "degrees_north"
@@ -153,9 +153,9 @@ class TestDriverExecution:
         ]
         results = pipeline_driver.execute(final_vars, inputs=pipeline_inputs)
         assert all(v in results for v in final_vars)
-        assert results["temperature_daily"].sizes["pixel"] == N_PIXELS
-        assert results["pressure_weekly"].sizes["pixel"] == N_PIXELS
-        assert results["dummy_variable_monthly"].sizes["pixel"] == N_PIXELS
+        assert {d: results["temperature_daily"].sizes[d] for d in GRID} == GRID
+        assert {d: results["pressure_weekly"].sizes[d] for d in GRID} == GRID
+        assert {d: results["dummy_variable_monthly"].sizes[d] for d in GRID} == GRID
 
     def test_get_final_vars_single_frequency(self, pipeline_driver, pipeline_inputs):
         """Filtering output_specs to one frequency requests only those targets."""

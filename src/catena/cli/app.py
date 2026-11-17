@@ -57,5 +57,5 @@ def _root(
 
 app.add_typer(graph_app)
 app.add_typer(run_app)
-# Gridded (CRS/pixel) parallel-Zarr commands are nested: `catena gridded <cmd>`.
+# Gridded (CRS) parallel-Zarr commands are nested: `catena gridded <cmd>`.
 app.add_typer(gridded_app, name="gridded")

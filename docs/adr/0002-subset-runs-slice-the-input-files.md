@@ -37,7 +37,8 @@ The store carried no record of which regions had been written, and `merge` only 
 - A gridded subset is a band of rows (or columns), not an arbitrary range of pixels, so the finest partition is one row.
 - `[subset].dim` and `[blocking].dim` no longer mean the same thing for gridded data: a subset names a dimension of the files (`y`), a block names a dimension of the loaded arrays (`pixel`).
   They still compose, since blocking runs inside each subset.
-- `dim = "pixel"` on a gridded input is now an error that lists the files' dimensions.
+  [ADR 0003](0003-inputs-are-not-reshaped.md) removes the stacking, so both name a dimension of the files again.
+- `dim = "pixel"` on a gridded input is now an error that lists the files' dimensions (and, after ADR 0003, simply names a dimension no input has).
 - `create-store` needs the partition dimension (`--dim`, or the config's `[subset]`), and its chunk size is in units of that dimension (`--chunk`, replacing `--pixel-chunk`).
   `[blocking].block_size` is only a sensible default when `[blocking]` partitions the same dimension.
 - Storing all-fill chunks costs disk for regions that are entirely empty, such as open sea in a land model.

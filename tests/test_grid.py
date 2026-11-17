@@ -52,9 +52,9 @@ class TestLoadInputsGrid:
         assert np.all(lon >= -5.0)
         assert np.all(lon <= 3.0)
 
-    def test_pixel_count(self, pipeline_inputs):
-        assert pipeline_inputs["latitude"].sizes["pixel"] == 4  # 2x2 grid
-        assert pipeline_inputs["longitude"].sizes["pixel"] == 4
+    def test_on_the_grid(self, pipeline_inputs):
+        for name in ("latitude", "longitude"):
+            assert dict(pipeline_inputs[name].sizes) == {"y": 2, "x": 2}
 
     def test_no_nan_in_lat(self, pipeline_inputs):
         assert not np.any(np.isnan(pipeline_inputs["latitude"].values))
@@ -66,10 +66,8 @@ class TestLoadInputsGrid:
 class TestRenamedSpatialDims:
     """Grids whose spatial dims are not literally named `x`/`y`.
 
-    `compute_lat_lon` used to build its intermediate grid with hardcoded `x`/`y`
-    dims, so for an easting/northing input the lat/lon MultiIndex levels were named
-    `y`/`x` while every data variable's were named `northing`/`easting` —
-    alignment on `pixel` then quietly produced NaNs.
+    Latitude and longitude must take the inputs' own dimension names, or aligning
+    them with a data variable would broadcast instead of matching.
     """
 
     @pytest.fixture
@@ -114,14 +112,13 @@ class TestRenamedSpatialDims:
         lat = inputs["latitude"]
         data = inputs["temperature_grid"]
 
-        # Same pixel MultiIndex: level names *and* values.
-        assert lat.indexes["pixel"].names == data.indexes["pixel"].names
-        assert lat.indexes["pixel"].equals(data.indexes["pixel"])
+        assert lat.dims == ("northing", "easting")
+        for dim in lat.dims:
+            assert lat.indexes[dim].equals(data.indexes[dim])
 
         # ... so aligning them drops nothing.
-        aligned_lat, aligned_data = xr.align(lat, data)
-        assert aligned_lat.sizes["pixel"] == lat.sizes["pixel"] == 4
-        assert aligned_data.sizes["pixel"] == 4
+        aligned_lat, _ = xr.align(lat, data, join="exact")
+        assert aligned_lat.sizes == lat.sizes
         assert not np.any(np.isnan(aligned_lat.values))
 
     def test_lat_lon_values_are_plausible(self, easting_northing_nc):

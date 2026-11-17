@@ -225,14 +225,14 @@ See [Scale up › blocking](../guides/run/scale-up.md#memory-bounded-execution-w
 
 ```toml
 [blocking]
-block_size = 500
-dim = "pixel"
+block_size = 50
+dim = "y"
 ```
 
 | Key | Description |
 |-----|-------------|
 | `block_size` | **Required.** Positive integer — rows of `dim` per block. |
-| `dim` | **Required.** Partition dimension, which at least one loaded input must have. Gridded pipelines use `pixel`, because the geospatial layer stacks `(y, x)` into it. |
+| `dim` | **Required.** Partition dimension, which at least one loaded input must have: a spatial dimension such as `y` for gridded inputs. |
 
 ## Subset
 
@@ -250,7 +250,7 @@ dim   = "y"
 |-----|-------------|
 | `start` | **Required.** First index along `dim` (inclusive, zero-based). |
 | `stop` | **Required.** One past the last index (exclusive); must exceed `start`. |
-| `dim` | **Required.** Partition dimension: one the input files have, with the same length in every file that has it. For gridded inputs this is a spatial dimension such as `y`, as the files are sliced before the grid is stacked into `pixel`. |
+| `dim` | **Required.** Partition dimension: one the input files have, with the same length in every file that has it. For gridded inputs this is a spatial dimension such as `y`. |
 
 `catena run --subset DIM:START:STOP` (and the `subset` argument of `catena.run`) replaces this section, so parallel runs can share one config.
 

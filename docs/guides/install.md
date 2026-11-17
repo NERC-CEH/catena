@@ -31,7 +31,7 @@ The `catena` command, geospatial support and graph rendering are optional extras
 | Extra | Installs | Needed for |
 | --- | --- | --- |
 | `cli` | `typer` | the `catena` command (`catena run`, `catena graph`, `catena gridded`) |
-| `geo` | `rioxarray`, `pyproj` | CRS-aware gridded inputs (`(y, x)` → `pixel` stacking, computed `latitude`/`longitude`) |
+| `geo` | `rioxarray`, `pyproj` | CRS-aware gridded inputs (grid checks, computed `latitude`/`longitude`) |
 | `viz` | `apache-hamilton[visualization]` | rendering the DAG with `catena graph` |
 | `all` | everything above | every optional feature |
 

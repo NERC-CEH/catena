@@ -480,7 +480,7 @@ class TestEveryFaultInOneRun:
         self, tmp_path, synthetic_data_dir
     ):
         cfg = _config(
-            tmp_path, synthetic_data_dir, '[blocking]\nblock_size = 2\ndim = "x"\n'
+            tmp_path, synthetic_data_dir, '[blocking]\nblock_size = 2\ndim = "nope"\n'
         )
         with pytest.raises(DryRunError) as excinfo:
             dry_run(cfg)

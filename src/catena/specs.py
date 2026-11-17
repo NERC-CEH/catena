@@ -494,8 +494,9 @@ class BlockingSpec:
     """Specification for the [blocking] section.
 
     Controls how a partition dimension (`dim`) is split into fixed-size
-    sequential blocks to bound peak memory usage. `dim` may be any dimension:
-    `pixel` for gridded data, or `location`, say, for non-gridded pipelines.
+    sequential blocks to bound peak memory usage. `dim` may be any dimension of
+    the loaded arrays: a spatial dimension such as `y` for gridded data, or
+    `location`, say, for non-gridded pipelines.
     """
 
     block_size: int
@@ -524,8 +525,7 @@ class SubsetSpec:
 
     `dim` is a dimension of the input files, which are sliced as they are opened:
     `location` or `site` in a non-gridded pipeline, a spatial dimension such as
-    `y` in a gridded one. `BlockingSpec.dim` differs here: it partitions the
-    loaded arrays, where a grid has already been stacked into `pixel`.
+    `y` in a gridded one.
     """
 
     start: int
@@ -555,12 +555,12 @@ class SubsetSpec:
 
     @classmethod
     def from_string(cls, text: str) -> Self:
-        """Construct and validate from `DIM:START:STOP`, e.g. `pixel:0:500`."""
+        """Construct and validate from `DIM:START:STOP`, e.g. `y:0:500`."""
         parts = text.split(":")
         if len(parts) != 3 or not (parts[1].isdecimal() and parts[2].isdecimal()):
             raise CatenaValueError(
                 f"A subset is written DIM:START:STOP with integer bounds, e.g. "
-                f"'pixel:0:500'; got {text!r}."
+                f"'y:0:500'; got {text!r}."
             )
         dim, start, stop = parts
         return cls.from_config({"dim": dim, "start": int(start), "stop": int(stop)})

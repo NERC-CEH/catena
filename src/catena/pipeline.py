@@ -503,7 +503,7 @@ def _run_input_checks(parsed: ParsedConfig) -> int:
     """Run the configured input-compatibility checks before the DAG is built.
 
     Returns the number of checks run (0 if none configured). Under `[subset]`
-    the checks operate on a pixel slice rather than the full domain, so they are
+    the checks operate on a slice rather than the full domain, so they are
     skipped with a warning recommending a full-domain dry run. A failure raises
     `catena.input_checks.InputCheckError`.
     """

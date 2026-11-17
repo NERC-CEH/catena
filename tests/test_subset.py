@@ -96,13 +96,15 @@ class TestMissingDim:
 class TestSubsetCorrectness:
     """Two complementary subsets concatenate back to the full inputs."""
 
-    def test_pixel_coords_correct(self, pipeline_config, pipeline_inputs):
-        """Each subset holds its own rows of the grid, stacked as usual."""
+    def test_rows_concatenate_to_the_full_inputs(
+        self, pipeline_config, pipeline_inputs
+    ):
+        """Each subset holds its own rows of the grid."""
         inputs_a = load_inputs(pipeline_config.input_specs, subset_spec=_ROW_A)
         inputs_b = load_inputs(pipeline_config.input_specs, subset_spec=_ROW_B)
 
         for name, full_val in pipeline_inputs.items():
-            combined = xr.concat([inputs_a[name], inputs_b[name]], dim="pixel")
+            combined = xr.concat([inputs_a[name], inputs_b[name]], dim="y")
             xr.testing.assert_identical(combined, full_val)
 
     def test_inputs_without_the_dim_are_unaffected(self, tmp_path):
@@ -138,7 +140,7 @@ class TestSubsetPipelineResult:
         result_b = dr.execute(_FINAL_VARS, inputs=inputs_b)  # type: ignore[reportArgumentType]
 
         for var in _FINAL_VARS:
-            combined = xr.concat([result_a[var], result_b[var]], dim="pixel")
+            combined = xr.concat([result_a[var], result_b[var]], dim="y")
             xr.testing.assert_identical(combined, reference[var])
 
 

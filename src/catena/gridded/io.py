@@ -1,12 +1,11 @@
-"""Gridded (CRS/pixel) I/O: the optional geospatial + parallel-Zarr layer.
+"""Gridded (CRS) I/O: the optional geospatial + parallel-Zarr layer.
 
 This is the domain-specific counterpart to the domain-agnostic `catena.io`. It
 owns:
 
-- **CRS-aware stacking**: collapsing a `(y, x)` grid into a 1-D `pixel`
-  dimension and reconstructing it, plus computing `latitude`/`longitude` by
-  reprojecting to EPSG:4326 (`stack_if_gridded`, `unstack_if_gridded`,
-  `compute_lat_lon`);
+- **CRS-aware coordinates**: checking that gridded inputs share one grid, and
+  computing 2-D `latitude`/`longitude` by reprojecting it to EPSG:4326
+  (`compute_lat_lon`);
 - **parallel subset I/O**: pre-creating a shared Zarr store and region-writing
   independent `[subset]` slices into it, and reassembling NetCDF parts
   (`create_output_store`, `save_zarr_region`, `merge_subset_outputs`).
@@ -20,7 +19,6 @@ from os import PathLike
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import xarray as xr
 
 from ..errors import (
@@ -30,7 +28,6 @@ from ..errors import (
 )
 from ..formats import format_for
 from ..specs import IOSpec, ParsedConfig, SubsetSpec
-from .spatial import stack_spatial_dims
 
 
 class MisalignedGridError(CatenaValueError):
@@ -40,7 +37,7 @@ class MisalignedGridError(CatenaValueError):
 def _ensure_rio() -> None:
     """Import rioxarray (registering the `.rio` accessor) or raise a clear error.
 
-    The geospatial layer (CRS-aware stacking + lat/lon reprojection) is optional;
+    The geospatial layer (grid checks + lat/lon reprojection) is optional;
     `rioxarray`/`pyproj` are only needed when CRS-bearing inputs are present.
     """
     try:
@@ -68,29 +65,7 @@ def has_crs(ds: xr.Dataset) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Stacking / unstacking the pixel dimension
-# ---------------------------------------------------------------------------
-
-
-def stack_if_gridded(ds: xr.Dataset) -> xr.Dataset:
-    """Stack (y, x) to pixel if CRS-bearing 2D grid; pass through otherwise."""
-    if "pixel" in ds.dims:
-        return ds
-    _ensure_rio()
-    if ds.rio.crs is not None:
-        return stack_spatial_dims(ds)
-    return ds
-
-
-def unstack_if_gridded(ds: xr.Dataset) -> xr.Dataset:
-    """Unstack pixel to (y, x) if MultiIndex; pass through otherwise."""
-    if "pixel" in ds.dims and isinstance(ds.indexes.get("pixel"), pd.MultiIndex):
-        return ds.unstack("pixel")
-    return ds
-
-
-# ---------------------------------------------------------------------------
-# Grid computation (CRS -> stacked latitude/longitude)
+# Grid computation (CRS -> latitude/longitude)
 # ---------------------------------------------------------------------------
 
 
@@ -125,11 +100,14 @@ def _check_common_grid(
 def compute_lat_lon(
     spatial_datasets: dict[str, xr.Dataset],
 ) -> tuple[xr.DataArray, xr.DataArray]:
-    """Compute stacked latitude and longitude DataArrays from CRS-bearing datasets.
+    """Compute 2-D latitude and longitude DataArrays from CRS-bearing datasets.
 
-    Both are in EPSG:4326 and carry CF metadata: `units` of `degrees_north` /
-    `degrees_east` and the matching `standard_name`. Under the CF unit registry
-    either satisfies a declared `Unit("degrees")`.
+    Both are in EPSG:4326, on the inputs' own spatial dimensions in `(y, x)` order
+    (whatever `rioxarray` infers them to be called), and carry CF metadata:
+    `units` of `degrees_north` / `degrees_east` and the matching `standard_name`.
+    Under the CF unit registry either satisfies a declared `Unit("degrees")`.
+
+    Raises `MisalignedGridError` unless every dataset shares one CRS and grid.
     """
     from pyproj import Transformer
 
@@ -140,33 +118,27 @@ def compute_lat_lon(
         _check_common_grid(ref_ds, ds, label1=ref_name, label2=name)
 
     x_dim, y_dim = ref_ds.rio.x_dim, ref_ds.rio.y_dim
-    x = ref_ds[x_dim].values
-    y = ref_ds[y_dim].values
-
-    # indexing="ij": x varies along axis 0, y along axis 1
-    x_grid, y_grid = np.meshgrid(x, y, indexing="ij")
+    # indexing="ij": y varies along axis 0, x along axis 1.
+    y_grid, x_grid = np.meshgrid(
+        ref_ds[y_dim].values, ref_ds[x_dim].values, indexing="ij"
+    )
     transformer = Transformer.from_crs(ref_ds.rio.crs, "EPSG:4326", always_xy=True)
     lon_grid, lat_grid = transformer.transform(x_grid, y_grid)
 
-    # Build the intermediate with the reference's *own* dim names: for inputs whose
-    # spatial dims are e.g. easting/northing, hardcoding x/y here would name the
-    # lat/lon MultiIndex levels differently from every data variable's, and the
-    # later alignment on `pixel` would quietly produce NaNs.
-    grid_ds = xr.Dataset(
-        data_vars={
-            "latitude": ([x_dim, y_dim], lat_grid),
-            "longitude": ([x_dim, y_dim], lon_grid),
-        },
-        coords={x_dim: x, y_dim: y},
+    coords = {y_dim: ref_ds[y_dim], x_dim: ref_ds[x_dim]}
+    lat = xr.DataArray(
+        lat_grid,
+        dims=(y_dim, x_dim),
+        coords=coords,
+        name="latitude",
+        attrs={"units": "degrees_north", "standard_name": "latitude"},
     )
-    # Stacked directly rather than via `stack_spatial_dims`, which would need rio to
-    # re-infer dims it cannot recognise under non-x/y names. The (y, x) order must
-    # match `stack_spatial_dims`' — pinned by
-    # test_grid.py::test_lat_lon_aligns_with_renamed_spatial_dims.
-    stacked = grid_ds.stack(pixel=(y_dim, x_dim))
-    lat = stacked.latitude.assign_attrs(units="degrees_north", standard_name="latitude")
-    lon = stacked.longitude.assign_attrs(
-        units="degrees_east", standard_name="longitude"
+    lon = xr.DataArray(
+        lon_grid,
+        dims=(y_dim, x_dim),
+        coords=coords,
+        name="longitude",
+        attrs={"units": "degrees_east", "standard_name": "longitude"},
     )
     return lat, lon
 

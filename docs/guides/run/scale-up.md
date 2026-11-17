@@ -46,8 +46,8 @@ Intermediate nodes are held in memory for one block at a time; the requested out
 
 ```toml
 [blocking]
-block_size = 500     # rows of the partition dim processed at a time
-dim = "pixel"        # a dim of the loaded arrays, e.g. "location" if non-gridded
+block_size = 50      # indices of the partition dim processed at a time
+dim = "y"            # a dim of the inputs, e.g. "location" if non-gridded
 ```
 
 !!! warning "Outputs must vary over the partition dim"
@@ -76,7 +76,7 @@ dim   = "y"          # a dimension of the input files
 ```
 
 The dimension is one the **input files** have, and every file that has it is sliced before anything else happens.
-For gridded data that is a spatial dimension such as `y`, so a subset is a band of whole rows; `pixel` only exists after catena has stacked the grid, and is not a dimension you can subset.
+For gridded data that is a spatial dimension such as `y`, so a subset is a band of whole rows.
 For non-gridded data it is whatever the files call it, such as `location` or `site`.
 Every input that has the dimension must have the same length along it.
 

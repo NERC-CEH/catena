@@ -73,18 +73,17 @@ class TestSubsetSuffix:
         assert subset_suffix(spec) == "_location0-10"
 
 
-class TestSubsetIsTakenBeforeStacking:
+class TestSubsetOverAGridDim:
     def test_a_subset_over_a_grid_dim_yields_whole_rows(self, pipeline_config):
         inputs = load_inputs(pipeline_config.input_specs, subset_spec=ROWS[0])
         full = load_inputs(pipeline_config.input_specs)
-        # One of two rows of a 2x2 grid: half the pixels, all of them in that row.
-        assert inputs["temperature_daily"].sizes["pixel"] == 2
-        assert set(inputs["temperature_daily"]["y"].values) == {
-            full["temperature_daily"]["y"].values[0]
-        }
-        assert inputs["latitude"].sizes["pixel"] == 2
+        # One of two rows of a 2x2 grid.
+        for name in ("temperature_daily", "latitude"):
+            assert dict(inputs[name].sizes)["y"] == 1
+            assert dict(inputs[name].sizes)["x"] == 2
+            assert inputs[name]["y"].values[0] == full[name]["y"].values[0]
 
-    def test_pixel_is_not_a_dimension_of_a_gridded_file(self, pipeline_config):
+    def test_a_dim_the_files_lack_is_refused(self, pipeline_config):
         with pytest.raises(CatenaValueError, match="dim 'pixel' is not a dimension"):
             load_inputs(
                 pipeline_config.input_specs, subset_spec=SubsetSpec(0, 2, dim="pixel")

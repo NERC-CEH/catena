@@ -75,6 +75,5 @@ Installed with the `geo` extra, and imported only when needed.
 
 | Module | Contents |
 | --- | --- |
-| [`catena.gridded.io`](modules/catena.gridded/io.md) | CRS-aware stacking, parallel Zarr stores, subset merges. |
-| [`catena.gridded.spatial`](modules/catena.gridded/spatial.md) | Stacking a `(y, x)` grid into a 1-D `pixel` dimension. |
+| [`catena.gridded.io`](modules/catena.gridded/io.md) | Grid checks and latitude/longitude, parallel Zarr stores, subset merges. |
 | [`catena.gridded.cli`](modules/catena.gridded/cli.md) | The `catena gridded` subcommands. |
