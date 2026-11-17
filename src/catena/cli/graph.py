@@ -13,9 +13,8 @@ import typer
 from ..graph import build_graph
 
 if TYPE_CHECKING:
-    # graphviz ships in the optional `viz` extra, and `catena.build_graph` is
-    # re-exported from the package root, so importing it here would make
-    # `import catena` fail for anyone who did not install that extra.
+    # graphviz ships in the optional `viz` extra, and this module is imported to
+    # register the `catena graph` command whether or not that extra is installed.
     import graphviz
 
 app = typer.Typer(help="Visualise a pipeline defined in a configuration file.")
@@ -87,11 +86,10 @@ def graph(
 
 
 def _render(digraph: "graphviz.Digraph", dest: Path, fmt: str) -> None:
-    """Render ``digraph`` to ``dest`` via the graphviz API, surfacing failures.
+    """Render ``digraph`` to ``dest`` via the graphviz API.
 
-    The previous ``subprocess.run(["dot", ...])`` round-trip through the .dot file
-    ignored the exit status, so a missing ``dot`` binary or a malformed graph left no
-    output and no error — the flag simply did nothing.
+    A missing ``dot`` binary or a graph ``dot`` rejects is reported as a usage
+    error naming ``dest``.
     """
     import graphviz
 

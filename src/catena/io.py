@@ -193,7 +193,7 @@ def load_inputs(
         Mapping from section label to ``IOSpec`` (path, vars, suffix).
         Typically ``parsed_config.input_specs``.
     subset_spec:
-        If provided, slice all pixel-bearing inputs to the specified pixel
+        If provided, slice every input carrying its ``dim`` to the specified
         range after loading.  Typically ``parsed_config.subset_spec``.
     geospatial:
         Force the geospatial path on (``True``) or off (``False``). When ``None``
