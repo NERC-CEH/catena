@@ -14,7 +14,7 @@ from typing import Any, Self
 
 import tomli_w
 
-from .errors import CatenaValueError
+from .errors import CatenaFileExistsError, CatenaValueError
 from .importing import (
     discover_registered_modules,
     is_file_form,
@@ -176,7 +176,7 @@ class Config:
         toml_str = self.dumps()
         path = Path(path)
         if path.exists() and not overwrite_ok:
-            raise FileExistsError(
+            raise CatenaFileExistsError(
                 f"There is already a file at {path}! "
                 f"Consider passing `overwrite_ok=True`."
             )

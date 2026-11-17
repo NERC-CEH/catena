@@ -9,6 +9,7 @@ import pytest
 import xarray as xr
 
 from catena.config import IOSpec, SubsetSpec
+from catena.errors import CatenaFileExistsError
 from catena.gridded.io import (
     _find_subset_parts,
     create_output_store,
@@ -364,7 +365,7 @@ class TestZarrSubset:
             specs,
             subset_spec=SubsetSpec(0, 2, dim="pixel"),
         )
-        with pytest.raises(FileExistsError, match="overwrite"):
+        with pytest.raises(CatenaFileExistsError, match="overwrite"):
             _create_store(pipeline_config, specs, pixel_chunk=2)
 
         # overwrite=True recreates it as an empty (all-NaN) store.
