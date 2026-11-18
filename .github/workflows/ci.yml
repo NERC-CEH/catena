@@ -24,5 +24,7 @@ jobs:
       - uses: astral-sh/setup-uv@v8.1.0
         with:
           python-version: ${{ matrix.python-version }}
+      # The recipe notebooks render their graphs, and the graph tests skip without it.
+      - uses: ts-graphviz/setup-graphviz@v2
       - run: uv sync --group dev --locked
       - run: uv run just test-cov
