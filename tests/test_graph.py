@@ -647,6 +647,30 @@ class TestLinks:
         assert FREQ_COLOR_CYCLE[1] in line or FREQ_COLOR_CYCLE[0] in line
 
 
+@requires_dot
+def test_style_function_can_style_by_tag(tmp_path, monkeypatch):
+    (tmp_path / "tagged.py").write_text(
+        "from hamilton.function_modifiers import tag\n\n\n"
+        "@tag(stage='qc')\n"
+        "def checked(raw: float) -> float:\n"
+        "    return raw\n"
+    )
+    (tmp_path / "by_tag.py").write_text(
+        "def style(*, node, node_class):\n"
+        "    if node.tags.get('stage') == 'qc':\n"
+        "        return {'style': 'dashed'}, node_class, None\n"
+        "    return {}, node_class, None\n"
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+    style = tmp_path / "style.toml"
+    style.write_text('style_function = "by_tag:style"\n')
+    config = tmp_path / "config.toml"
+    config.write_text('[tagged]\n_import_path = "tagged.py"\n')
+    assert "style=dashed" in _node_line(
+        build_graph(config, style=style).source, "checked"
+    )
+
+
 @pytest.fixture(scope="module")
 def tooltips_source(links_driver) -> str:
     style = GraphStyle.from_driver(links_driver)

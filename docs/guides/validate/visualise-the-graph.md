@@ -24,6 +24,28 @@ In SVG output, hovering over a node shows the first paragraph of its docstring a
 A `[[node]]` shows its expression, or the function it calls.
 `catena graph` needs the `viz` extra **and** the [Graphviz system binary](../install.md#graphviz).
 
+## Drawing part of the graph
+
+A large DAG is easier to read a piece at a time.
+Each of these draws part of it in place of what the outputs need, and they cannot be combined with each other or with `--all-nodes`:
+
+| Option | Draws |
+|---|---|
+| `--upstream-of NODE` | `NODE` and everything it depends on |
+| `--downstream-of NODE` | `NODE` and everything that depends on it |
+| `--between START END` | the paths from `START` to `END` |
+
+Repeat `--upstream-of` or `--downstream-of` to name several nodes:
+
+```sh
+catena graph config.toml --downstream-of temperature_daily --svg
+```
+
+Two more options thin out the input tables, in any view:
+
+- `--hide-inputs` leaves out the tables of data inputs and config.
+- `--deduplicate-inputs` draws each data input once, shared by every node that uses it; each node keeps its own config table.
+
 ## What to look for
 
 Structural mistakes that a config file hides are obvious in the graph:
@@ -88,12 +110,15 @@ import catena
 catena.build_graph("config.toml")
 catena.build_graph("config.toml", outputs_only=False)  # every node
 catena.build_graph("config.toml", link=api_url)  # link to the docs
+catena.build_graph("config.toml", downstream_of=["temperature_daily"])
+catena.build_graph("config.toml", between=("temperature_daily", "aridity_index_daily"))
+catena.build_graph("config.toml", hide_inputs=True)
 ```
 
 ### Styling Hamilton's other views
 
-`build_graph` draws one of two views.
-Hamilton's `Driver` has more, such as `visualize_path_between` and `display_downstream_of`, and [`GraphStyle`](../../reference/modules/catena.graph.md#catena.graph.GraphStyle) applies catena's styling to any of them.
+`build_graph` covers the views above.
+For anything else Hamilton's `Driver` can draw, or to pass it options `build_graph` does not, [`GraphStyle`](../../reference/modules/catena.graph.md#catena.graph.GraphStyle) applies catena's styling to the digraph directly.
 Pass its `hamilton_kwargs()` to the method, then `apply` it to the digraph the method returns:
 
 ```python
@@ -132,3 +157,31 @@ style.apply(dr.display_all_functions(**kwargs))
 ```
 
 To leave out catena's styling entirely, call Hamilton's method without `GraphStyle`.
+
+### Styling by tag
+
+A style function receives each Hamilton node, including the tags set on its function with Hamilton's [`@tag`](https://hamilton.apache.org/reference/decorators/tag/) decorator.
+Tag the functions:
+
+```python
+from hamilton.function_modifiers import tag
+
+
+@tag(stage="qc")
+def temperature_checked(temperature_raw: xr.DataArray) -> xr.DataArray: ...
+```
+
+Then style on the tag, in a module the style file names:
+
+```python
+def by_stage(*, node, node_class):
+    if node.tags.get("stage") == "qc":
+        return {"style": "dashed,filled"}, node_class, None
+    return {}, node_class, None
+```
+
+```toml
+style_function = "my_package.styling:by_stage"
+```
+
+Your style function is composed over catena's, so a tagged node keeps its frequency fill; `filled` in the `style` keeps it showing.
