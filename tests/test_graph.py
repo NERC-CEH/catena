@@ -744,6 +744,17 @@ class TestGraphHtml:
         assert "\n\n" not in fragment
         ET.fromstring(fragment)
 
+    def test_only_linked_node_names_are_underlined(self, fragment):
+        style = ET.fromstring(fragment).find("style")
+        assert style is not None
+        assert style.text is not None
+        assert "svg a{text-decoration:none}" in style.text
+        assert "a:any-link text:first-of-type{text-decoration:underline}" in (
+            style.text
+        )
+        # Markdown escapes square brackets, even inside <style>.
+        assert "[" not in style.text
+
     def test_svg_scales_to_fit(self, fragment):
         svg = ET.fromstring(fragment).find(f"{_SVG}svg")
         assert svg is not None

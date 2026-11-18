@@ -766,6 +766,18 @@ _TRANSFORM_RE = re.compile(
 )
 
 
+# Themes underline every link in page content, which includes the `<a>` that
+# Graphviz wraps around any node with a tooltip. Only a linked node's name
+# (its first label line) keeps the underline. No square brackets: Markdown
+# escapes them, even inside `<style>`.
+_GRAPH_CSS = (
+    "<style>"
+    ".catena-graph svg a{text-decoration:none}"
+    ".catena-graph svg a:any-link text:first-of-type{text-decoration:underline}"
+    "</style>"
+)
+
+
 def _numbers(text: str) -> list[float]:
     return [float(v) for v in text.replace(",", " ").split()]
 
@@ -835,7 +847,8 @@ def graph_html(
     """Render `digraph` as an HTML fragment to place in a documentation page.
 
     The SVG is inlined, so its node links work (an SVG shown through `<img>`
-    has none), and it scales down to fit the page. Each linked node's name also
+    has none), and it scales down to fit the page. Only a linked node's name is
+    underlined, whatever the theme does to links. Each linked node's name also
     gets an invisible `<a>` laid over it carrying `overlay`'s attributes, because
     themes that preview a link's target on hover only handle HTML links. The
     overlays must be in the page when it loads, so write the fragment into the
@@ -853,8 +866,8 @@ def graph_html(
     Returns
     -------
     str
-        A `<div>` holding the SVG and the overlays, with no blank lines, so a
-        Markdown page can hold it as one raw HTML block.
+        A `<div>` holding a short stylesheet, the SVG and the overlays, with
+        no blank lines, so a Markdown page can hold it as one raw HTML block.
 
     Examples
     --------
@@ -875,4 +888,4 @@ def graph_html(
     overlays = _overlays(digraph, svg, overlay) if overlay is not None else []
     size = f"max-width:{width}pt;" if width is not None else ""
     opening = f'<div class="catena-graph" style="position:relative;{size}">'
-    return "".join([opening, svg, *overlays, "</div>"])
+    return "".join([opening, _GRAPH_CSS, svg, *overlays, "</div>"])
