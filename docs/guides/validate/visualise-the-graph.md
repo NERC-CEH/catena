@@ -12,17 +12,62 @@ catena graph config.toml --pdf
 ```
 
 This writes `pipeline.pdf` (and the `.dot` source).
-It draws what the `[outputs.*]` sections need; pass `--all-nodes` to draw every node the config's modules define.
-A config with no outputs draws every node.
-Each node shows its declared unit, and requested outputs are highlighted.
-Nodes, and the edges leaving them, are coloured by their declared `freq` contract, never by section label; a node with no declared frequency is left uncoloured.
-A node's data inputs and its config are drawn as separate tables, and the config table shows each value in use: the config's, or else the function's default.
-[Pipeline 101](../../recipes/pipeline-101.md#the-graph-catena-builds) shows both.
-
 Pass `--svg` for SVG, `--png` for PNG, and `-o/--output` to change the base filename.
-In SVG output, hovering over a node shows the first paragraph of its docstring and its declared contract (unit, dims, dtype, coords, freq).
-A `[[node]]` shows its expression, or the function it calls.
 `catena graph` needs the `viz` extra **and** the [Graphviz system binary](../install.md#graphviz).
+
+## What the graph shows
+
+The graphs on this page are drawn from a small pipeline: two daily inputs, three nodes from a module, and a `[[resample]]` to the weekly output.
+
+=== "config.toml"
+
+    ```toml
+    --8<-- "docs/guides/validate/graph_example/config.toml"
+    ```
+
+=== "nodes.py"
+
+    <!-- fmt:off -->
+    ```python
+    --8<-- "docs/guides/validate/graph_example/nodes.py"
+    ```
+    <!-- fmt:on -->
+
+```bash exec="true"
+python docs/guides/validate/graph_example/show.py
+```
+
+- It draws what the `[outputs.*]` sections need; pass `--all-nodes` to draw every node the config's modules define.
+  A config with no outputs draws every node.
+- Each node shows its declared unit, and requested outputs are outlined.
+- Nodes, and the edges leaving them, are coloured by their declared `freq` contract, never by section label; a node with no declared frequency is left uncoloured.
+- A node's data inputs and its config are drawn as separate tables, and the config table shows each value in use: the config's, or else the function's default.
+- In SVG output, hovering over a node shows the first paragraph of its docstring and its declared contract (unit, dims, dtype, coords, freq).
+  A `[[node]]` or `[[resample]]` shows its expression, or the function it calls.
+
+## Drawing part of the graph
+
+A large DAG is easier to read a piece at a time.
+Each of these draws part of it in place of what the outputs need, and they cannot be combined with each other or with `--all-nodes`:
+
+| Option | Draws |
+|---|---|
+| `--upstream-of NODE` | `NODE` and everything it depends on |
+| `--downstream-of NODE` | `NODE` and everything that depends on it |
+| `--between START END` | the paths from `START` to `END` |
+
+Repeat `--upstream-of` or `--downstream-of` to name several nodes.
+
+Two more options thin out the input tables, in any view:
+
+- `--hide-inputs` leaves out the tables of data inputs and config.
+- `--deduplicate-inputs` draws each data input once, shared by every node that uses it; each node keeps its own config table.
+
+Here only what `aridity_index_daily` needs is drawn, without the input tables:
+
+```bash exec="true"
+python docs/guides/validate/graph_example/show.py --upstream-of aridity_index_daily --hide-inputs
+```
 
 ## What to look for
 
@@ -43,6 +88,30 @@ catena graph config.toml --style recipes/graphviz.toml --pdf
 ```
 
 The commented [`recipes/graphviz.toml`](https://github.com/NERC-CEH/catena/blob/main/recipes/graphviz.toml) template lists every key.
+
+This style file pins the colours of the two frequencies, lays the graph out top to bottom, and names a style function:
+
+=== "style.toml"
+
+    ```toml
+    --8<-- "docs/guides/validate/graph_example/style.toml"
+    ```
+
+=== "styling.py"
+
+    <!-- fmt:off -->
+    ```python
+    --8<-- "docs/guides/validate/graph_example/styling.py"
+    ```
+    <!-- fmt:on -->
+
+```bash exec="true"
+python docs/guides/validate/graph_example/show.py --style style.toml
+```
+
+A style function receives each Hamilton node, including the tags set on its function with Hamilton's [`@tag`](https://hamilton.apache.org/reference/decorators/tag/) decorator, so `by_stage` dashes `precipitation_checked`, tagged `stage="qc"` in `nodes.py`.
+It is composed over catena's own style function, and the attributes it returns win, so it keeps `rounded,filled` to keep the node's shape and frequency fill.
+`PYTHONPATH=.` makes `styling.py` importable; a style function in an installed package needs nothing extra.
 
 ## Linking nodes to API documentation
 
@@ -88,12 +157,15 @@ import catena
 catena.build_graph("config.toml")
 catena.build_graph("config.toml", outputs_only=False)  # every node
 catena.build_graph("config.toml", link=api_url)  # link to the docs
+catena.build_graph("config.toml", downstream_of=["temperature_daily"])
+catena.build_graph("config.toml", between=("temperature_daily", "aridity_index_daily"))
+catena.build_graph("config.toml", hide_inputs=True)
 ```
 
 ### Styling Hamilton's other views
 
-`build_graph` draws one of two views.
-Hamilton's `Driver` has more, such as `visualize_path_between` and `display_downstream_of`, and [`GraphStyle`](../../reference/modules/catena.graph.md#catena.graph.GraphStyle) applies catena's styling to any of them.
+`build_graph` covers the views above.
+For anything else Hamilton's `Driver` can draw, or to pass it options `build_graph` does not, [`GraphStyle`](../../reference/modules/catena.graph.md#catena.graph.GraphStyle) applies catena's styling to the digraph directly.
 Pass its `hamilton_kwargs()` to the method, then `apply` it to the digraph the method returns:
 
 ```python

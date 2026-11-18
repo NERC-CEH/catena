@@ -1,0 +1,8 @@
+style_function = "styling:by_stage"
+
+[palette]
+D = "#fdb462"
+"7D" = "#80b1d3"
+
+[graph_attr]
+rankdir = "TB"

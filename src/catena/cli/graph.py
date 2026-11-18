@@ -54,6 +54,43 @@ def graph(
             help="Draw every node the modules define, not only what the outputs need.",
         ),
     ] = False,
+    upstream_of: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--upstream-of",
+            metavar="NODE",
+            help="Draw only NODE and what it depends on. Repeat for more nodes.",
+        ),
+    ] = None,
+    downstream_of: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--downstream-of",
+            metavar="NODE",
+            help="Draw only NODE and what depends on it. Repeat for more nodes.",
+        ),
+    ] = None,
+    between: Annotated[
+        tuple[str, str] | None,
+        typer.Option(
+            "--between",
+            metavar="START END",
+            help="Draw only the paths from START to END.",
+        ),
+    ] = None,
+    hide_inputs: Annotated[
+        bool,
+        typer.Option(
+            "--hide-inputs", help="Leave out the tables of data inputs and config."
+        ),
+    ] = False,
+    deduplicate_inputs: Annotated[
+        bool,
+        typer.Option(
+            "--deduplicate-inputs",
+            help="Draw each data input once, shared by the nodes that use it.",
+        ),
+    ] = False,
     svg: Annotated[
         bool, typer.Option(help="Convert to SVG format, with clickable links")
     ] = False,
@@ -63,7 +100,8 @@ def graph(
     """Visualise a pipeline defined in a configuration file.
 
     Draws what the `[outputs.*]` sections need, or the whole DAG with
-    `--all-nodes` or when the config has no outputs. Each node shows its
+    `--all-nodes` or when the config has no outputs. `--upstream-of`,
+    `--downstream-of` and `--between` draw part of the DAG instead. Each node shows its
     declared unit; requested outputs are highlighted and edges are coloured by
     temporal frequency.  Pass `--style` to override the default styling (see
     `catena.graph_style`).
@@ -77,6 +115,11 @@ def graph(
         style=style,
         allow_overrides=allow_overrides,
         outputs_only=not all_nodes,
+        upstream_of=upstream_of or (),
+        downstream_of=downstream_of or (),
+        between=between,
+        hide_inputs=hide_inputs,
+        deduplicate_inputs=deduplicate_inputs,
     )
 
     output_path = Path(output).with_suffix(".dot")

@@ -480,6 +480,43 @@ class TestHamiltonViews:
         assert FREQ_COLOR_CYCLE[0] not in swatch
         assert FREQ_COLOR_CYCLE[1] not in swatch
 
+    def test_frequency_only_outputs_have_gets_a_swatch(self, views_driver):
+        source = _styled(
+            views_driver, "display_all_functions", outputs=["weekly"]
+        ).source
+        legend = _legend(source)
+        assert set(_swatches(legend)) == {"D", "7D"}
+        assert f'fillcolor="{FREQ_COLOR_CYCLE[1]}"' in _swatches(legend)["7D"]
+
+    def test_swatches_only_show_drawn_frequencies(self, views_driver):
+        source = _styled(views_driver, "display_upstream_of", "daily_a").source
+        assert set(_swatches(_legend(source))) == {"D"}
+
+    def test_custom_style_does_not_leak_into_swatches(self, views_driver):
+        style = GraphStyle.from_driver(views_driver)
+        dashed = compose_styles(
+            style.node_style,
+            lambda *, node, node_class: ({"style": "dashed"}, node_class, None),
+        )
+        kwargs = {**style.hamilton_kwargs(), "custom_style_function": dashed}
+        source = style.apply(views_driver.display_all_functions(**kwargs)).source
+        for swatch in _swatches(_legend(source)).values():
+            assert 'style="rounded,filled"' in swatch
+
+
+def _legend(source: str) -> str:
+    return source.split("cluster__legend", 1)[1].split("}", 1)[0]
+
+
+def _swatches(legend: str) -> dict[str, str]:
+    """The legend's frequency swatches, by frequency."""
+    swatches = {}
+    for line in legend.splitlines():
+        match = re.match(r'\s*"(?P<freq>[^"]+)" \[', line)
+        if match:
+            swatches[match["freq"]] = line
+    return swatches
+
 
 class TestComposeStyles:
     @staticmethod
@@ -645,6 +682,30 @@ class TestLinks:
         assert "fontcolor=navy" in line
         # the built-in frequency fill is still there underneath
         assert FREQ_COLOR_CYCLE[1] in line or FREQ_COLOR_CYCLE[0] in line
+
+
+@requires_dot
+def test_style_function_can_style_by_tag(tmp_path, monkeypatch):
+    (tmp_path / "tagged.py").write_text(
+        "from hamilton.function_modifiers import tag\n\n\n"
+        "@tag(stage='qc')\n"
+        "def checked(raw: float) -> float:\n"
+        "    return raw\n"
+    )
+    (tmp_path / "by_tag.py").write_text(
+        "def style(*, node, node_class):\n"
+        "    if node.tags.get('stage') == 'qc':\n"
+        "        return {'style': 'dashed'}, node_class, None\n"
+        "    return {}, node_class, None\n"
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+    style = tmp_path / "style.toml"
+    style.write_text('style_function = "by_tag:style"\n')
+    config = tmp_path / "config.toml"
+    config.write_text('[tagged]\n_import_path = "tagged.py"\n')
+    assert "style=dashed" in _node_line(
+        build_graph(config, style=style).source, "checked"
+    )
 
 
 @pytest.fixture(scope="module")
@@ -915,6 +976,89 @@ class TestOutputsOnly:
         outputs = '[outputs.products]\npath = "out.nc"\nvars = {nonexistent = "x"}\n'
         with pytest.raises(CatenaValueError, match="nonexistent"):
             build_graph(self._config(tmp_path, outputs))
+
+
+def _drawn(source: str) -> set[str]:
+    """The nodes a DOT source draws, input and config tables included."""
+    return set(re.findall(r"^\s*(\w+) \[label", source, re.MULTILINE))
+
+
+@requires_dot
+class TestViews:
+    """`build_graph` reaches Hamilton's other views and input options."""
+
+    @pytest.fixture
+    def config(self, tmp_path) -> Path:
+        return TestOutputsOnly._config(tmp_path, TestOutputsOnly._WEEKLY)
+
+    def test_upstream_of(self, config):
+        source = build_graph(config, upstream_of=["combine"]).source
+        assert _drawn(source) == {
+            "combine",
+            "daily_a",
+            "_daily_a_inputs",
+            "_daily_a_config",
+        }
+
+    def test_downstream_of(self, config):
+        source = build_graph(config, downstream_of=["daily_a"]).source
+        assert _drawn(source) == {
+            "daily_a",
+            "combine",
+            "weekly",
+            "_daily_a_inputs",
+            "_daily_a_config",
+        }
+
+    def test_between(self, config):
+        source = build_graph(config, between=("daily_a", "weekly")).source
+        assert {"daily_a", "combine", "weekly"} <= _drawn(source)
+        assert "daily_b" not in source
+
+    def test_views_keep_catenas_styling(self, config):
+        source = build_graph(config, downstream_of=["daily_a"]).source
+        assert "<i>degC</i>" in _node_line(source, "weekly")
+        assert DEFAULT_PALETTE["output"] in _node_line(source, "weekly")
+
+    def test_hide_inputs(self, config):
+        source = build_graph(config, hide_inputs=True).source
+        assert _drawn(source) == {"daily_a", "combine", "weekly"}
+        assert "input [" not in _legend(source)
+
+    def test_hide_inputs_drops_config_boxes(self, tmp_path):
+        config = TestOutputsOnly._config(tmp_path, "offset = 1.0\n")
+        assert "offset" in build_graph(config).source
+        assert "offset" not in build_graph(config, hide_inputs=True).source
+
+    def test_deduplicate_inputs(self, config):
+        source = build_graph(config, outputs_only=False, deduplicate_inputs=True).source
+        tables = [ln for ln in source.splitlines() if "<td>temperature</td>" in ln]
+        assert len(tables) == 1
+        assert {"_daily_a_config", "_daily_b_config"} <= _drawn(source)
+
+    def test_one_view_at_a_time(self, config):
+        with pytest.raises(CatenaValueError, match="upstream_of and between"):
+            build_graph(config, upstream_of=["combine"], between=("daily_a", "weekly"))
+
+    def test_a_view_is_not_every_node(self, config):
+        with pytest.raises(CatenaValueError, match="every node"):
+            build_graph(config, outputs_only=False, downstream_of=["daily_a"])
+
+    @pytest.mark.parametrize(
+        "view",
+        [
+            {"upstream_of": ["nope"]},
+            {"downstream_of": ["combine", "nope"]},
+            {"between": ("nope", "weekly")},
+        ],
+    )
+    def test_unknown_node_is_a_user_error(self, config, view):
+        with pytest.raises(CatenaValueError, match="'nope'"):
+            build_graph(config, **view)
+
+    def test_no_path_is_a_user_error(self, config):
+        with pytest.raises(CatenaValueError, match="leads to 'weekly'"):
+            build_graph(config, between=("unrelated", "weekly"))
 
 
 class TestGraphvizSpec:
