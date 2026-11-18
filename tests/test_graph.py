@@ -480,6 +480,43 @@ class TestHamiltonViews:
         assert FREQ_COLOR_CYCLE[0] not in swatch
         assert FREQ_COLOR_CYCLE[1] not in swatch
 
+    def test_frequency_only_outputs_have_gets_a_swatch(self, views_driver):
+        source = _styled(
+            views_driver, "display_all_functions", outputs=["weekly"]
+        ).source
+        legend = _legend(source)
+        assert set(_swatches(legend)) == {"D", "7D"}
+        assert f'fillcolor="{FREQ_COLOR_CYCLE[1]}"' in _swatches(legend)["7D"]
+
+    def test_swatches_only_show_drawn_frequencies(self, views_driver):
+        source = _styled(views_driver, "display_upstream_of", "daily_a").source
+        assert set(_swatches(_legend(source))) == {"D"}
+
+    def test_custom_style_does_not_leak_into_swatches(self, views_driver):
+        style = GraphStyle.from_driver(views_driver)
+        dashed = compose_styles(
+            style.node_style,
+            lambda *, node, node_class: ({"style": "dashed"}, node_class, None),
+        )
+        kwargs = {**style.hamilton_kwargs(), "custom_style_function": dashed}
+        source = style.apply(views_driver.display_all_functions(**kwargs)).source
+        for swatch in _swatches(_legend(source)).values():
+            assert 'style="rounded,filled"' in swatch
+
+
+def _legend(source: str) -> str:
+    return source.split("cluster__legend", 1)[1].split("}", 1)[0]
+
+
+def _swatches(legend: str) -> dict[str, str]:
+    """The legend's frequency swatches, by frequency."""
+    swatches = {}
+    for line in legend.splitlines():
+        match = re.match(r'\s*"(?P<freq>[^"]+)" \[', line)
+        if match:
+            swatches[match["freq"]] = line
+    return swatches
+
 
 class TestComposeStyles:
     @staticmethod

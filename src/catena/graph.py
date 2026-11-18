@@ -381,7 +381,7 @@ _TABLE_ROW_RE = re.compile(r"<tr><td>(?P<name>[^<]+)</td><td>[^<]*</td></tr>")
 
 
 def _node_id(line: str) -> str:
-    return line.split("[label=", 1)[0].strip().strip('"')
+    return line.split(" [", 1)[0].strip().strip('"')
 
 
 def _config_table(target: str, keys: dict[str, str]) -> list[str]:
@@ -506,6 +506,39 @@ def clean_legend(digraph: "graphviz.Digraph") -> None:
         if line.strip().startswith("output ["):
             line = _FILL_RE.sub("", line)
         digraph.body[i] = line.replace(" ]", "]")
+
+
+# Hamilton's own style for a function node, which the swatches copy.
+_SWATCH_ATTRS = 'fontname=Helvetica margin=0.15 shape=rectangle style="rounded,filled"'
+
+
+def draw_frequency_swatches(
+    digraph: "graphviz.Digraph", freq_map: dict[str, str], freq_colors: dict[str, str]
+) -> None:
+    """Give the legend one swatch for each frequency of a drawn node, in place.
+
+    Hamilton draws a legend entry for each node class, in the style of the last
+    node of that class. An output node is in the `output` class, so a frequency
+    only outputs have would get no entry, and a custom style function's
+    attributes would leak into an entry. The swatches are drawn afresh instead,
+    in order of first appearance in the DAG.
+    """
+    body = digraph.body
+    start = next(
+        (i for i, line in enumerate(body) if "subgraph cluster__legend" in line), None
+    )
+    if start is None:
+        return
+    end = next(i for i in range(start, len(body)) if body[i].strip() == "}")
+    drawn = {_node_id(line) for line in (*body[:start], *body[end + 1 :])}
+    shown = {freq_map[name] for name in drawn if name in freq_map}
+    entries = [line for line in body[start + 1 : end] if _node_id(line) not in shown]
+    swatches = [
+        f'\t\t"{freq}" [fillcolor="{color}" {_SWATCH_ATTRS}]\n'
+        for freq, color in freq_colors.items()
+        if freq in shown
+    ]
+    body[start + 1 : end] = [*entries, *swatches]
 
 
 def relabel_with_units(digraph: "graphviz.Digraph", unit_map: dict[str, str]) -> None:
@@ -667,8 +700,8 @@ class GraphStyle:
 
         Separates config inputs into their own tables, puts each declared unit
         in place of the `DataArray` type, colours each edge by its source
-        node's declared frequency, and strips per-node attributes from the
-        legend.
+        node's declared frequency, and draws the legend's frequency swatches
+        afresh, without per-node attributes.
 
         Returns
         -------
@@ -679,6 +712,7 @@ class GraphStyle:
         relabel_with_units(digraph, self._units)
         color_edges_by_frequency(digraph, self._freqs, self._freq_colors)
         clean_legend(digraph)
+        draw_frequency_swatches(digraph, self._freqs, self._freq_colors)
         return digraph
 
 
