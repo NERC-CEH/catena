@@ -411,18 +411,18 @@ def separate_config_inputs(
 
     Only nodes in `digraph` get a config table, so a pruned view stays pruned.
     If Hamilton drew no input tables at all (`hide_inputs=True`), no config
-    tables are drawn either, and the config boxes are left as Hamilton drew them.
+    tables are drawn either, and the config boxes are dropped too.
     """
     drawn = {
         _node_id(line)
         for line in digraph.body
         if " -> " not in line and "[label=" in line
     }
+    hidden = {key for keys in config_inputs.values() for key in keys}
     if any(node_id.endswith("_inputs") for node_id in drawn):
-        hidden = {key for keys in config_inputs.values() for key in keys}
         config_inputs = {t: k for t, k in config_inputs.items() if t in drawn}
     else:
-        hidden, config_inputs = set(), {}
+        config_inputs = {}
     hidden.add(ENABLE_POWER_USER_MODE)
     shown = {key for keys in config_inputs.values() for key in keys}
 
@@ -492,8 +492,14 @@ def clean_legend(digraph: "graphviz.Digraph") -> None:
     Hamilton draws a legend entry with the style of the last node that named
     it, so the `output` swatch would carry that node's frequency fill and any
     entry its link. Links and tooltips are dropped from every entry, and the
-    `output` swatch keeps only its outline.
+    `output` swatch keeps only its outline. The `input` entry is dropped when
+    no input table is drawn, as with `hide_inputs=True`.
     """
+    has_inputs = any(
+        _node_id(line).endswith("_inputs")
+        for line in digraph.body
+        if " -> " not in line and "[label=" in line
+    )
     in_legend = False
     for i, line in enumerate(digraph.body):
         if "subgraph cluster__legend" in line:
@@ -502,6 +508,9 @@ def clean_legend(digraph: "graphviz.Digraph") -> None:
             continue
         if line.strip() == "}":
             break
+        if not has_inputs and line.strip().startswith("input ["):
+            digraph.body[i] = ""
+            continue
         line = _LEGEND_ATTR_RE.sub("", line)
         if line.strip().startswith("output ["):
             line = _FILL_RE.sub("", line)

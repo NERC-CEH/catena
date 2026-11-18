@@ -1023,6 +1023,12 @@ class TestViews:
     def test_hide_inputs(self, config):
         source = build_graph(config, hide_inputs=True).source
         assert _drawn(source) == {"daily_a", "combine", "weekly"}
+        assert "input [" not in _legend(source)
+
+    def test_hide_inputs_drops_config_boxes(self, tmp_path):
+        config = TestOutputsOnly._config(tmp_path, "offset = 1.0\n")
+        assert "offset" in build_graph(config).source
+        assert "offset" not in build_graph(config, hide_inputs=True).source
 
     def test_deduplicate_inputs(self, config):
         source = build_graph(config, outputs_only=False, deduplicate_inputs=True).source
