@@ -94,16 +94,27 @@ def _(mo, nodes_path):
 def _(mo):
     mo.md("""
     ## The DAG
+
+    Hover over a node for the first line of its docstring and its declared contract; a node defined in `nodes.py` links to its entry under [The node functions](#the-node-functions), and previews it on hover.
     """)
     return
 
 
 @app.cell
-def _(config_path):
-    import catena
+def _(config_path, mo, nodes_path):
+    import inspect
 
-    graph = catena.build_graph(config_path)
-    graph
+    import catena
+    from catena.graph import graph_html
+
+    def api_url(fn):
+        """Link a function from nodes.py to its entry at the end of this page."""
+        if inspect.getsourcefile(inspect.unwrap(fn)) != str(nodes_path.resolve()):
+            return None
+        return f"#flux_pipeline.nodes.{fn.__qualname__}"
+
+    graph = catena.build_graph(config_path, link=api_url)
+    mo.Html(graph_html(graph))
     return (catena,)
 
 
@@ -176,6 +187,20 @@ def _(annual, comparison, mo, weekly):
     | Weekly GPP | {weekly.sizes["time"]} weeks, mean **{float(weekly.mean()):.2f}** g C m^-2 d^-1 |
     | Satellite bias | **{float(comparison.bias):+.2f}** g C m^-2 d^-1 |
     | Satellite RMSE | **{float(comparison.rmse):.2f}** g C m^-2 d^-1 |
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ## The node functions
+
+    The documentation of `nodes.py`, which the graph links to.
+
+    ::: flux_pipeline.nodes
+        options:
+          show_root_heading: false
     """)
     return
 

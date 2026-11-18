@@ -110,16 +110,26 @@ def _(mo):
     `catena.build_graph` returns a `graphviz.Digraph` without running anything, so it renders inline.
     Node labels carry the declared units, so a wiring mistake is often visible before a dry run reports it.
     Each node's data inputs and config are drawn as separate tables, and the config table shows the value in use: `baseline_days` from the config file.
+    Hover over a node for the first line of its docstring and its declared contract; a node defined in `nodes.py` links to its entry under [The node functions](#the-node-functions), and previews it on hover.
     """)
     return
 
 
 @app.cell
-def _(config_path):
-    import catena
+def _(config_path, mo, nodes_path):
+    import inspect
 
-    graph = catena.build_graph(config_path)
-    graph
+    import catena
+    from catena.graph import graph_html
+
+    def api_url(fn):
+        """Link a function from nodes.py to its entry at the end of this page."""
+        if inspect.getsourcefile(inspect.unwrap(fn)) != str(nodes_path.resolve()):
+            return None
+        return f"#pipeline_101.nodes.{fn.__qualname__}"
+
+    graph = catena.build_graph(config_path, link=api_url)
+    mo.Html(graph_html(graph))
     return (catena,)
 
 
@@ -194,6 +204,20 @@ def _(mo, rel, result, run):
 @app.cell
 def _(result):
     result
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ## The node functions
+
+    The documentation of `nodes.py`, which the graph links to.
+
+    ::: pipeline_101.nodes
+        options:
+          show_root_heading: false
+    """)
     return
 
 
