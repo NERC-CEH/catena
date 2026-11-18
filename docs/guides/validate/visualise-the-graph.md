@@ -27,9 +27,11 @@ The graphs on this page are drawn from a small pipeline: two daily inputs, three
 
 === "nodes.py"
 
+    <!-- fmt:off -->
     ```python
-    --8 < --"docs/guides/validate/graph_example/nodes.py"
+    --8<-- "docs/guides/validate/graph_example/nodes.py"
     ```
+    <!-- fmt:on -->
 
 ```bash exec="true"
 python docs/guides/validate/graph_example/show.py
@@ -54,16 +56,18 @@ Each of these draws part of it in place of what the outputs need, and they canno
 | `--downstream-of NODE` | `NODE` and everything that depends on it |
 | `--between START END` | the paths from `START` to `END` |
 
-```bash exec="true"
-python docs/guides/validate/graph_example/show.py --downstream-of temperature_daily
-```
-
 Repeat `--upstream-of` or `--downstream-of` to name several nodes.
 
 Two more options thin out the input tables, in any view:
 
 - `--hide-inputs` leaves out the tables of data inputs and config.
 - `--deduplicate-inputs` draws each data input once, shared by every node that uses it; each node keeps its own config table.
+
+Here only what `aridity_index_daily` needs is drawn, without the input tables:
+
+```bash exec="true"
+python docs/guides/validate/graph_example/show.py --upstream-of aridity_index_daily --hide-inputs
+```
 
 ## What to look for
 
@@ -95,9 +99,11 @@ This style file pins the colours of the two frequencies, lays the graph out top 
 
 === "styling.py"
 
+    <!-- fmt:off -->
     ```python
-    --8 < --"docs/guides/validate/graph_example/styling.py"
+    --8<-- "docs/guides/validate/graph_example/styling.py"
     ```
+    <!-- fmt:on -->
 
 ```bash exec="true"
 python docs/guides/validate/graph_example/show.py --style style.toml

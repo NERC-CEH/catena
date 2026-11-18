@@ -97,3 +97,12 @@ def test_decision_records_are_not_rendered():
     """`docs/adr/` is for maintainers, so the docs site must not publish it."""
     config = tomllib.loads(ZENSICAL.read_text())["project"]
     assert "adr/" in config.get("exclude_docs", "").split()
+
+
+@pytest.mark.parametrize("page", sorted(DOCS.rglob("*.md")), ids=str)
+def test_snippet_markers_survive_formatting(page):
+    """`ruff format` rewrites `--8<--` inside a Python code block.
+
+    Fence such a block with `<!-- fmt:off -->` and `<!-- fmt:on -->`.
+    """
+    assert not re.search(r"--8\s+<\s*--", page.read_text())
