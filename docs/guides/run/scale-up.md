@@ -46,8 +46,8 @@ Intermediate nodes are held in memory for one block at a time; the requested out
 
 ```toml
 [blocking]
-block_size = 500     # rows of the partition dim processed at a time
-dim = "pixel"        # a dim of the loaded arrays, e.g. "location" if non-gridded
+block_size = 50      # indices of the partition dim processed at a time
+dim = "y"            # a dim of the inputs, e.g. "location" if non-gridded
 ```
 
 !!! warning "Outputs must vary over the partition dim"
@@ -76,18 +76,18 @@ dim   = "y"          # a dimension of the input files
 ```
 
 The dimension is one the **input files** have, and every file that has it is sliced before anything else happens.
-For gridded data that is a spatial dimension such as `y`, so a subset is a band of whole rows; `pixel` only exists after catena has stacked the grid, and is not a dimension you can subset.
+For gridded data that is a spatial dimension such as `y`, so a subset is a band of whole rows.
 For non-gridded data it is whatever the files call it, such as `location` or `site`.
 Every input that has the dimension must have the same length along it.
 
 Each process reads only its slice and writes its outputs in the usual layout.
-The processes share one output `path`, so catena keeps their writes apart, and `catena gridded merge` (in the `geo` extra) finishes the job.
+The processes share one output `path`, so catena keeps their writes apart, and `catena subset merge` finishes the job.
 
 **NetCDF** — each process writes its own part (`weekly.nc` → `weekly_y0-50.nc`), with no setup needed:
 
 ```sh
 parallel catena run config.toml --subset y:{} ::: 0:50 50:100 100:150
-catena gridded merge config.toml --dim y          # concatenate the parts into weekly.nc
+catena subset merge config.toml --dim y          # concatenate the parts into weekly.nc
 ```
 
 `merge` refuses to run unless the parts cover the dimension end to end, so a run that died cannot leave a silent gap.
@@ -97,9 +97,9 @@ Pass `--out <path>` (single-output configs only) to choose a destination.
 **Zarr** — all processes write regions of one shared store, created once up front:
 
 ```sh
-catena gridded create-store config.toml --dim y --chunk 50   # build the empty store(s)
+catena subset create-store config.toml --dim y --chunk 50   # build the empty store(s)
 parallel catena run config.toml --subset y:{} ::: 0:50 50:100 100:150
-catena gridded merge config.toml                  # check every region was written
+catena subset merge config.toml                    # check every region was written
 ```
 
 The store is the finished output, in the layout an ordinary run writes, so nothing is copied afterwards.

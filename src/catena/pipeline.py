@@ -26,7 +26,6 @@ from .errors import CatenaError, CatenaValueError
 from .io import (
     assert_dim_in_inputs,
     assert_output_paths_writable,
-    auxiliary_input_names,
     get_final_vars,
     get_outputs,
     load_inputs,
@@ -181,7 +180,7 @@ def run(
 
     target_vars = get_final_vars(parsed.output_specs)
     logger.info("DAG built: executing %d output node(s)", len(target_vars))
-    check_wiring(dr, target_vars, inputs, exempt=auxiliary_input_names(inputs))
+    check_wiring(dr, target_vars, inputs)
     if parsed.blocking_spec is not None:
         results = execute_blocked(dr, inputs, target_vars, parsed.blocking_spec)
     else:
@@ -442,10 +441,6 @@ def _checks_stage(parsed: ParsedConfig, *, inputs_loaded: bool) -> Stage:
         n_checks = _run_input_checks(parsed)
     except CatenaError as exc:
         return _failed("checks", "input checks failed", exc)
-    if not n_checks:
-        return Stage(
-            "checks", "skipped", "input checks: skipped (running under [subset])"
-        )
     return Stage("checks", "ok", f"input checks passed ({n_checks})")
 
 
@@ -471,7 +466,7 @@ def _plan_stage(
     with warnings.catch_warnings(record=True) as wiring_warnings:
         warnings.simplefilter("always")
         try:
-            check_wiring(dr, targets, inputs, exempt=auxiliary_input_names(inputs))
+            check_wiring(dr, targets, inputs)
         except CatenaError as exc:
             errors.append(str(exc))
     findings = tuple(str(w.message) for w in wiring_warnings)
@@ -502,19 +497,11 @@ def _registered_sources(parsed: ParsedConfig) -> tuple[str, ...]:
 def _run_input_checks(parsed: ParsedConfig) -> int:
     """Run the configured input-compatibility checks before the DAG is built.
 
-    Returns the number of checks run (0 if none configured). Under `[subset]`
-    the checks operate on a pixel slice rather than the full domain, so they are
-    skipped with a warning recommending a full-domain dry run. A failure raises
+    Returns the number of checks run (0 if none configured). The checks see the
+    whole input files, also under `[subset]`. A failure raises
     `catena.input_checks.InputCheckError`.
     """
     if not parsed.checks:
-        return 0
-    if parsed.subset_spec is not None:
-        warnings.warn(
-            "input checks skipped under [subset]; run `catena run --dry-run` on "
-            "the full domain to validate them",
-            stacklevel=2,
-        )
         return 0
     from .input_checks import run_input_checks
     from .io import load_raw_datasets

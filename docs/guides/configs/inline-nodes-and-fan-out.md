@@ -49,7 +49,7 @@ inputs = ["precipitation_daily", "evapotranspiration_daily"]
 expression = "precipitation_daily / evapotranspiration_daily"
 units = "1"                 # dimensionless ratio
 overwrite_units = true      # replace the mm d-1 the ratio kept
-dims = ["time", "pixel"]    # optional dimension contract
+dims = ["time", "y", "x"]   # optional dimension contract
 ```
 
 `units` and `dtype` are validated when the config is parsed.

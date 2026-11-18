@@ -6,11 +6,13 @@ import pytest
 import xarray as xr
 
 from catena.config import CheckSpec
+from catena.errors import CatenaValueError
 from catena.input_checks import (
     CHECKS,
     Check,
     InputCheckError,
     coords_equal,
+    crs_equal,
     run_input_checks,
     time_equal,
     time_subset,
@@ -125,6 +127,108 @@ class TestCoordsEqual:
 
 
 # ---------------------------------------------------------------------------
+# crs_equal
+# ---------------------------------------------------------------------------
+
+
+def _cf_grid(path, wkt: str | None, grid_mapping: str = "crs", **params):
+    """Write a 2x2 grid whose variable names a CF grid mapping, read it back.
+
+    `grid_mapping` is the variable's attribute, short (`"crs"`) or extended
+    (`"crs: x y"`); the grid-mapping variable itself is always called `crs`.
+    """
+    from catena.formats import format_for
+
+    attrs = {"grid_mapping_name": "transverse_mercator", **params}
+    if wkt is not None:
+        attrs["crs_wkt"] = wkt
+    ds = xr.Dataset(
+        {
+            "v": (("y", "x"), np.zeros((2, 2)), {"grid_mapping": grid_mapping}),
+            "crs": ((), 0, attrs),
+        },
+        coords={"y": [0.0, 1.0], "x": [0.0, 1.0]},
+    )
+    ds.to_netcdf(path)
+    return format_for(str(path)).read(str(path))
+
+
+class TestCrsEqual:
+    def test_matching_passes(self, tmp_path):
+        crs_equal(
+            _named(
+                _cf_grid(tmp_path / "a.nc", "WKT-A"),
+                _cf_grid(tmp_path / "b.nc", "WKT-A"),
+            )
+        )
+
+    def test_differing_raises(self, tmp_path):
+        with pytest.raises(CatenaValueError, match="ds1 CRS differs from ds0"):
+            crs_equal(
+                _named(
+                    _cf_grid(tmp_path / "a.nc", "WKT-A"),
+                    _cf_grid(tmp_path / "b.nc", "WKT-B"),
+                )
+            )
+
+    def test_parameters_compared_without_wkt(self, tmp_path):
+        """A grid mapping given only by its CF parameters still defines a CRS."""
+
+        def grid(name, easting):
+            return _cf_grid(tmp_path / name, None, false_easting=easting)
+
+        crs_equal(_named(grid("a.nc", 400000.0), grid("b.nc", 400000.0)))
+        with pytest.raises(CatenaValueError, match="ds1 CRS differs from ds0"):
+            crs_equal(_named(grid("a.nc", 400000.0), grid("c.nc", 0.0)))
+
+    def test_extended_grid_mapping_form(self, tmp_path):
+        """`grid_mapping = "crs: x y"` names the variable `crs`."""
+        crs_equal(
+            _named(
+                _cf_grid(tmp_path / "a.nc", "WKT-A", grid_mapping="crs: x y"),
+                _cf_grid(tmp_path / "b.nc", "WKT-A"),
+            )
+        )
+        with pytest.raises(CatenaValueError, match="CRS differs"):
+            crs_equal(
+                _named(
+                    _cf_grid(tmp_path / "a.nc", "WKT-A", grid_mapping="crs: x y"),
+                    _cf_grid(tmp_path / "c.nc", "WKT-B", grid_mapping="crs: x y"),
+                )
+            )
+
+    def test_global_crs_attribute(self):
+        a = xr.Dataset({"v": ("x", [1.0])}, attrs={"crs": "EPSG:4326"})
+        b = a.assign_attrs(crs="EPSG:27700")
+        crs_equal(_named(a, a))
+        with pytest.raises(CatenaValueError, match="CRS differs"):
+            crs_equal(_named(a, b))
+
+    def test_no_crs_raises(self):
+        a = xr.Dataset({"v": ("x", [1.0])}, attrs={"crs": "EPSG:4326"})
+        with pytest.raises(CatenaValueError, match="ds1 has no CRS"):
+            crs_equal(_named(a, xr.Dataset({"v": ("x", [1.0])})))
+
+    def test_rioxarray_written_crs(self, tmp_path):
+        """The `spatial_ref` coordinate rioxarray writes is read the same way."""
+        pytest.importorskip("rioxarray")
+        from catena.formats import format_for
+
+        def grid(name, epsg):
+            path = tmp_path / name
+            ds = xr.Dataset(
+                {"v": (("y", "x"), np.zeros((2, 2)))},
+                coords={"y": [0.0, 1.0], "x": [0.0, 1.0]},
+            ).rio.write_crs(epsg)
+            ds.to_netcdf(path)
+            return format_for(str(path)).read(str(path))
+
+        crs_equal(_named(grid("a.nc", "EPSG:27700"), grid("b.nc", "EPSG:27700")))
+        with pytest.raises(CatenaValueError, match="CRS differs"):
+            crs_equal(_named(grid("a.nc", "EPSG:27700"), grid("c.nc", "EPSG:4326")))
+
+
+# ---------------------------------------------------------------------------
 # Registry + run_input_checks
 # ---------------------------------------------------------------------------
 
@@ -135,6 +239,7 @@ class TestRegistry:
             "time_equal",
             "time_subset",
             "coords_equal",
+            "crs_equal",
         }
 
     def test_arities(self):
@@ -213,17 +318,6 @@ class TestRunInputChecks:
 class TestRunInputChecksHook:
     """The cli/run.py `_run_input_checks` orchestration hook."""
 
-    def _parsed(self, subset):
-        from catena.config import ParsedConfig, SubsetSpec
-
-        return ParsedConfig(
-            modules=[],
-            driver_config={},
-            input_specs={},
-            subset_spec=SubsetSpec(start=0, stop=1, dim="pixel") if subset else None,
-            checks=[CheckSpec("time_equal", ["a"])],
-        )
-
     def test_no_checks_is_noop(self):
         from catena.config import ParsedConfig
         from catena.pipeline import _run_input_checks
@@ -231,9 +325,23 @@ class TestRunInputChecksHook:
         parsed = ParsedConfig(modules=[], driver_config={}, checks=[])
         assert _run_input_checks(parsed) == 0
 
-    def test_subset_skips_with_warning(self):
+    def test_subset_runs_checks_on_the_whole_files(self, tmp_path):
+        """A `[subset]` slices the inputs for the run, not for the checks."""
+        from catena.config import IOSpec, ParsedConfig, SubsetSpec
         from catena.pipeline import _run_input_checks
 
-        parsed = self._parsed(subset=True)
-        with pytest.warns(UserWarning, match="input checks skipped under \\[subset\\]"):
-            assert _run_input_checks(parsed) == 0
+        specs = {}
+        for label, y in (("a", [0.0, 1.0]), ("b", [0.0, 2.0])):
+            path = tmp_path / f"{label}.nc"
+            xr.Dataset({"v": ("y", [1.0, 2.0])}, coords={"y": y}).to_netcdf(path)
+            specs[label] = IOSpec(path=str(path), vars=["v"])
+        parsed = ParsedConfig(
+            modules=[],
+            driver_config={},
+            input_specs=specs,
+            # The first row agrees; only the whole files disagree.
+            subset_spec=SubsetSpec(start=0, stop=1, dim="y"),
+            checks=[CheckSpec("coords_equal", ["a", "b"], {"coords": ["y"]})],
+        )
+        with pytest.raises(InputCheckError, match="coords_equal"):
+            _run_input_checks(parsed)

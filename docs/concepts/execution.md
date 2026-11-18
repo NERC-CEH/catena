@@ -29,7 +29,7 @@ Two properties make this work:
 | in-memory serial | nothing | nothing | developing, testing, and every recipe here |
 | out-of-core | dask-backed inputs, from Python | memory, lazily | the data is larger than RAM but one process is enough |
 | blocked | `[blocking]` | peak memory, to roughly one block | you want a hard memory ceiling in one process |
-| sharded | `[subset]`, plus `catena gridded` | wall-clock time | you have many cores, or a cluster |
+| sharded | `[subset]`, plus `catena subset` | wall-clock time | you have many cores, or a cluster |
 
 The first is the default, and the rest compose: a blocked, dask-backed run over a subset is ordinary.
 

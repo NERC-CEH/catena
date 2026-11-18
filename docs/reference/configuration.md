@@ -225,14 +225,14 @@ See [Scale up › blocking](../guides/run/scale-up.md#memory-bounded-execution-w
 
 ```toml
 [blocking]
-block_size = 500
-dim = "pixel"
+block_size = 50
+dim = "y"
 ```
 
 | Key | Description |
 |-----|-------------|
 | `block_size` | **Required.** Positive integer — rows of `dim` per block. |
-| `dim` | **Required.** Partition dimension, which at least one loaded input must have. Gridded pipelines use `pixel`, because the geospatial layer stacks `(y, x)` into it. |
+| `dim` | **Required.** Partition dimension, which at least one loaded input must have: a spatial dimension such as `y` for gridded inputs. |
 
 ## Subset
 
@@ -250,12 +250,12 @@ dim   = "y"
 |-----|-------------|
 | `start` | **Required.** First index along `dim` (inclusive, zero-based). |
 | `stop` | **Required.** One past the last index (exclusive); must exceed `start`. |
-| `dim` | **Required.** Partition dimension: one the input files have, with the same length in every file that has it. For gridded inputs this is a spatial dimension such as `y`, as the files are sliced before the grid is stacked into `pixel`. |
+| `dim` | **Required.** Partition dimension: one the input files have, with the same length in every file that has it. For gridded inputs this is a spatial dimension such as `y`. |
 
 `catena run --subset DIM:START:STOP` (and the `subset` argument of `catena.run`) replaces this section, so parallel runs can share one config.
 
 Each NetCDF part is written to its own suffixed file (`out_location0-500.nc`).
-A Zarr output is region-written into a shared store that [`catena gridded create-store`](cli.md#catena-gridded-create-store) builds first.
+A Zarr output is region-written into a shared store that [`catena subset create-store`](cli.md#catena-subset-create-store) builds first.
 
 ## Validation
 
@@ -286,11 +286,12 @@ Available checks:
 | `time_equal` | any | all inputs share an identical time index |
 | `time_subset` | exactly 2 | the second input's timestamps are a subset of the first's |
 | `coords_equal` | any | the named `coords` match across all inputs (`atol` for float coords) |
+| `crs_equal` | any | all inputs declare the same CRS, compared as the text stored in the files |
 
-There is no grid check to declare: gridded inputs must all share one CRS and grid, and catena [checks that whenever it loads them](data-formats.md#spatial-handling).
+To check that gridded inputs share a grid, declare `crs_equal` and `coords_equal` on the spatial coordinates; catena does not check this otherwise ([Data formats › Spatial handling](data-formats.md#spatial-handling)).
 
 The checks live in [`catena.input_checks`](modules/catena.input_checks.md) and can be called directly from Python, with a mapping from a name to each dataset.
-Under [`[subset]`](#subset) they are skipped with a warning, since they describe the whole domain rather than one shard.
+They check the whole input files, also under [`[subset]`](#subset).
 
 ## Contract checks
 

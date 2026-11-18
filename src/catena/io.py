@@ -6,11 +6,13 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 from .errors import CatenaFileNotFoundError, CatenaPermissionError, CatenaValueError
 from .formats import format_for
 from .specs import IOSpec, SubsetSpec
+from .subsets import open_region_store, save_zarr_region, subset_path
 
 
 def effective_suffix(label: str, spec: IOSpec) -> str:
@@ -149,7 +151,7 @@ def _save(ds: xr.Dataset, path: str | os.PathLike) -> None:
 
 
 def load_raw_datasets(input_specs: dict[str, IOSpec]) -> dict[str, xr.Dataset]:
-    """Open every configured input as a raw `Dataset` (pre-stack, pre-subset).
+    """Open every configured input as a raw `Dataset` (before any subset).
 
     `load_inputs` calls this internally, and so does the input-checks pre-flight.
     Opens are lazy (metadata only), so calling it twice per run is cheap.
@@ -169,7 +171,6 @@ def load_raw_datasets(input_specs: dict[str, IOSpec]) -> dict[str, xr.Dataset]:
 def load_inputs(
     input_specs: dict[str, IOSpec],
     subset_spec: SubsetSpec | None = None,
-    geospatial: bool | None = None,
 ) -> dict[str, xr.DataArray]:
     """Load all configured inputs and return them as a flat dict of named DataArrays.
 
@@ -182,10 +183,9 @@ def load_inputs(
     A section naming a variable the file does not contain raises a catena error
     reporting the section, the file, and every missing name at once.
 
-    The geospatial layer (CRS-aware `(y, x)` → `pixel` stacking plus computed
-    `latitude`/`longitude`) is **opt-in**: it activates only when an input carries
-    CRS metadata (see `catena.gridded`). Pass `geospatial=True`/`False` to force
-    it on or off.
+    Inputs keep the dimensions and coordinates they have in their files; nothing
+    is reshaped. To check that inputs share a grid, configure the `coords_equal`
+    and `crs_equal` checks (`catena.input_checks`).
 
     Parameters
     ----------
@@ -194,17 +194,8 @@ def load_inputs(
         Typically `parsed_config.input_specs`.
     subset_spec:
         If provided, slice every input file carrying its `dim` to the specified
-        range, before any grid is stacked. Typically `parsed_config.subset_spec`.
-    geospatial:
-        Force the geospatial path on (`True`) or off (`False`). When `None`
-        (default) it is auto-detected from the presence of CRS metadata.
+        range. Typically `parsed_config.subset_spec`.
     """
-    from .gridded.io import (  # lazy: optional geo extra (see catena.gridded)
-        compute_lat_lon,
-        has_crs,
-        stack_if_gridded,
-    )
-
     inputs: dict[str, xr.DataArray] = {}
     raw_datasets = load_raw_datasets(input_specs)
     if subset_spec is not None:
@@ -221,12 +212,8 @@ def load_inputs(
                 f"catena requires at most one time dimension per input dataset."
             )
 
-    if geospatial is None:
-        geospatial = any(has_crs(ds) for ds in raw_datasets.values())
-
     for label, spec in input_specs.items():
-        ds_raw = raw_datasets[label]
-        ds = stack_if_gridded(ds_raw) if geospatial else ds_raw
+        ds = raw_datasets[label]
         mapping = var_mapping(label, spec, available=[str(v) for v in ds.data_vars])
         _check_requested_vars(label, spec.path, ds, mapping)
         for node_name, file_var in mapping.items():
@@ -236,13 +223,6 @@ def load_inputs(
                     f"with an already-loaded input."
                 )
             inputs[node_name] = ds[file_var]
-
-    if geospatial:
-        spatial = {label: ds for label, ds in raw_datasets.items() if has_crs(ds)}
-        if spatial:
-            lat, lon = compute_lat_lon(spatial)
-            inputs["latitude"] = lat
-            inputs["longitude"] = lon
 
     return inputs
 
@@ -268,9 +248,9 @@ def subset_datasets(
     """Slice every dataset carrying `subset_spec.dim` to that spec's range.
 
     The datasets are the input files as opened (`load_raw_datasets`), so `dim` is
-    a dimension of the files: for a gridded input that is a spatial dimension such
-    as `y`, not the `pixel` it is later stacked into. Datasets without the
-    dimension pass through untouched, but at least one must have it.
+    a dimension of the files: for a gridded input, a spatial dimension such as `y`.
+    Datasets without the dimension pass through untouched, but at least one must
+    have it.
     """
     dim = subset_spec.dim
     dim_size(datasets, dim, "subset")
@@ -301,13 +281,26 @@ def dim_size(datasets: dict[str, xr.Dataset], dim: str, section: str) -> int:
     return next(iter(sizes.values()))
 
 
+def _check_not_stacked(label: str, ds: xr.Dataset) -> None:
+    stacked = sorted(
+        str(dim) for dim in ds.dims if isinstance(ds.indexes.get(dim), pd.MultiIndex)
+    )
+    if stacked:
+        raise CatenaValueError(
+            f"[outputs.{label}] has stacked dimension(s) {stacked}, which cannot be "
+            f"written to a file. Unstack them in the node that stacked them, e.g. "
+            f"with `.unstack({stacked[0]!r})`."
+        )
+
+
 def get_outputs(
     results: dict[str, xr.DataArray],
     output_specs: dict[str, IOSpec],
 ) -> dict[str, xr.Dataset]:
     """Merge model results into one Dataset per output section.
 
-    Gridded results are unstacked from `pixel` back to their `(y, x)` grid.
+    Raises a catena error if a result has a stacked (MultiIndex) dimension, which
+    no supported format can store: unstack it in the node that stacked it.
 
     Parameters
     ----------
@@ -317,8 +310,6 @@ def get_outputs(
         Mapping from section label to `IOSpec`.
         Typically `parsed_config.output_specs`.
     """
-    from .gridded.io import unstack_if_gridded  # lazy: optional geo extra
-
     out: dict[str, xr.Dataset] = {}
     for label, spec in output_specs.items():
         # (Re-)assign the file variable name to each array so merging succeeds.
@@ -329,7 +320,8 @@ def get_outputs(
         # Explicit, so differing coordinates keep raising if xarray's defaults change.
         merged = xr.merge(arrays, compat="no_conflicts", join="outer")
         # merge copies the first array's attrs onto the Dataset (#31).
-        out[label] = unstack_if_gridded(merged.drop_attrs(deep=False))
+        _check_not_stacked(label, merged)
+        out[label] = merged.drop_attrs(deep=False)
     return out
 
 
@@ -377,8 +369,6 @@ def save_outputs(
             written[label] = Path(path)
             continue
 
-        from .gridded.io import save_zarr_region, subset_path  # lazy: geo extra
-
         if format_for(path).needs_store:
             save_zarr_region(ds, path, subset_spec)
             written[label] = Path(path)
@@ -409,8 +399,6 @@ def assert_output_paths_writable(
         fmt = format_for(spec.path)
 
         if subset_spec is not None:
-            from .gridded.io import open_region_store, subset_path  # lazy: geo extra
-
             if fmt.needs_store:
                 open_region_store(spec.path, subset_spec)
                 continue  # the region write targets the existing store directly
@@ -429,17 +417,6 @@ def assert_output_paths_writable(
                 f"output {label!r} parent directory {str(parent)!r} is not writable "
                 f"(path {spec.path!r})."
             )
-
-
-def auxiliary_input_names(inputs: dict[str, Any]) -> set[str]:
-    """Names of auto-derived inputs `load_inputs` emits that nodes needn't consume.
-
-    The geospatial `latitude` / `longitude` arrays are computed from the input
-    files' CRS, so a pipeline may legitimately ignore them. The wiring check
-    (`catena.wiring_check.check_wiring`) excludes them from its "unused
-    input" diagnostic.
-    """
-    return {"latitude", "longitude"} & set(inputs)
 
 
 def get_final_vars(output_specs: dict[str, IOSpec]) -> list[str]:

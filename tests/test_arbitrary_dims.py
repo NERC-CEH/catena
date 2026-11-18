@@ -1,13 +1,10 @@
 """Phase 2: non-temporal, non-geospatial pipelines with arbitrary dims/labels.
 
 These exercise the generalised I/O layer: input section labels need not be known
-frequencies, variables may carry arbitrary dimensions (no `time`, no `pixel`,
-no CRS), the frequency-suffix naming is opt-out, and the geospatial stack
-(rioxarray/pyproj) is never touched when no CRS is present.
+frequencies, variables may carry arbitrary dimensions (no `time`, no CRS), and
+the frequency-suffix naming is opt-out.
 """
 
-import subprocess
-import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -46,8 +43,6 @@ class TestArbitraryDimLoading:
         # arbitrary label -> suffix; arbitrary dims preserved; no time/pixel/grid
         da = inputs["reflectance_scene"]
         assert da.dims == ("location", "band")
-        assert "latitude" not in inputs
-        assert "longitude" not in inputs
 
     def test_bare_suffix_for_non_static_label(self, tmp_path):
         ds = xr.Dataset({"threshold": ((), 0.5)})
@@ -141,8 +136,8 @@ class TestSubsetArbitraryDim:
 
     def test_subset_over_non_pixel_dim(self, tmp_path):
         """Subset parts over `location` merge back to the full run, exactly."""
-        from catena.gridded.io import merge_subset_outputs
         from catena.io import save_outputs
+        from catena.subsets import merge_subset_outputs
 
         # Reference: the whole thing in one go.
         parsed = load_config(self._config(tmp_path))
@@ -180,7 +175,7 @@ class TestSubsetArbitraryDim:
     def test_zarr_store_partitioned_over_non_pixel_dim(self, tmp_path):
         """A shared Zarr store works over `location` as it does over a grid row."""
         from catena import run
-        from catena.gridded.io import create_output_store, merge_subset_outputs
+        from catena.subsets import create_output_store, merge_subset_outputs
 
         cfg = self._config(
             tmp_path, subset='\n[subset]\nstart = 0\nstop = 2\ndim = "location"\n'
@@ -208,23 +203,3 @@ class TestSubsetArbitraryDim:
             xr.open_zarr(store, consolidated=False).compute(),
             xr.open_zarr(reference, consolidated=False).compute(),
         )
-
-
-def test_no_geospatial_deps_imported_without_crs(tmp_path):
-    """Loading non-CRS inputs must not import rioxarray/pyproj (optional 'geo')."""
-    _write_scene(tmp_path / "scene.nc")
-    path = str(tmp_path / "scene.nc")
-    script = f"""\
-import sys
-from catena.config import IOSpec
-from catena.io import load_inputs
-load_inputs({{"scene": IOSpec(path={path!r}, vars=["reflectance"])}})
-assert "rioxarray" not in sys.modules, "rioxarray was imported"
-assert "pyproj" not in sys.modules, "pyproj was imported"
-print("OK")
-"""
-    result = subprocess.run(
-        [sys.executable, "-c", script], capture_output=True, text=True
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "OK" in result.stdout

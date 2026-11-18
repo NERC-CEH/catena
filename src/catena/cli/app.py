@@ -11,9 +11,9 @@ from typing import Annotated
 import typer
 
 from .._version import __version__
-from ..gridded.cli import app as gridded_app
 from .graph import app as graph_app
 from .run import app as run_app
+from .subset import app as subset_app
 
 app = typer.Typer(
     help="Command-line interface for the catena framework.",
@@ -57,5 +57,4 @@ def _root(
 
 app.add_typer(graph_app)
 app.add_typer(run_app)
-# Gridded (CRS/pixel) parallel-Zarr commands are nested: `catena gridded <cmd>`.
-app.add_typer(gridded_app, name="gridded")
+app.add_typer(subset_app, name="subset")

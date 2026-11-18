@@ -1,4 +1,4 @@
-"""Tests for Mechanism B: pixel-blocked driver execution.
+"""Tests for Mechanism B: blocked driver execution.
 
 Verifies that execute_blocked() produces results identical to an unblocked
 dr.execute() call, regardless of block size.
@@ -36,7 +36,7 @@ def _run_unblocked(pipeline_config, pipeline_inputs):
 
 
 def _run_blocked(pipeline_config, pipeline_inputs, block_size):
-    spec = BlockingSpec(block_size=block_size, dim="pixel")
+    spec = BlockingSpec(block_size=block_size, dim="y")
     dr = build_driver(
         pipeline_config.modules,
         pipeline_config.driver_config,
@@ -236,7 +236,7 @@ class TestPartitionInvariance:
 class TestCachingWithBlocking:
     """Blocking and Hamilton caching coexist correctly.
 
-    Each block gets its own cache entry (pixel coords fold into the hash),
+    Each block gets its own cache entry (its coords fold into the hash),
     so a warm re-run hits cache without recomputing.
     """
 
@@ -245,7 +245,7 @@ class TestCachingWithBlocking:
     ):
         from catena import CacheSpec
 
-        spec = BlockingSpec(block_size=2, dim="pixel")
+        spec = BlockingSpec(block_size=1, dim="y")
         cache = CacheSpec(path=str(tmp_path / "cache"))
 
         def _run_blocked_cached():
@@ -291,8 +291,8 @@ path = "{out_path}"
 vars = ["mean_temperature"]
 
 [blocking]
-block_size = 2
-dim = "pixel"
+block_size = 1
+dim = "y"
 """
         p = tmp_path / "config.toml"
         p.write_text(content)

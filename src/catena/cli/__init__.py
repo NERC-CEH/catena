@@ -3,7 +3,7 @@
 **This package contains no pipeline logic.** Every command is a thin shim that
 turns options into a call to the Python API — `catena.pipeline.run`,
 `catena.pipeline.dry_run`, `catena.graph.build_graph`, and the
-`catena.gridded` store operations — and renders the result. Anything a command
+`catena.subsets` store operations — and renders the result. Anything a command
 can do, a downstream project can do from Python, and that is the invariant this
 package exists to keep. Add behaviour to the library module and call it here.
 

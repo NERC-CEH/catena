@@ -10,19 +10,19 @@ import xarray as xr
 
 from catena.config import IOSpec, SubsetSpec
 from catena.errors import CatenaFileExistsError, CatenaValueError
-from catena.gridded.io import (
-    _find_subset_parts,
-    create_output_store,
-    merge_subset_outputs,
-    save_zarr_region,
-    subset_suffix,
-)
 from catena.io import (
     assert_output_paths_writable,
     get_final_vars,
     get_outputs,
     load_inputs,
     save_outputs,
+)
+from catena.subsets import (
+    _find_subset_parts,
+    create_output_store,
+    merge_subset_outputs,
+    save_zarr_region,
+    subset_suffix,
 )
 
 VAR = "mean_temperature"
@@ -73,18 +73,17 @@ class TestSubsetSuffix:
         assert subset_suffix(spec) == "_location0-10"
 
 
-class TestSubsetIsTakenBeforeStacking:
+class TestSubsetOverAGridDim:
     def test_a_subset_over_a_grid_dim_yields_whole_rows(self, pipeline_config):
         inputs = load_inputs(pipeline_config.input_specs, subset_spec=ROWS[0])
         full = load_inputs(pipeline_config.input_specs)
-        # One of two rows of a 2x2 grid: half the pixels, all of them in that row.
-        assert inputs["temperature_daily"].sizes["pixel"] == 2
-        assert set(inputs["temperature_daily"]["y"].values) == {
-            full["temperature_daily"]["y"].values[0]
-        }
-        assert inputs["latitude"].sizes["pixel"] == 2
+        # One of two rows of a 2x2 grid.
+        da = inputs["temperature_daily"]
+        assert dict(da.sizes)["y"] == 1
+        assert dict(da.sizes)["x"] == 2
+        assert da["y"].values[0] == full["temperature_daily"]["y"].values[0]
 
-    def test_pixel_is_not_a_dimension_of_a_gridded_file(self, pipeline_config):
+    def test_a_dim_the_files_lack_is_refused(self, pipeline_config):
         with pytest.raises(CatenaValueError, match="dim 'pixel' is not a dimension"):
             load_inputs(
                 pipeline_config.input_specs, subset_spec=SubsetSpec(0, 2, dim="pixel")
@@ -464,19 +463,19 @@ class TestCLIParallelWorkflow:
         config.write_text(_config_text(synthetic_data_dir, store))
 
         r = runner.invoke(
-            app, ["gridded", "create-store", str(config), "--dim", "y", "--chunk", "1"]
+            app, ["subset", "create-store", str(config), "--dim", "y", "--chunk", "1"]
         )
         assert r.exit_code == 0, r.output
         assert store.exists()
 
         r = runner.invoke(app, ["run", str(config), "--subset", "y:0:1"])
         assert r.exit_code == 0, r.output
-        r = runner.invoke(app, ["gridded", "merge", str(config)])
+        r = runner.invoke(app, ["subset", "merge", str(config)])
         assert r.exit_code != 0  # half the store is still unwritten
 
         r = runner.invoke(app, ["run", str(config), "--subset", "y:1:2"])
         assert r.exit_code == 0, r.output
-        r = runner.invoke(app, ["gridded", "merge", str(config)])
+        r = runner.invoke(app, ["subset", "merge", str(config)])
         assert r.exit_code == 0, r.output
 
         filled = xr.open_zarr(store, consolidated=False).compute()
@@ -517,14 +516,12 @@ dim = "site"
 """
         )
         runner = CliRunner()
-        r = runner.invoke(
-            app, ["gridded", "create-store", str(config), "--dim", "site"]
-        )
+        r = runner.invoke(app, ["subset", "create-store", str(config), "--dim", "site"])
         assert r.exit_code == 0, r.output
         for subset in ("site:0:2", "site:2:6"):
             r = runner.invoke(app, ["run", str(config), "--subset", subset])
             assert r.exit_code == 0, r.output
-        r = runner.invoke(app, ["gridded", "merge", str(config)])
+        r = runner.invoke(app, ["subset", "merge", str(config)])
         assert r.exit_code == 0, r.output
         np.testing.assert_array_equal(
             xr.open_zarr(store, consolidated=False)["doubled"].values,
@@ -561,7 +558,7 @@ class TestConcurrentZarrWrites:
 
         # One process per row of the 2x2 grid, each writing its own chunk.
         r = CliRunner().invoke(
-            app, ["gridded", "create-store", str(config), "--dim", "y", "--chunk", "1"]
+            app, ["subset", "create-store", str(config), "--dim", "y", "--chunk", "1"]
         )
         assert r.exit_code == 0, r.output
 

@@ -17,10 +17,6 @@ brew install graphviz         # macOS
 sudo dnf install graphviz     # Fedora
 ```
 
-### `catena gridded` reports a missing extra
-
-Install the `geo` extra; see [Installation](install.md#extras).
-
 ## Wiring and contracts
 
 ### "Required input X not provided" / an unbound input
@@ -53,10 +49,10 @@ An axis of zero or one timestamps has no spacing, so it always passes.
 
 ## Data
 
-### NetCDF file has no CRS / wrong spatial dimensions
+### `crs_equal` reports an input has no CRS
 
-The gridded path expects a CRS attribute.
-If your file lacks one, write it before loading:
+`crs_equal` reads the CRS from the CF grid-mapping variable each data variable names, or a global `crs` attribute.
+If your file has neither, write one before loading, for example with rioxarray:
 
 ```python
 import xarray as xr
@@ -74,7 +70,7 @@ A subset run produced a time axis that differs from the shared store's, so the c
 Re-create the store from the current config:
 
 ```sh
-catena gridded create-store config.toml --overwrite
+catena subset create-store config.toml --overwrite
 ```
 
 `--overwrite` erases what other subset runs have written, so re-run them all afterwards.

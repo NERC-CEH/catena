@@ -1,18 +1,18 @@
-"""Gridded (CRS/pixel) I/O: the optional geospatial + parallel-Zarr layer.
+"""Parallel subset runs: shared Zarr stores, region writes, and merging the parts.
 
-This is the domain-specific counterpart to the domain-agnostic `catena.io`. It
-owns:
+Independent `catena run` processes can each take one `[subset]` of the same inputs
+(see `catena.specs.SubsetSpec`), all writing to the same output paths:
 
-- **CRS-aware stacking**: collapsing a `(y, x)` grid into a 1-D `pixel`
-  dimension and reconstructing it, plus computing `latitude`/`longitude` by
-  reprojecting to EPSG:4326 (`stack_if_gridded`, `unstack_if_gridded`,
-  `compute_lat_lon`);
-- **parallel subset I/O**: pre-creating a shared Zarr store and region-writing
-  independent `[subset]` slices into it, and reassembling NetCDF parts
-  (`create_output_store`, `save_zarr_region`, `merge_subset_outputs`).
+- A **NetCDF** output becomes one part file per subset (`subset_path`), and
+  `merge_subset_outputs` concatenates the parts once every run has finished,
+  refusing if they leave a gap or overlap.
+- A **Zarr** output is one shared store, built once by `create_output_store` in
+  the layout a run writes. Each run region-writes its slice into it
+  (`save_zarr_region`), and `merge_subset_outputs` then checks that every chunk
+  was written.
 
-See `catena.gridded` for why every import of this module is lazy, and why importing
-it is nonetheless cheap and dependency-free.
+The `catena subset create-store` and `catena subset merge` commands call
+`create_output_store` and `merge_subset_outputs`.
 """
 
 import re
@@ -20,160 +20,15 @@ from os import PathLike
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import xarray as xr
 
-from ..errors import (
+from .errors import (
     CatenaFileExistsError,
     CatenaFileNotFoundError,
     CatenaValueError,
 )
-from ..formats import format_for
-from ..specs import IOSpec, ParsedConfig, SubsetSpec
-from .spatial import stack_spatial_dims
-
-
-class MisalignedGridError(CatenaValueError):
-    """Raised when two datasets do not share a common CRS and coordinates."""
-
-
-def _ensure_rio() -> None:
-    """Import rioxarray (registering the `.rio` accessor) or raise a clear error.
-
-    The geospatial layer (CRS-aware stacking + lat/lon reprojection) is optional;
-    `rioxarray`/`pyproj` are only needed when CRS-bearing inputs are present.
-    """
-    try:
-        import rioxarray as rioxarray  # registers the .rio accessor
-    except ImportError as exc:  # pragma: no cover - only hit without the extra
-        raise ImportError(
-            "geospatial (CRS-bearing) inputs require the optional 'geo' extra; "
-            "install it with "
-            '`pip install "ukceh-catena[geo] @ '
-            'git+https://github.com/NERC-CEH/catena"`.'
-        ) from exc
-
-
-def has_crs(ds: xr.Dataset) -> bool:
-    """Cheaply detect CRS metadata without importing rioxarray.
-
-    Looks for the markers CF/rioxarray round-trips through NetCDF/Zarr: a `crs`
-    global attribute, a `spatial_ref` grid-mapping coordinate, or a per-variable
-    `grid_mapping` attribute. Used to decide whether to activate the (lazy)
-    geospatial path, so non-gridded pipelines never touch rioxarray/pyproj.
-    """
-    if ds.attrs.get("crs") or "spatial_ref" in ds.coords:
-        return True
-    return any("grid_mapping" in da.attrs for da in ds.data_vars.values())
-
-
-# ---------------------------------------------------------------------------
-# Stacking / unstacking the pixel dimension
-# ---------------------------------------------------------------------------
-
-
-def stack_if_gridded(ds: xr.Dataset) -> xr.Dataset:
-    """Stack (y, x) to pixel if CRS-bearing 2D grid; pass through otherwise."""
-    if "pixel" in ds.dims:
-        return ds
-    _ensure_rio()
-    if ds.rio.crs is not None:
-        return stack_spatial_dims(ds)
-    return ds
-
-
-def unstack_if_gridded(ds: xr.Dataset) -> xr.Dataset:
-    """Unstack pixel to (y, x) if MultiIndex; pass through otherwise."""
-    if "pixel" in ds.dims and isinstance(ds.indexes.get("pixel"), pd.MultiIndex):
-        return ds.unstack("pixel")
-    return ds
-
-
-# ---------------------------------------------------------------------------
-# Grid computation (CRS -> stacked latitude/longitude)
-# ---------------------------------------------------------------------------
-
-
-def _check_common_grid(
-    ds1: xr.Dataset,
-    ds2: xr.Dataset,
-    label1: str = "ds1",
-    label2: str = "ds2",
-    atol: float = 1e-6,
-) -> None:
-    """Raise MisalignedGridError if CRS and coordinates do not match."""
-    _ensure_rio()
-    if ds1.rio.crs != ds2.rio.crs:
-        raise MisalignedGridError(
-            f"Mismatched CRS! {label1}={ds1.rio.crs} ≠ {label2}={ds2.rio.crs}"
-        )
-    x1, y1 = ds1.rio.x_dim, ds1.rio.y_dim
-    x2, y2 = ds2.rio.x_dim, ds2.rio.y_dim
-    if not (x1 == x2 and y1 == y2):
-        raise MisalignedGridError(
-            f"Mismatched dimension names: {label1}=({x1}, {y1}) ≠ {label2}=({x2}, {y2})"
-        )
-    try:
-        np.testing.assert_allclose(ds1[x1].values, ds2[x2].values, atol=atol)
-        np.testing.assert_allclose(ds1[y1].values, ds2[y2].values, atol=atol)
-    except AssertionError as e:
-        raise MisalignedGridError(
-            f"Mismatched coordinate values between {label1} and {label2}!"
-        ) from e
-
-
-def compute_lat_lon(
-    spatial_datasets: dict[str, xr.Dataset],
-) -> tuple[xr.DataArray, xr.DataArray]:
-    """Compute stacked latitude and longitude DataArrays from CRS-bearing datasets.
-
-    Both are in EPSG:4326 and carry CF metadata: `units` of `degrees_north` /
-    `degrees_east` and the matching `standard_name`. Under the CF unit registry
-    either satisfies a declared `Unit("degrees")`.
-    """
-    from pyproj import Transformer
-
-    _ensure_rio()
-    items = list(spatial_datasets.items())
-    ref_name, ref_ds = items[0]
-    for name, ds in items[1:]:
-        _check_common_grid(ref_ds, ds, label1=ref_name, label2=name)
-
-    x_dim, y_dim = ref_ds.rio.x_dim, ref_ds.rio.y_dim
-    x = ref_ds[x_dim].values
-    y = ref_ds[y_dim].values
-
-    # indexing="ij": x varies along axis 0, y along axis 1
-    x_grid, y_grid = np.meshgrid(x, y, indexing="ij")
-    transformer = Transformer.from_crs(ref_ds.rio.crs, "EPSG:4326", always_xy=True)
-    lon_grid, lat_grid = transformer.transform(x_grid, y_grid)
-
-    # Build the intermediate with the reference's *own* dim names: for inputs whose
-    # spatial dims are e.g. easting/northing, hardcoding x/y here would name the
-    # lat/lon MultiIndex levels differently from every data variable's, and the
-    # later alignment on `pixel` would quietly produce NaNs.
-    grid_ds = xr.Dataset(
-        data_vars={
-            "latitude": ([x_dim, y_dim], lat_grid),
-            "longitude": ([x_dim, y_dim], lon_grid),
-        },
-        coords={x_dim: x, y_dim: y},
-    )
-    # Stacked directly rather than via `stack_spatial_dims`, which would need rio to
-    # re-infer dims it cannot recognise under non-x/y names. The (y, x) order must
-    # match `stack_spatial_dims`' — pinned by
-    # test_grid.py::test_lat_lon_aligns_with_renamed_spatial_dims.
-    stacked = grid_ds.stack(pixel=(y_dim, x_dim))
-    lat = stacked.latitude.assign_attrs(units="degrees_north", standard_name="latitude")
-    lon = stacked.longitude.assign_attrs(
-        units="degrees_east", standard_name="longitude"
-    )
-    return lat, lon
-
-
-# ---------------------------------------------------------------------------
-# Parallel subset I/O: region writes + store creation + merge
-# ---------------------------------------------------------------------------
+from .formats import format_for
+from .specs import IOSpec, ParsedConfig, SubsetSpec
 
 
 def subset_suffix(spec: SubsetSpec) -> str:
@@ -190,7 +45,7 @@ def subset_path(path: str, spec: SubsetSpec) -> Path:
 def _recreate_hint(path: str) -> str:
     return (
         f"Re-create the store from the current config with "
-        f"`catena gridded create-store --overwrite`. (Store: '{path}'.)"
+        f"`catena subset create-store --overwrite`. (Store: '{path}'.)"
     )
 
 
@@ -230,7 +85,7 @@ def _assert_coords_match(
 def open_region_store(path: str, spec: SubsetSpec) -> xr.Dataset:
     """Open the Zarr store a subset run writes into, or raise if it cannot take it.
 
-    The store must exist (see `catena gridded create-store`), have the subset's
+    The store must exist (see `catena subset create-store`), have the subset's
     dimension, and be chunked so that the subset's boundaries fall on chunk
     boundaries: two processes writing parts of one chunk would corrupt it, and
     xarray only detects that for dask-backed data. None of this needs the data,
@@ -240,7 +95,7 @@ def open_region_store(path: str, spec: SubsetSpec) -> xr.Dataset:
     if not Path(path).exists():
         raise CatenaFileNotFoundError(
             f"Zarr store '{path}' does not exist. Create it once before running "
-            f"subset processes with: `catena gridded create-store <config>`."
+            f"subset processes with: `catena subset create-store <config>`."
         )
     store = xr.open_zarr(path, consolidated=False)
     if dim not in store.dims:
@@ -328,8 +183,8 @@ def create_output_store(
     """
     import dask.array as da
 
-    from ..build import build_driver_from_config
-    from ..io import (
+    from .build import build_driver_from_config
+    from .io import (
         dim_size,
         get_final_vars,
         get_outputs,

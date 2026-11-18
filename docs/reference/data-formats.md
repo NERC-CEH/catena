@@ -33,17 +33,19 @@ The table is defined in [`catena.formats.FORMATS`](modules/catena.formats.md).
 
 ## Spatial handling
 
-catena handles two spatial layouts automatically:
+Inputs keep the dimensions and coordinates they have in their files: catena does not stack, transpose, rename or reproject them, and reads no meaning into a CRS.
+A gridded input arrives as `(time, y, x)`, or whatever its spatial dimensions are called, and a table of sites as `(time, site)`.
 
-- **Gridded (NetCDF/Zarr with a CRS).** Spatial dimensions (`x`/`y` or `lat`/`lon`) with a CRS are stacked into a single `pixel` dimension — each grid cell becomes one pixel.
-  This path uses the optional `geo` extra and activates only when CRS metadata is present.
-  See [`catena.gridded`](modules/catena.gridded/io.md).
-  Every gridded input must share one CRS, the same spatial dimension names and the same coordinate values (to within `1e-6`); a mismatch is an error when the inputs load.
-- **Pre-stacked.** Data that already has a `pixel` dimension is used as-is.
+catena does not check that gridded inputs share a grid unless you ask it to.
+Without a check, xarray aligns two arrays on mismatched coordinates by intersecting them, so a grid offset by rounding error gives a partial or empty result and no error.
+Declare [`crs_equal` and `coords_equal`](configuration.md#validation) on the spatial coordinates to make a mismatch an error before anything runs.
 
-Grid coordinate nodes (`latitude`, `longitude`) are computed from the CRS when a gridded input is loaded.
-They are in EPSG:4326 with CF `units` of `degrees_north` and `degrees_east`, so a node can declare `Unit("degrees")` (or the CF spelling) on either.
-The unit cannot tell the two apart: under the CF registry both are plain degrees, so a swapped latitude and longitude still passes the check.
+A model that wants one spatial dimension can stack the grid itself, for example with `.stack(pixel=("y", "x"))`, and must unstack its results before they reach an output.
+No supported format can store a stacked (MultiIndex) dimension, so catena refuses such an output and names the dimension.
+A model that also drops cells after stacking, such as open sea, must restore the input's full grid, for example with `.unstack("pixel").reindex_like(elevation)`.
+Unstacking alone rebuilds only the rows and columns that kept a cell, so the output would cover less than the input and would not fit a store `catena subset create-store` built.
+
+For the latitude and longitude of each grid cell, see [Latitude and longitude](../guides/nodes/latitude-and-longitude.md).
 
 ## Temporal handling
 

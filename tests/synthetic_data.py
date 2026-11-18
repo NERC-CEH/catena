@@ -7,16 +7,13 @@ vocabulary and a handful of explicit value shapes (gaussian, non-negative,
 bounded [0, 1], integer).
 
 Unlike the generator it replaces, this builds the datasets with plain
-numpy/xarray rather than routing through the Hamilton DAG. The only catena
-code it reuses is `unstack_if_gridded` from the IO layer, so the on-disk
-grid/CRS layout matches exactly what `catena.io.load_inputs` reads back.
+numpy/xarray rather than routing through the Hamilton DAG. Values are drawn
+on a stacked `pixel` axis and unstacked to a `(y, x)` grid before writing.
 """
 
 import numpy as np
 import pandas as pd
 import xarray as xr
-
-from catena.gridded.io import unstack_if_gridded
 
 # Value "kinds" and how they map to noise. These reproduce the value contracts
 # the old name-heuristic generator provided, but assigned explicitly per var.
@@ -98,7 +95,7 @@ def _static_ds(vars_: dict[str, str], pixel: pd.MultiIndex) -> xr.Dataset:
 
 
 def _save(ds: xr.Dataset, path: str) -> None:
-    ds = unstack_if_gridded(ds)
+    ds = ds.unstack("pixel")
     ds.attrs["crs"] = "EPSG:4326"
     ds.to_netcdf(path, engine="netcdf4")
 

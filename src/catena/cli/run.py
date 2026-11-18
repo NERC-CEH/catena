@@ -54,7 +54,7 @@ def run(
         typer.Option(
             "--subset",
             metavar="DIM:START:STOP",
-            help="Run only this slice of one dimension, e.g. pixel:0:500 (stop "
+            help="Run only this slice of one dimension, e.g. y:0:500 (stop "
             "exclusive), replacing the [subset] section of the config. Lets "
             "parallel jobs share one config.",
         ),

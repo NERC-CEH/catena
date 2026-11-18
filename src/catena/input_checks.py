@@ -104,7 +104,7 @@ def time_subset(datasets: Datasets) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Coordinate checks
+# Coordinate and CRS checks
 # ---------------------------------------------------------------------------
 
 
@@ -142,6 +142,67 @@ def coords_equal(datasets: Datasets, *, coords: list[str], atol: float = 1e-6) -
                 )
 
 
+def _grid_mapping_names(attribute: str) -> list[str]:
+    """Return the variable names in a CF `grid_mapping` attribute.
+
+    The short form is one name (`"crs"`); the extended form pairs each name with
+    the coordinates it applies to (`"crs: x y"`, or several such pairs).
+    """
+    if ":" not in attribute:
+        return attribute.split()
+    return [token[:-1] for token in attribute.split() if token.endswith(":")]
+
+
+def _grid_mapping_text(attrs: dict) -> str:
+    """Return a grid-mapping variable's CRS: its WKT, else its CF parameters."""
+    text = attrs.get("crs_wkt") or attrs.get("spatial_ref")
+    if text is not None:
+        return str(text)
+    return "; ".join(f"{key}={attrs[key]}" for key in sorted(attrs))
+
+
+def _crs_text(name: str, ds: xr.Dataset) -> str:
+    """Return the dataset's CRS as stored in the file; raise unless it has exactly one.
+
+    Read from the CF grid-mapping variables each data variable names: their
+    `crs_wkt` (or rioxarray's `spatial_ref`) attribute, else their CF parameters.
+    A dataset with no grid mapping falls back to a global `crs` attribute.
+    """
+    found: set[str] = set()
+    for var in ds.data_vars.values():
+        attribute = var.encoding.get("grid_mapping") or var.attrs.get("grid_mapping")
+        if attribute is None:
+            continue
+        names = [n for n in _grid_mapping_names(str(attribute)) if n in ds.variables]
+        if names:
+            found.add(" | ".join(_grid_mapping_text(ds[n].attrs) for n in names))
+    if not found and ds.attrs.get("crs"):
+        found.add(str(ds.attrs["crs"]))
+    if not found:
+        raise CatenaValueError(
+            f"{name} has no CRS (no grid mapping or 'crs' attribute)"
+        )
+    if len(found) > 1:
+        raise CatenaValueError(f"{name} has {len(found)} different CRSs")
+    return found.pop()
+
+
+def crs_equal(datasets: Datasets) -> None:
+    """Assert every dataset declares the same CRS.
+
+    The CRS is compared as stored in the file: the WKT where there is one, else
+    the CF grid-mapping parameters. Two equivalent CRSs written differently (by
+    different tools, say) therefore count as different.
+    """
+    if len(datasets) < 2:
+        return
+    (ref_name, ref_ds), *others = datasets.items()
+    ref = _crs_text(ref_name, ref_ds)
+    for name, ds in others:
+        if _crs_text(name, ds) != ref:
+            raise CatenaValueError(f"{name} CRS differs from {ref_name}")
+
+
 # ---------------------------------------------------------------------------
 # Registry + runner
 # ---------------------------------------------------------------------------
@@ -164,6 +225,7 @@ CHECKS: dict[str, Check] = {
     "time_equal": Check(time_equal, "variadic"),
     "time_subset": Check(time_subset, 2),
     "coords_equal": Check(coords_equal, "variadic"),
+    "crs_equal": Check(crs_equal, "variadic"),
 }
 
 

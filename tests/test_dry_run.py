@@ -347,18 +347,24 @@ class TestDryRunReport:
             dry_run(cfg)
         assert "dag" in [s.name for s in excinfo.value.report.failed]
 
-    def test_mismatched_grids_fail_the_inputs_stage(self, tmp_path, synthetic_data_dir):
-        """Inputs on different grids are a user error, reported by its stage."""
+    def test_mismatched_grids_fail_a_configured_check(
+        self, tmp_path, synthetic_data_dir
+    ):
+        """Inputs on different grids fail `coords_equal`, reported by its stage."""
         static = xr.open_dataset(synthetic_data_dir / "static.nc").load()
         x_dim = next(d for d in static.dims if static.sizes[d] > 0 and d != "time")
         shifted = tmp_path / "shifted.nc"
         static.assign_coords({x_dim: static[x_dim] + 10.0}).to_netcdf(shifted)
         var = next(iter(static.data_vars))
-        extra = f'[inputs.static]\npath = "{shifted}"\nvars = ["{var}"]\n'
+        extra = (
+            f'[inputs.static]\npath = "{shifted}"\nvars = ["{var}"]\n\n'
+            "[validation]\n"
+            f'checks = [{{ check = "coords_equal", inputs = ["*"], coords = ["{x_dim}"] }}]\n'
+        )
         cfg = _config(tmp_path, synthetic_data_dir, extra)
-        with pytest.raises(DryRunError, match="Mismatched coordinate") as excinfo:
+        with pytest.raises(DryRunError, match="coords_equal") as excinfo:
             dry_run(cfg)
-        assert [s.name for s in excinfo.value.report.failed] == ["inputs"]
+        assert [s.name for s in excinfo.value.report.failed] == ["checks"]
 
     def test_unreachable_output_var_raises(self, tmp_path, synthetic_data_dir):
         out = tmp_path / "out.nc"
@@ -480,7 +486,7 @@ class TestEveryFaultInOneRun:
         self, tmp_path, synthetic_data_dir
     ):
         cfg = _config(
-            tmp_path, synthetic_data_dir, '[blocking]\nblock_size = 2\ndim = "x"\n'
+            tmp_path, synthetic_data_dir, '[blocking]\nblock_size = 2\ndim = "nope"\n'
         )
         with pytest.raises(DryRunError) as excinfo:
             dry_run(cfg)
