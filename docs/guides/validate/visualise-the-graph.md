@@ -62,6 +62,22 @@ Field nodes from `@extract_fields` share their function with the node that defin
 Nodes from `[[node]]` and `[[resample]]` entries have no documentation page and are never linked.
 Set `tooltips = false` in the style file to drop the hover text.
 
+### In a documentation page
+
+An SVG shown through `<img>`, or Markdown's `![](graph.svg)`, has no working links.
+[`graph_html`](../../reference/modules/catena.graph.md#catena.graph.graph_html) renders the digraph as an HTML fragment that inlines the SVG instead:
+
+```python
+from catena.graph import graph_html
+
+html = graph_html(catena.build_graph("config.toml", link=api_url))
+```
+
+Write `html` into the page source, or return `mo.Html(html)` from a marimo notebook that is exported to the page.
+Zensical and Material for MkDocs preview a link's target on hover, but only for HTML links, so `graph_html` lays an invisible link with a `data-preview` attribute over each linked node.
+Pass `overlay=` other attributes for another theme, or `overlay=None` for none.
+The [recipes](../../recipes/flux-pipeline.md#the-dag) are built this way, linking each node to the documentation of `nodes.py` at the end of the page.
+
 ## From Python
 
 `catena.build_graph` returns the same styled `graphviz.Digraph`, which renders inline in a notebook:

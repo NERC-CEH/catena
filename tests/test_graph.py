@@ -8,7 +8,9 @@ against `build_graph` rather than through the CLI keeps them pointed at the
 library, where the behaviour lives.
 """
 
+import re
 import shutil
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -27,6 +29,7 @@ from catena.graph import (
     assign_freq_colors,
     color_edges_by_frequency,
     compose_styles,
+    graph_html,
     link_style,
     make_style_function,
     relabel_with_units,
@@ -711,6 +714,98 @@ expression = 'x.str.strip(r"\n")'
         style = tmp_path / "style.toml"
         style.write_text("tooltips = false\n")
         assert "tooltip=" not in build_graph(config, style=style).source
+
+
+_SVG = "{http://www.w3.org/2000/svg}"
+_XLINK_HREF = "{http://www.w3.org/1999/xlink}href"
+
+
+@pytest.fixture(scope="module")
+def linked_digraph(links_driver):
+    style = GraphStyle.from_driver(links_driver, link=_url)
+    return style.apply(links_driver.display_all_functions(**style.hamilton_kwargs()))
+
+
+def _percent(style: str) -> dict[str, float]:
+    return {k: float(v) for k, v in re.findall(r"(\w+):([-\d.]+)%", style)}
+
+
+@pytest.fixture(scope="module")
+def fragment(linked_digraph) -> str:
+    return graph_html(linked_digraph)
+
+
+@requires_dot
+class TestGraphHtml:
+    def test_is_one_element_without_prolog_or_blank_lines(self, fragment):
+        assert fragment.startswith('<div class="catena-graph"')
+        assert "<?xml" not in fragment
+        assert "<!DOCTYPE" not in fragment
+        assert "\n\n" not in fragment
+        ET.fromstring(fragment)
+
+    def test_svg_scales_to_fit(self, fragment):
+        svg = ET.fromstring(fragment).find(f"{_SVG}svg")
+        assert svg is not None
+        assert "width" not in svg.attrib
+        assert "height" not in svg.attrib
+        assert "width:100%" in svg.attrib["style"]
+
+    def test_one_overlay_per_linked_node(self, fragment):
+        overlays = ET.fromstring(fragment).findall("a")
+        hrefs = sorted(a.attrib["href"] for a in overlays)
+        assert hrefs == [
+            "api.html#split",
+            "api.html#start__equilibrate",
+            "api.html#undocumented",
+        ]
+        assert all(a.attrib["data-preview"] == "" for a in overlays)
+
+    def test_overlay_covers_its_node(self, fragment):
+        root = ET.fromstring(fragment)
+        svg = root.find(f"{_SVG}svg")
+        assert svg is not None
+        _, _, width, height = map(float, svg.attrib["viewBox"].split())
+        graph = svg.find(f"{_SVG}g")
+        assert graph is not None
+        tx, ty = map(
+            float,
+            re.findall(r"translate\(([-\d.]+) ([-\d.]+)\)", graph.attrib["transform"])[
+                0
+            ],
+        )
+        for overlay in root.findall("a"):
+            link = next(
+                a
+                for a in svg.iter(f"{_SVG}a")
+                if a.attrib.get(_XLINK_HREF) == overlay.attrib["href"]
+            )
+            outline = next(
+                el for el in link if el.tag in (f"{_SVG}path", f"{_SVG}polygon")
+            )
+            coords = re.findall(
+                r"([-\d.]+),([-\d.]+)",
+                outline.attrib.get("d", "") or outline.attrib["points"],
+            )
+            xs = [(float(x) + tx) / width * 100 for x, _ in coords]
+            ys = [(float(y) + ty) / height * 100 for _, y in coords]
+            box = _percent(overlay.attrib["style"])
+            assert box["left"] == pytest.approx(min(xs), abs=0.5)
+            assert box["top"] == pytest.approx(min(ys), abs=0.5)
+            assert box["left"] + box["width"] == pytest.approx(max(xs), abs=0.5)
+            assert box["top"] + box["height"] == pytest.approx(max(ys), abs=0.5)
+
+    def test_overlay_attributes_are_a_parameter(self, linked_digraph):
+        fragment = graph_html(linked_digraph, overlay={"data-kind": "node"})
+        overlays = ET.fromstring(fragment).findall("a")
+        assert overlays
+        assert all(a.attrib == a.attrib | {"data-kind": "node"} for a in overlays)
+        assert "data-preview" not in fragment
+
+    def test_no_overlays(self, linked_digraph):
+        fragment = graph_html(linked_digraph, overlay=None)
+        assert ET.fromstring(fragment).findall("a") == []
+        assert "api.html#split" in fragment
 
 
 _RENAMED_MODULE = """

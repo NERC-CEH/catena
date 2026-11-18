@@ -23,14 +23,19 @@ and its declared contract.
 Styling defaults live in `catena.graph_style`; a `--style` TOML file is
 deep-merged over them, and may name a `style_function` composed over the
 built-in one, and a `link_function` that links nodes to their documentation.
+
+`graph_html` renders a digraph as an HTML fragment for a documentation page,
+with optional overlays that let a theme's link previews work on the nodes.
 """
 
 import html
 import importlib
 import inspect
+import json
 import re
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from hamilton import graph_types
@@ -53,9 +58,11 @@ if TYPE_CHECKING:
     import graphviz
 
 __all__ = [
+    "PREVIEW_OVERLAY",
     "GraphStyle",
     "build_graph",
     "compose_styles",
+    "graph_html",
     "link_style",
 ]
 
@@ -745,3 +752,108 @@ def build_graph(
             'git+https://github.com/NERC-CEH/catena"`.'
         )
     return graph_style.apply(digraph)
+
+
+PREVIEW_OVERLAY: Mapping[str, str] = MappingProxyType({"data-preview": ""})
+"""The overlay attributes that turn on instant previews of the link target in
+Zensical and Material for MkDocs."""
+
+_SVG_SIZE_RE = re.compile(r'\s(?:width|height)="(?P<value>[\d.]+)pt"')
+_VIEWBOX_RE = re.compile(r'viewBox="(?P<box>[^"]+)"')
+_TRANSFORM_RE = re.compile(
+    r'id="graph0"[^>]*transform="scale\((?P<scale>[^)]+)\)'
+    r'[^"]*translate\((?P<translate>[^)]+)\)"'
+)
+
+
+def _numbers(text: str) -> list[float]:
+    return [float(v) for v in text.replace(",", " ").split()]
+
+
+def _overlays(
+    digraph: "graphviz.Digraph", svg: str, attrs: Mapping[str, str]
+) -> list[str]:
+    """Return an absolutely positioned `<a>` over each linked node.
+
+    Node boxes come from Graphviz's JSON layout, in points with the origin at
+    the bottom left, and are mapped through the SVG's `graph0` transform into
+    percentages of its `viewBox`, so they scale with the drawing.
+    """
+    viewbox, transform = _VIEWBOX_RE.search(svg), _TRANSFORM_RE.search(svg)
+    if viewbox is None or transform is None:
+        raise ValueError("Graphviz drew an SVG without the expected layout.")
+    vx, vy, vw, vh = _numbers(viewbox["box"])
+    sx, sy = _numbers(transform["scale"])
+    tx, ty = _numbers(transform["translate"])
+    layout = json.loads(digraph.pipe(format="json", encoding="utf-8"))
+    extra = "".join(f' {k}="{html.escape(v)}"' for k, v in attrs.items())
+    overlays = []
+    for obj in layout.get("objects", []):
+        url = obj.get("URL")
+        if not url or "pos" not in obj:
+            continue
+        x, y = _numbers(obj["pos"])
+        w, h = float(obj["width"]) * 72, float(obj["height"]) * 72
+        left = (sx * (x - w / 2 + tx) - vx) / vw * 100
+        top = (sy * (ty - y - h / 2) - vy) / vh * 100
+        # `font-size:0` hides any icon a theme appends to the link.
+        box = (
+            f"position:absolute;font-size:0;left:{left:.3f}%;top:{top:.3f}%;"
+            f"width:{sx * w / vw * 100:.3f}%;height:{sy * h / vh * 100:.3f}%"
+        )
+        overlays.append(
+            f'<a href="{html.escape(url)}" style="{box}" aria-hidden="true" '
+            f'tabindex="-1"{extra}></a>'
+        )
+    return overlays
+
+
+def graph_html(
+    digraph: "graphviz.Digraph",
+    *,
+    overlay: Mapping[str, str] | None = PREVIEW_OVERLAY,
+) -> str:
+    """Render `digraph` as an HTML fragment to place in a documentation page.
+
+    The SVG is inlined, so its node links work (an SVG shown through `<img>`
+    has none), and it scales down to fit the page. Each linked node also gets
+    an invisible `<a>` laid over it carrying `overlay`'s attributes, because
+    themes that preview a link's target on hover only handle HTML links. The
+    overlays must be in the page when it loads, so write the fragment into the
+    page source or a notebook's output rather than adding it from a script.
+
+    Parameters
+    ----------
+    digraph
+        A digraph from `build_graph` or `GraphStyle.apply`, linked with a
+        `link` function.
+    overlay
+        Attributes for each overlay link, or `None` for no overlays. The
+        default turns on instant previews in Zensical and Material for MkDocs.
+
+    Returns
+    -------
+    str
+        A `<div>` holding the SVG and the overlays, with no blank lines, so a
+        Markdown page can hold it as one raw HTML block.
+
+    Examples
+    --------
+    In a marimo notebook exported to a documentation page:
+
+    ```python
+    digraph = catena.build_graph("config.toml", link=api_url)
+    mo.Html(graph_html(digraph))
+    ```
+    """
+    svg = digraph.pipe(format="svg", encoding="utf-8")
+    svg = svg[svg.index("<svg") :]
+    root_end = svg.index(">")
+    root = svg[:root_end]
+    width = next((m["value"] for m in _SVG_SIZE_RE.finditer(root)), None)
+    root = _SVG_SIZE_RE.sub("", root) + ' style="display:block;width:100%;height:auto"'
+    svg = "\n".join(line for line in (root + svg[root_end:]).splitlines() if line)
+    overlays = _overlays(digraph, svg, overlay) if overlay is not None else []
+    size = f"max-width:{width}pt;" if width is not None else ""
+    opening = f'<div class="catena-graph" style="position:relative;{size}">'
+    return "".join([opening, svg, *overlays, "</div>"])
