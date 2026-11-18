@@ -19,7 +19,10 @@ Rename the parameter to the input your pipeline has.
 ```
 <!-- fmt:on -->
 
-Each result is 2-D on the input's own spatial dimensions, whatever they are called (`y`/`x`, `northing`/`easting`), so it lines up with every other array on that grid.
+Each result is 2-D on the input's own spatial dimensions, in `(y, x)` order, so it lines up with every other array on that grid.
+rioxarray must be able to tell which dimensions those are.
+It recognises `x`/`y` and `longitude`/`latitude` by name, and any other names, such as `easting`/`northing`, only when their coordinates carry CF `axis` (`X`, `Y`) or `standard_name` (`projection_x_coordinate`, `projection_y_coordinate`) attributes.
+If your files have neither, call `grid.rio.set_spatial_dims(x_dim=..., y_dim=...)` at the top of `_to_wgs84`; otherwise the nodes raise rioxarray's `MissingSpatialDimensionError`.
 The declared `Unit` is a contract like any other: catena checks it against each consumer before the pipeline runs.
 Under the CF unit registry `degrees_north` and `degrees_east` both satisfy a consumer that declares `Unit("degrees")`, so the contract cannot catch a swapped latitude and longitude.
 
@@ -45,9 +48,11 @@ If several inputs are meant to share it, say so in `[validation]`, so a mismatch
 ```toml
 [validation]
 checks = [
-  { check = "crs_equal", inputs = ["*"] },
-  { check = "coords_equal", inputs = ["*"], coords = ["y", "x"] },
+  { check = "crs_equal", inputs = ["static", "climate"] },
+  { check = "coords_equal", inputs = ["static", "climate"], coords = ["y", "x"] },
 ]
 ```
+
+Name the gridded inputs rather than writing `["*"]`: `crs_equal` fails an input with no CRS, such as a table of parameters or sites.
 
 See [Configuration › Validation](../../reference/configuration.md#validation).

@@ -131,17 +131,21 @@ class TestCoordsEqual:
 # ---------------------------------------------------------------------------
 
 
-def _cf_grid(path, wkt: str | None, grid_mapping_name: str = "crs"):
-    """Write a 2x2 grid whose variable names a CF grid mapping, read it back."""
+def _cf_grid(path, wkt: str | None, grid_mapping: str = "crs", **params):
+    """Write a 2x2 grid whose variable names a CF grid mapping, read it back.
+
+    `grid_mapping` is the variable's attribute, short (`"crs"`) or extended
+    (`"crs: x y"`); the grid-mapping variable itself is always called `crs`.
+    """
     from catena.formats import format_for
 
-    attrs = {"grid_mapping_name": "transverse_mercator"}
+    attrs = {"grid_mapping_name": "transverse_mercator", **params}
     if wkt is not None:
         attrs["crs_wkt"] = wkt
     ds = xr.Dataset(
         {
-            "v": (("y", "x"), np.zeros((2, 2)), {"grid_mapping": grid_mapping_name}),
-            grid_mapping_name: ((), 0, attrs),
+            "v": (("y", "x"), np.zeros((2, 2)), {"grid_mapping": grid_mapping}),
+            "crs": ((), 0, attrs),
         },
         coords={"y": [0.0, 1.0], "x": [0.0, 1.0]},
     )
@@ -167,12 +171,29 @@ class TestCrsEqual:
                 )
             )
 
-    def test_grid_mapping_without_wkt_raises(self, tmp_path):
-        with pytest.raises(CatenaValueError, match="no 'crs_wkt'"):
+    def test_parameters_compared_without_wkt(self, tmp_path):
+        """A grid mapping given only by its CF parameters still defines a CRS."""
+
+        def grid(name, easting):
+            return _cf_grid(tmp_path / name, None, false_easting=easting)
+
+        crs_equal(_named(grid("a.nc", 400000.0), grid("b.nc", 400000.0)))
+        with pytest.raises(CatenaValueError, match="ds1 CRS differs from ds0"):
+            crs_equal(_named(grid("a.nc", 400000.0), grid("c.nc", 0.0)))
+
+    def test_extended_grid_mapping_form(self, tmp_path):
+        """`grid_mapping = "crs: x y"` names the variable `crs`."""
+        crs_equal(
+            _named(
+                _cf_grid(tmp_path / "a.nc", "WKT-A", grid_mapping="crs: x y"),
+                _cf_grid(tmp_path / "b.nc", "WKT-A"),
+            )
+        )
+        with pytest.raises(CatenaValueError, match="CRS differs"):
             crs_equal(
                 _named(
-                    _cf_grid(tmp_path / "a.nc", "WKT-A"),
-                    _cf_grid(tmp_path / "b.nc", None),
+                    _cf_grid(tmp_path / "a.nc", "WKT-A", grid_mapping="crs: x y"),
+                    _cf_grid(tmp_path / "c.nc", "WKT-B", grid_mapping="crs: x y"),
                 )
             )
 

@@ -2,11 +2,9 @@
 
 use_directory_urls = false
 
-# Architecture decision records are for maintainers, not users. Bytecode appears
-# beside a guide's .py file when the test suite imports it.
+# Architecture decision records are for maintainers, not users.
 exclude_docs = """
 adr/
-__pycache__/
 """
 
 site_name = "catena"

@@ -39,6 +39,7 @@ Without stacking, the optional `geo` extra and the `catena.gridded` subpackage h
 - `[subset].dim` and `[blocking].dim` both name a dimension of the inputs, `y` for a grid; the finest block of a grid is one row.
 - Contracts on gridded data declare the files' dimensions, such as `("time", "y", "x")`.
 - A model that wants one spatial dimension stacks inside its own node and unstacks before returning, which is also where it can drop cells it does not need, such as open sea.
+  Having dropped cells, it must reindex its results to the input grid: unstacking alone rebuilds only the rows and columns that kept a cell.
   viresco's models need this change.
 - `stack_if_gridded`, `unstack_if_gridded` and `catena.gridded.spatial` are removed.
 - Code that used `.rio` on a dataset relied on stacking having imported `rioxarray`; it must now import it itself.

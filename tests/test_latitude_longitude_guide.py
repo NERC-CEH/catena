@@ -1,9 +1,11 @@
 """The latitude/longitude nodes in `docs/guides/nodes/latitude-and-longitude.md`.
 
 The guide includes `docs/guides/nodes/latitude_longitude.py` verbatim, so these
-tests run the code a reader copies.
+tests run the code a reader copies. Each test imports a copy from `tmp_path`, so no
+bytecode is written into `docs/`.
 """
 
+import shutil
 from pathlib import Path
 from typing import Annotated
 
@@ -21,8 +23,7 @@ pytest.importorskip("pyproj")
 GUIDE_MODULE = Path(__file__).parents[1] / "docs/guides/nodes/latitude_longitude.py"
 
 
-@pytest.fixture
-def bng_grid(tmp_path) -> Path:
+def _write_bng_grid(path: Path, *, cf_axes: bool = True) -> Path:
     """A CRS-bearing elevation grid on British National Grid, starting at its true
     origin, 49°N 2°W."""
     ds = xr.Dataset(
@@ -40,15 +41,21 @@ def bng_grid(tmp_path) -> Path:
     )
     # CF axis metadata is what lets rioxarray find the spatial dims when the file
     # is read back.
-    ds.easting.attrs.update(axis="X", standard_name="projection_x_coordinate")
-    ds.northing.attrs.update(axis="Y", standard_name="projection_y_coordinate")
+    if cf_axes:
+        ds.easting.attrs.update(axis="X", standard_name="projection_x_coordinate")
+        ds.northing.attrs.update(axis="Y", standard_name="projection_y_coordinate")
     ds = ds.rio.set_spatial_dims(x_dim="easting", y_dim="northing")
-    path = tmp_path / "static.nc"
     ds.rio.write_crs("EPSG:27700").to_netcdf(path)
     return path
 
 
+@pytest.fixture
+def bng_grid(tmp_path) -> Path:
+    return _write_bng_grid(tmp_path / "static.nc")
+
+
 def _config(tmp_path, grid: Path, extra: str = "") -> Path:
+    module = shutil.copy(GUIDE_MODULE, tmp_path / GUIDE_MODULE.name)
     config = tmp_path / "config.toml"
     config.write_text(
         f"""
@@ -58,7 +65,7 @@ vars = ["elevation"]
 suffix = ""
 
 [latitude_longitude]
-_import_path = "{GUIDE_MODULE}"
+_import_path = "{module}"
 {extra}
 [outputs.coords]
 path = "{tmp_path / "coords.nc"}"
@@ -107,3 +114,13 @@ def test_consumer_contract_is_checked_before_running(tmp_path, bng_grid):
         assert {s.name: s.status for s in report.stages}["contracts"] == "ok"
     finally:
         del sys.modules[module.__name__]
+
+
+def test_dims_rioxarray_cannot_identify_raise(tmp_path):
+    """Without CF axis attributes, `easting`/`northing` are not recognised (as the
+    guide says), so the nodes fail rather than guess."""
+    from rioxarray.exceptions import MissingSpatialDimensionError
+
+    grid = _write_bng_grid(tmp_path / "static.nc", cf_axes=False)
+    with pytest.raises(MissingSpatialDimensionError):
+        run(_config(tmp_path, grid))

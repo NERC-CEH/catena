@@ -42,6 +42,8 @@ Declare [`crs_equal` and `coords_equal`](configuration.md#validation) on the spa
 
 A model that wants one spatial dimension can stack the grid itself, for example with `.stack(pixel=("y", "x"))`, and must unstack its results before they reach an output.
 No supported format can store a stacked (MultiIndex) dimension, so catena refuses such an output and names the dimension.
+A model that also drops cells after stacking, such as open sea, must restore the input's full grid, for example with `.unstack("pixel").reindex_like(elevation)`.
+Unstacking alone rebuilds only the rows and columns that kept a cell, so the output would cover less than the input and would not fit a store `catena subset create-store` built.
 
 For the latitude and longitude of each grid cell, see [Latitude and longitude](../guides/nodes/latitude-and-longitude.md).
 
