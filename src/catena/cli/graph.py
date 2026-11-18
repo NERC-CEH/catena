@@ -54,6 +54,9 @@ def graph(
             help="Draw every node the modules define, not only what the outputs need.",
         ),
     ] = False,
+    svg: Annotated[
+        bool, typer.Option(help="Convert to SVG format, with clickable links")
+    ] = False,
     png: Annotated[bool, typer.Option(help="Convert to PNG format")] = False,
     pdf: Annotated[bool, typer.Option(help="Convert to PDF format")] = False,
 ) -> None:
@@ -80,7 +83,7 @@ def graph(
     output_path.write_text(digraph.source)
     typer.echo(f"Wrote {output_path}")
 
-    for enabled, fmt in ((png, "png"), (pdf, "pdf")):
+    for enabled, fmt in ((svg, "svg"), (png, "png"), (pdf, "pdf")):
         if enabled:
             _render(digraph, output_path.with_suffix(f".{fmt}"), fmt)
 
