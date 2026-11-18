@@ -501,10 +501,11 @@ class TestComposeStyles:
 
 
 _LINKS_MODULE = '''\
-from typing import TypedDict
+from typing import Annotated, TypedDict
 
 import xarray as xr
 from hamilton.function_modifiers import config, extract_fields
+from xarray_annotated import Coords, Dims, Dtype, Freq, Unit
 
 
 class Parts(TypedDict):
@@ -522,7 +523,11 @@ def split(whole: xr.DataArray) -> Parts:
 
 
 @config.when(method="equilibrate")
-def start__equilibrate(left: xr.DataArray) -> xr.DataArray:
+def start__equilibrate(
+    left: xr.DataArray,
+) -> Annotated[
+    xr.DataArray, Unit("K"), Dims("time", "x"), Dtype("float64"), Coords("time"), Freq("D")
+]:
     """Spin up to equilibrium."""
     return left
 
@@ -564,21 +569,12 @@ class TestLinks:
     def test_function_node_links_to_its_function(self, links_source):
         assert 'URL="api.html#split"' in _node_line(links_source, "split")
 
-    def test_tooltip_is_the_first_docstring_paragraph(self, links_source):
-        line = _node_line(links_source, "split")
-        assert 'tooltip="Split the whole in two."' in line
-
     def test_field_nodes_are_not_linked(self, links_source):
         assert "URL=" not in _node_line(links_source, "left")
         assert "URL=" not in _node_line(links_source, "right")
 
     def test_config_when_node_links_by_qualname(self, links_source):
         assert 'URL="api.html#start__equilibrate"' in _node_line(links_source, "start")
-
-    def test_undocumented_function_gets_no_tooltip(self, links_source):
-        line = _node_line(links_source, "undocumented")
-        assert "URL=" in line
-        assert "tooltip=" not in line
 
     def test_legend_entries_carry_no_links(self, links_source):
         legend = links_source.split("cluster__legend", 1)[1]
@@ -597,13 +593,21 @@ class TestLinks:
         assert "URL=" in _node_line(source, "undocumented")
 
     def test_link_style_composes_with_hamilton_directly(self, links_driver):
-        links = link_style(links_driver, _url, tooltip=False)
+        links = link_style(links_driver, _url)
         source = links_driver.display_upstream_of(
             "start", custom_style_function=links
         ).source
         line = _node_line(source, "start")
         assert "URL=" in line
         assert "tooltip=" not in line
+
+    def test_generated_nodes_are_not_linked(self, tmp_path):
+        config = tmp_path / "config.toml"
+        config.write_text(
+            '[[node]]\nname = "y"\ninputs = ["x"]\nexpression = "x + 1"\n'
+        )
+        source = build_graph(config, link=lambda fn: "x").source
+        assert "URL=" not in _node_line(source, "y")
 
     def test_style_file_names_a_link_function(self, tmp_path, monkeypatch):
         (tmp_path / "docs_links.py").write_text(
@@ -612,7 +616,7 @@ class TestLinks:
         (tmp_path / "links.py").write_text(_LINKS_MODULE)
         monkeypatch.syspath_prepend(str(tmp_path))
         style = tmp_path / "style.toml"
-        style.write_text('link_function = "docs_links:api_url"\nlink_tooltip = false\n')
+        style.write_text('link_function = "docs_links:api_url"\ntooltips = false\n')
         config = tmp_path / "config.toml"
         config.write_text(
             '[links]\n_import_path = "links.py"\nmethod = "equilibrate"\n'
@@ -638,6 +642,75 @@ class TestLinks:
         assert "fontcolor=navy" in line
         # the built-in frequency fill is still there underneath
         assert FREQ_COLOR_CYCLE[1] in line or FREQ_COLOR_CYCLE[0] in line
+
+
+@pytest.fixture(scope="module")
+def tooltips_source(links_driver) -> str:
+    style = GraphStyle.from_driver(links_driver)
+    return style.apply(
+        links_driver.display_all_functions(**style.hamilton_kwargs())
+    ).source
+
+
+@requires_dot
+class TestTooltips:
+    def test_tooltip_is_the_first_docstring_paragraph(self, tooltips_source):
+        line = _node_line(tooltips_source, "split")
+        assert 'tooltip="Split the whole in two."' in line
+
+    def test_tooltip_needs_no_link(self, tooltips_source):
+        assert "URL=" not in tooltips_source
+
+    def test_tooltip_lists_the_declared_contract(self, tooltips_source):
+        line = _node_line(tooltips_source, "start")
+        assert (
+            'tooltip="Spin up to equilibrium.\\nunit: K\\ndims: {time, x}'
+            '\\ndtype: float64\\ncoords: time\\nfreq: D"'
+        ) in line
+
+    def test_undocumented_undeclared_node_gets_no_tooltip(self, tooltips_source):
+        assert "tooltip=" not in _node_line(tooltips_source, "undocumented")
+        assert "tooltip=" not in _node_line(tooltips_source, "left")
+
+    def test_inputs_get_no_tooltip(self, tooltips_source):
+        assert "tooltip=" not in _node_line(tooltips_source, "_split_inputs")
+
+    def test_backslashes_are_escaped(self, tmp_path):
+        """A `\\n` in a docstring is text, not a Graphviz line break."""
+        config = tmp_path / "config.toml"
+        config.write_text(
+            r"""[[node]]
+name = "y"
+inputs = ["x"]
+expression = 'x.str.strip(r"\n")'
+"""
+        )
+        line = _node_line(build_graph(config).source, "y")
+        assert r'tooltip="x.str.strip(r\"\\n\")"' in line
+
+    def test_expression_node_shows_its_expression(self, tmp_path):
+        config = tmp_path / "config.toml"
+        config.write_text(
+            '[[node]]\nname = "y"\ninputs = ["x"]\nexpression = "x + 1"\nunits = "K"\n'
+        )
+        line = _node_line(build_graph(config).source, "y")
+        assert 'tooltip="x + 1\\nunit: K"' in line
+
+    def test_function_node_names_its_function(self, tmp_path):
+        config = tmp_path / "config.toml"
+        config.write_text(
+            '[[node]]\nname = "y"\ninputs = ["x"]\n'
+            '_import_path = "catena.transforms"\nfunction = "resample"\n'
+        )
+        line = _node_line(build_graph(config).source, "y")
+        assert 'tooltip="Calls resample from catena.transforms."' in line
+
+    def test_style_file_turns_tooltips_off(self, tmp_path):
+        config = tmp_path / "config.toml"
+        config.write_text('[[node]]\nname = "y"\ninputs = ["x"]\nexpression = "x"\n')
+        style = tmp_path / "style.toml"
+        style.write_text("tooltips = false\n")
+        assert "tooltip=" not in build_graph(config, style=style).source
 
 
 _RENAMED_MODULE = """

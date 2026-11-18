@@ -19,7 +19,9 @@ Nodes, and the edges leaving them, are coloured by their declared `freq` contrac
 A node's data inputs and its config are drawn as separate tables, and the config table shows each value in use: the config's, or else the function's default.
 [Pipeline 101](../../recipes/pipeline-101.md#the-graph-catena-builds) shows both.
 
-Pass `--png` for PNG, and `-o/--output` to change the base filename.
+Pass `--svg` for SVG, `--png` for PNG, and `-o/--output` to change the base filename.
+In SVG output, hovering over a node shows the first paragraph of its docstring and its declared contract (unit, dims, dtype, coords, freq).
+A `[[node]]` shows its expression, or the function it calls.
 `catena graph` needs the `viz` extra **and** the [Graphviz system binary](../install.md#graphviz).
 
 ## What to look for
@@ -55,8 +57,10 @@ def api_url(fn):
     return f"../reference/api.html#{fn.__module__}.{fn.__qualname__}"
 ```
 
-In SVG output each linked node is clickable, and hovering shows the first paragraph of its docstring (set `link_tooltip = false` to turn that off).
+In SVG output each linked node is clickable.
 Field nodes from `@extract_fields` share their function with the node that defines them, so only that node is linked.
+Nodes from `[[node]]` and `[[resample]]` entries have no documentation page and are never linked.
+Set `tooltips = false` in the style file to drop the hover text.
 
 ## From Python
 
