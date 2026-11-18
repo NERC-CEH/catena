@@ -7,6 +7,7 @@ left here is the part only the command can get wrong.
 
 import shutil
 import sys
+from types import SimpleNamespace
 
 import pytest
 from typer.testing import CliRunner
@@ -196,6 +197,45 @@ class TestGraphCommand:
         result = runner.invoke(app, [*args, "--all-nodes"])
         assert result.exit_code == 0, result.output
         assert "unused" in out.with_suffix(".dot").read_text()
+
+    def test_view_options_reach_build_graph(self, tmp_path, monkeypatch):
+        calls = []
+
+        def fake_build_graph(config, **kwargs):
+            calls.append(kwargs)
+            return SimpleNamespace(source="digraph {}")
+
+        monkeypatch.setattr("catena.cli.graph.build_graph", fake_build_graph)
+        config = tmp_path / "config.toml"
+        config.write_text("")
+        args = ["graph", str(config), "--output", str(tmp_path / "pipeline")]
+        result = runner.invoke(
+            app,
+            [
+                *args,
+                "--upstream-of",
+                "a",
+                "--upstream-of",
+                "b",
+                "--between",
+                "c",
+                "d",
+                "--hide-inputs",
+                "--deduplicate-inputs",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert runner.invoke(app, args).exit_code == 0
+        given, default = calls
+        assert given["upstream_of"] == ["a", "b"]
+        assert given["between"] == ("c", "d")
+        assert given["hide_inputs"]
+        assert given["deduplicate_inputs"]
+        assert default["upstream_of"] == ()
+        assert default["downstream_of"] == ()
+        assert default["between"] is None
+        assert not default["hide_inputs"]
+        assert not default["deduplicate_inputs"]
 
     def test_missing_config_fails(self, tmp_path):
         result = runner.invoke(app, ["graph", str(tmp_path / "no.toml")])
