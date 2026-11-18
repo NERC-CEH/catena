@@ -11,7 +11,7 @@ Recognised top-level keys in a `--style` file:
 ```toml
 style_function = "my_pkg.styling:my_style"   # composed over the built-in style
 link_function = "my_pkg.docs:api_url"        # node function -> URL, or None
-link_tooltip = true                          # docstring summary on hover
+tooltips = true                              # docstring summary and contract
 show_legend = true
 
 [palette]                                    # pin a colour to a frequency
@@ -62,7 +62,7 @@ _KNOWN_KEYS = frozenset(
         "palette",
         "style_function",
         "link_function",
-        "link_tooltip",
+        "tooltips",
         "show_legend",
         *_GRAPHVIZ_ATTR_KEYS,
     }
@@ -85,8 +85,9 @@ class GraphvizSpec:
         Optional `"module:function"` import path to a function that takes a
         node's originating function and returns its documentation URL, or
         `None`. See `catena.graph.link_style`.
-    link_tooltip
-        Whether a linked node also shows its docstring summary on hover.
+    tooltips
+        Whether hovering over a node in SVG output shows the first paragraph
+        of its docstring and its declared contract.
     show_legend
         Whether to draw the legend.
     graphviz_kwargs
@@ -97,7 +98,7 @@ class GraphvizSpec:
     palette: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_PALETTE))
     style_function: str | None = None
     link_function: str | None = None
-    link_tooltip: bool = True
+    tooltips: bool = True
     show_legend: bool = True
     graphviz_kwargs: dict[str, Any] = field(default_factory=dict)
 
@@ -131,7 +132,7 @@ def load_graphviz_spec(path: Path | None) -> GraphvizSpec:
         palette=palette,
         style_function=data.get("style_function"),
         link_function=data.get("link_function"),
-        link_tooltip=data.get("link_tooltip", True),
+        tooltips=data.get("tooltips", True),
         show_legend=data.get("show_legend", True),
         graphviz_kwargs=graphviz_kwargs,
     )

@@ -203,7 +203,7 @@ class TestGraphCommand:
 
 
 class TestGraphRendering:
-    """--png/--pdf render through the graphviz API, and failures are surfaced."""
+    """--svg/--png/--pdf render through the graphviz API, and failures are surfaced."""
 
     @pytest.mark.skipif(not shutil.which("dot"), reason="graphviz not installed")
     def test_png_is_written(self, config_toml, tmp_path):
@@ -215,6 +215,15 @@ class TestGraphRendering:
         png = out.with_suffix(".png")
         assert png.exists()
         assert png.read_bytes().startswith(b"\x89PNG")
+
+    @pytest.mark.skipif(not shutil.which("dot"), reason="graphviz not installed")
+    def test_svg_is_written(self, config_toml, tmp_path):
+        out = tmp_path / "pipeline"
+        result = runner.invoke(
+            app, ["graph", str(config_toml), "--output", str(out), "--svg"]
+        )
+        assert result.exit_code == 0, result.output
+        assert "<svg" in out.with_suffix(".svg").read_text()
 
     def test_graph_png_reports_missing_dot(self, config_toml, tmp_path, monkeypatch):
         # Previously subprocess.run(["dot", ...]) ran without check=True, so a

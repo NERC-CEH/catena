@@ -17,6 +17,8 @@ from .errors import CatenaValueError
 from .importing import import_user_module
 from .specs import NodeSpec
 
+GENERATED_MODULE_PREFIX = "catena_node_generated_"
+
 
 def _node_namespace(base: Path | None = None) -> dict[str, Any]:
     """Build the namespace every generated node's body is `exec`'d in."""
@@ -46,7 +48,7 @@ def _module_name(node_specs: list[NodeSpec], base: Path | None) -> str:
     entry, while two different configs still get distinct modules.
     """
     payload = repr((str(base), [astuple(spec) for spec in node_specs])).encode()
-    return f"catena_node_generated_{hashlib.sha256(payload).hexdigest()[:12]}"
+    return f"{GENERATED_MODULE_PREFIX}{hashlib.sha256(payload).hexdigest()[:12]}"
 
 
 def make_node_module(
@@ -125,6 +127,11 @@ def _check_function_resolves(spec: NodeSpec, ns: dict[str, Any]) -> None:
 
 def _decorate(fn: Any, spec: NodeSpec) -> Any:
     """Attach the node's declared output contract to the bare `exec`'d function."""
+    # The docstring is what `catena graph` shows on hover.
+    if spec.expression is not None:
+        fn.__doc__ = spec.expression
+    else:
+        fn.__doc__ = f"Calls {spec.function} from {spec.import_path}."
     # A declared unit/dims/dtype/coords/freq makes the node a typed producer: validated
     # at runtime and read by the build-time check. Without any, the node is unchecked.
     fn.__annotations__["return"] = spec.return_hint()

@@ -19,7 +19,9 @@ Nodes, and the edges leaving them, are coloured by their declared `freq` contrac
 A node's data inputs and its config are drawn as separate tables, and the config table shows each value in use: the config's, or else the function's default.
 [Pipeline 101](../../recipes/pipeline-101.md#the-graph-catena-builds) shows both.
 
-Pass `--png` for PNG, and `-o/--output` to change the base filename.
+Pass `--svg` for SVG, `--png` for PNG, and `-o/--output` to change the base filename.
+In SVG output, hovering over a node shows the first paragraph of its docstring and its declared contract (unit, dims, dtype, coords, freq).
+A `[[node]]` shows its expression, or the function it calls.
 `catena graph` needs the `viz` extra **and** the [Graphviz system binary](../install.md#graphviz).
 
 ## What to look for
@@ -55,8 +57,26 @@ def api_url(fn):
     return f"../reference/api.html#{fn.__module__}.{fn.__qualname__}"
 ```
 
-In SVG output each linked node is clickable, and hovering shows the first paragraph of its docstring (set `link_tooltip = false` to turn that off).
+In SVG output each linked node is clickable.
 Field nodes from `@extract_fields` share their function with the node that defines them, so only that node is linked.
+Nodes from `[[node]]` and `[[resample]]` entries have no documentation page and are never linked.
+Set `tooltips = false` in the style file to drop the hover text.
+
+### In a documentation page
+
+An SVG shown through `<img>`, or Markdown's `![](graph.svg)`, has no working links.
+[`graph_html`](../../reference/modules/catena.graph.md#catena.graph.graph_html) renders the digraph as an HTML fragment that inlines the SVG instead:
+
+```python
+from catena.graph import graph_html
+
+html = graph_html(catena.build_graph("config.toml", link=api_url))
+```
+
+Write `html` into the page source, or return `mo.Html(html)` from a marimo notebook that is exported to the page.
+Zensical and Material for MkDocs preview a link's target on hover, but only for HTML links, so `graph_html` lays an invisible link with a `data-preview` attribute over each linked node.
+Pass `overlay=` other attributes for another theme, or `overlay=None` for none.
+The [recipes](../../recipes/flux-pipeline.md#the-dag) are built this way, linking each node to the documentation of `nodes.py` at the end of the page.
 
 ## From Python
 

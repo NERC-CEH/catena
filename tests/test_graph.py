@@ -8,7 +8,9 @@ against `build_graph` rather than through the CLI keeps them pointed at the
 library, where the behaviour lives.
 """
 
+import re
 import shutil
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -27,6 +29,7 @@ from catena.graph import (
     assign_freq_colors,
     color_edges_by_frequency,
     compose_styles,
+    graph_html,
     link_style,
     make_style_function,
     relabel_with_units,
@@ -501,10 +504,11 @@ class TestComposeStyles:
 
 
 _LINKS_MODULE = '''\
-from typing import TypedDict
+from typing import Annotated, TypedDict
 
 import xarray as xr
 from hamilton.function_modifiers import config, extract_fields
+from xarray_annotated import Coords, Dims, Dtype, Freq, Unit
 
 
 class Parts(TypedDict):
@@ -522,7 +526,11 @@ def split(whole: xr.DataArray) -> Parts:
 
 
 @config.when(method="equilibrate")
-def start__equilibrate(left: xr.DataArray) -> xr.DataArray:
+def start__equilibrate(
+    left: xr.DataArray,
+) -> Annotated[
+    xr.DataArray, Unit("K"), Dims("time", "x"), Dtype("float64"), Coords("time"), Freq("D")
+]:
     """Spin up to equilibrium."""
     return left
 
@@ -564,21 +572,12 @@ class TestLinks:
     def test_function_node_links_to_its_function(self, links_source):
         assert 'URL="api.html#split"' in _node_line(links_source, "split")
 
-    def test_tooltip_is_the_first_docstring_paragraph(self, links_source):
-        line = _node_line(links_source, "split")
-        assert 'tooltip="Split the whole in two."' in line
-
     def test_field_nodes_are_not_linked(self, links_source):
         assert "URL=" not in _node_line(links_source, "left")
         assert "URL=" not in _node_line(links_source, "right")
 
     def test_config_when_node_links_by_qualname(self, links_source):
         assert 'URL="api.html#start__equilibrate"' in _node_line(links_source, "start")
-
-    def test_undocumented_function_gets_no_tooltip(self, links_source):
-        line = _node_line(links_source, "undocumented")
-        assert "URL=" in line
-        assert "tooltip=" not in line
 
     def test_legend_entries_carry_no_links(self, links_source):
         legend = links_source.split("cluster__legend", 1)[1]
@@ -597,13 +596,21 @@ class TestLinks:
         assert "URL=" in _node_line(source, "undocumented")
 
     def test_link_style_composes_with_hamilton_directly(self, links_driver):
-        links = link_style(links_driver, _url, tooltip=False)
+        links = link_style(links_driver, _url)
         source = links_driver.display_upstream_of(
             "start", custom_style_function=links
         ).source
         line = _node_line(source, "start")
         assert "URL=" in line
         assert "tooltip=" not in line
+
+    def test_generated_nodes_are_not_linked(self, tmp_path):
+        config = tmp_path / "config.toml"
+        config.write_text(
+            '[[node]]\nname = "y"\ninputs = ["x"]\nexpression = "x + 1"\n'
+        )
+        source = build_graph(config, link=lambda fn: "x").source
+        assert "URL=" not in _node_line(source, "y")
 
     def test_style_file_names_a_link_function(self, tmp_path, monkeypatch):
         (tmp_path / "docs_links.py").write_text(
@@ -612,7 +619,7 @@ class TestLinks:
         (tmp_path / "links.py").write_text(_LINKS_MODULE)
         monkeypatch.syspath_prepend(str(tmp_path))
         style = tmp_path / "style.toml"
-        style.write_text('link_function = "docs_links:api_url"\nlink_tooltip = false\n')
+        style.write_text('link_function = "docs_links:api_url"\ntooltips = false\n')
         config = tmp_path / "config.toml"
         config.write_text(
             '[links]\n_import_path = "links.py"\nmethod = "equilibrate"\n'
@@ -638,6 +645,181 @@ class TestLinks:
         assert "fontcolor=navy" in line
         # the built-in frequency fill is still there underneath
         assert FREQ_COLOR_CYCLE[1] in line or FREQ_COLOR_CYCLE[0] in line
+
+
+@pytest.fixture(scope="module")
+def tooltips_source(links_driver) -> str:
+    style = GraphStyle.from_driver(links_driver)
+    return style.apply(
+        links_driver.display_all_functions(**style.hamilton_kwargs())
+    ).source
+
+
+@requires_dot
+class TestTooltips:
+    def test_tooltip_is_the_first_docstring_paragraph(self, tooltips_source):
+        line = _node_line(tooltips_source, "split")
+        assert 'tooltip="Split the whole in two."' in line
+
+    def test_tooltip_needs_no_link(self, tooltips_source):
+        assert "URL=" not in tooltips_source
+
+    def test_tooltip_lists_the_declared_contract(self, tooltips_source):
+        line = _node_line(tooltips_source, "start")
+        assert (
+            'tooltip="Spin up to equilibrium.\\nunit: K\\ndims: {time, x}'
+            '\\ndtype: float64\\ncoords: time\\nfreq: D"'
+        ) in line
+
+    def test_undocumented_undeclared_node_gets_no_tooltip(self, tooltips_source):
+        assert "tooltip=" not in _node_line(tooltips_source, "undocumented")
+        assert "tooltip=" not in _node_line(tooltips_source, "left")
+
+    def test_inputs_get_no_tooltip(self, tooltips_source):
+        assert "tooltip=" not in _node_line(tooltips_source, "_split_inputs")
+
+    def test_backslashes_are_escaped(self, tmp_path):
+        """A `\\n` in a docstring is text, not a Graphviz line break."""
+        config = tmp_path / "config.toml"
+        config.write_text(
+            r"""[[node]]
+name = "y"
+inputs = ["x"]
+expression = 'x.str.strip(r"\n")'
+"""
+        )
+        line = _node_line(build_graph(config).source, "y")
+        assert r'tooltip="x.str.strip(r\"\\n\")"' in line
+
+    def test_expression_node_shows_its_expression(self, tmp_path):
+        config = tmp_path / "config.toml"
+        config.write_text(
+            '[[node]]\nname = "y"\ninputs = ["x"]\nexpression = "x + 1"\nunits = "K"\n'
+        )
+        line = _node_line(build_graph(config).source, "y")
+        assert 'tooltip="x + 1\\nunit: K"' in line
+
+    def test_function_node_names_its_function(self, tmp_path):
+        config = tmp_path / "config.toml"
+        config.write_text(
+            '[[node]]\nname = "y"\ninputs = ["x"]\n'
+            '_import_path = "catena.transforms"\nfunction = "resample"\n'
+        )
+        line = _node_line(build_graph(config).source, "y")
+        assert 'tooltip="Calls resample from catena.transforms."' in line
+
+    def test_style_file_turns_tooltips_off(self, tmp_path):
+        config = tmp_path / "config.toml"
+        config.write_text('[[node]]\nname = "y"\ninputs = ["x"]\nexpression = "x"\n')
+        style = tmp_path / "style.toml"
+        style.write_text("tooltips = false\n")
+        assert "tooltip=" not in build_graph(config, style=style).source
+
+
+_SVG = "{http://www.w3.org/2000/svg}"
+_XLINK_HREF = "{http://www.w3.org/1999/xlink}href"
+
+
+@pytest.fixture(scope="module")
+def linked_digraph(links_driver):
+    style = GraphStyle.from_driver(links_driver, link=_url)
+    return style.apply(links_driver.display_all_functions(**style.hamilton_kwargs()))
+
+
+def _percent(style: str) -> dict[str, float]:
+    return {k: float(v) for k, v in re.findall(r"(\w+):([-\d.]+)%", style)}
+
+
+@pytest.fixture(scope="module")
+def fragment(linked_digraph) -> str:
+    return graph_html(linked_digraph)
+
+
+@requires_dot
+class TestGraphHtml:
+    def test_is_one_element_without_prolog_or_blank_lines(self, fragment):
+        assert fragment.startswith('<div class="catena-graph"')
+        assert "<?xml" not in fragment
+        assert "<!DOCTYPE" not in fragment
+        assert "\n\n" not in fragment
+        ET.fromstring(fragment)
+
+    def test_only_linked_node_names_are_underlined(self, fragment):
+        style = ET.fromstring(fragment).find("style")
+        assert style is not None
+        assert style.text is not None
+        assert "svg a{text-decoration:none}" in style.text
+        assert "a:any-link text:first-of-type{text-decoration:underline}" in (
+            style.text
+        )
+        # Markdown escapes square brackets, even inside <style>.
+        assert "[" not in style.text
+
+    def test_svg_scales_to_fit(self, fragment):
+        svg = ET.fromstring(fragment).find(f"{_SVG}svg")
+        assert svg is not None
+        assert "width" not in svg.attrib
+        assert "height" not in svg.attrib
+        assert "width:100%" in svg.attrib["style"]
+
+    def test_one_overlay_per_linked_node(self, fragment):
+        overlays = ET.fromstring(fragment).findall("a")
+        hrefs = sorted(a.attrib["href"] for a in overlays)
+        assert hrefs == [
+            "api.html#split",
+            "api.html#start__equilibrate",
+            "api.html#undocumented",
+        ]
+        assert all(a.attrib["data-preview"] == "" for a in overlays)
+
+    def test_overlay_covers_its_node_name(self, fragment):
+        root = ET.fromstring(fragment)
+        svg = root.find(f"{_SVG}svg")
+        assert svg is not None
+        _, _, width, height = map(float, svg.attrib["viewBox"].split())
+        graph = svg.find(f"{_SVG}g")
+        assert graph is not None
+        transform = graph.attrib["transform"]
+        tx, ty = map(
+            float, re.findall(r"translate\(([-\d.]+) ([-\d.]+)\)", transform)[0]
+        )
+        for overlay in root.findall("a"):
+            link = next(
+                a
+                for a in svg.iter(f"{_SVG}a")
+                if a.attrib.get(_XLINK_HREF) == overlay.attrib["href"]
+            )
+            outline = next(
+                el for el in link if el.tag in (f"{_SVG}path", f"{_SVG}polygon")
+            )
+            coords = re.findall(
+                r"([-\d.]+),([-\d.]+)",
+                outline.attrib.get("d", "") or outline.attrib["points"],
+            )
+            xs = [(float(x) + tx) / width * 100 for x, _ in coords]
+            ys = [(float(y) + ty) / height * 100 for _, y in coords]
+            name = next(t for t in link.iter(f"{_SVG}text"))
+            assert name.attrib["font-weight"] == "bold"
+            name_x = (float(name.attrib["x"]) + tx) / width * 100
+            baseline = (float(name.attrib["y"]) + ty) / height * 100
+            box = _percent(overlay.attrib["style"])
+            right, bottom = box["left"] + box["width"], box["top"] + box["height"]
+            assert box["left"] == pytest.approx(name_x, abs=0.1)
+            assert box["top"] < baseline < bottom
+            assert min(xs) < box["left"] < right < max(xs)
+            assert min(ys) < box["top"] < bottom < max(ys)
+
+    def test_overlay_attributes_are_a_parameter(self, linked_digraph):
+        fragment = graph_html(linked_digraph, overlay={"data-kind": "node"})
+        overlays = ET.fromstring(fragment).findall("a")
+        assert overlays
+        assert all(a.attrib == a.attrib | {"data-kind": "node"} for a in overlays)
+        assert "data-preview" not in fragment
+
+    def test_no_overlays(self, linked_digraph):
+        fragment = graph_html(linked_digraph, overlay=None)
+        assert ET.fromstring(fragment).findall("a") == []
+        assert "api.html#split" in fragment
 
 
 _RENAMED_MODULE = """
