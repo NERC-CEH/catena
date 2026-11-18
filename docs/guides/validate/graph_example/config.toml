@@ -1,0 +1,19 @@
+[inputs.climate]
+path = "climate.nc"
+vars = ["temperature", "precipitation"]
+
+[nodes]
+_import_path = "nodes.py"
+offset = 10.0
+
+[[resample]]
+vars = ["aridity_index"]
+from = "daily"
+to = "weekly"
+freq = "7D"
+aggfunc = "mean"
+units = "mm degC-1"
+
+[outputs.aridity]
+path = "aridity.nc"
+vars = { aridity_index_weekly = "aridity_index" }
