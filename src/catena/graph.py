@@ -2,11 +2,12 @@
 
 `build_graph` returns a `graphviz.Digraph`, which renders inline in a notebook.
 Write it with `digraph.source` or render it with `digraph.pipe(format=...)`.
+It draws what the outputs need, the whole DAG, or what is upstream of,
+downstream of, or between named nodes.
 
 `GraphStyle` applies the same styling to any of Hamilton's `Driver` display
-methods, such as `visualize_path_between` or `display_downstream_of`: pass
-`GraphStyle.hamilton_kwargs` to the method, then `GraphStyle.apply` to the
-digraph it returns.
+methods: pass `GraphStyle.hamilton_kwargs` to the method, then
+`GraphStyle.apply` to the digraph it returns.
 
 **Everything shown is read off the built DAG's contracts.**
 Node fills and edge colours come from declared `xarray_annotated.temporal.Freq`
@@ -688,6 +689,11 @@ def build_graph(
     allow_overrides: bool = False,
     link: LinkFunction | None = None,
     outputs_only: bool = True,
+    upstream_of: Iterable[str] = (),
+    downstream_of: Iterable[str] = (),
+    between: tuple[str, str] | None = None,
+    hide_inputs: bool = False,
+    deduplicate_inputs: bool = False,
 ) -> "graphviz.Digraph":
     """Build a styled visualisation of the DAG a config describes.
 
@@ -695,7 +701,8 @@ def build_graph(
     nodes and edges are coloured by declared temporal frequency.
 
     By default only what the `[outputs.*]` sections need is drawn; a config
-    with no outputs draws the whole DAG.
+    with no outputs draws the whole DAG. `upstream_of`, `downstream_of` and
+    `between` draw another of Hamilton's views instead; give at most one.
 
     Parameters
     ----------
@@ -711,6 +718,17 @@ def build_graph(
     outputs_only
         Draw only the nodes the requested outputs depend on. `False` draws
         every node the config's modules define.
+    upstream_of
+        Draw only these nodes and what they depend on.
+    downstream_of
+        Draw only these nodes and what depends on them.
+    between
+        Draw only the paths from the first node to the second.
+    hide_inputs
+        Leave out the tables of data inputs and config.
+    deduplicate_inputs
+        Draw each data input once, shared by every node that uses it, in place
+        of one table per node.
 
     Returns
     -------
@@ -734,16 +752,53 @@ def build_graph(
         link=link,
     )
 
-    if outputs_only and outputs:
-        missing = [repr(name) for name in outputs if name not in dr.graph.nodes]
-        if missing:
+    upstream_of, downstream_of = tuple(upstream_of), tuple(downstream_of)
+    views = {
+        "upstream_of": upstream_of,
+        "downstream_of": downstream_of,
+        "between": between,
+    }
+    chosen = [name for name, nodes in views.items() if nodes]
+    if len(chosen) > 1:
+        raise CatenaValueError(
+            f"Draw one view at a time: got both {' and '.join(chosen)}."
+        )
+    if chosen and not outputs_only:
+        raise CatenaValueError(
+            f"{chosen[0]} draws part of the DAG, so it cannot be combined with "
+            "drawing every node."
+        )
+
+    kwargs = {
+        **graph_style.hamilton_kwargs(),
+        "hide_inputs": hide_inputs,
+        "deduplicate_inputs": deduplicate_inputs,
+    }
+    if upstream_of:
+        _require_nodes(dr, upstream_of, "upstream_of")
+        digraph = dr.display_upstream_of(*upstream_of, **kwargs)
+    elif downstream_of:
+        _require_nodes(dr, downstream_of, "downstream_of")
+        digraph = dr.display_downstream_of(*downstream_of, **kwargs)
+    elif between:
+        start, end = between
+        _require_nodes(dr, between, "between")
+        if not dr.what_is_the_path_between(start, end):
             raise CatenaValueError(
-                f"Cannot draw the outputs: no node is called {', '.join(missing)}. "
-                "Check the [outputs.*] sections, or draw every node instead."
+                f"Cannot draw between {start!r} and {end!r}: nothing downstream of "
+                f"{start!r} leads to {end!r}."
             )
-        digraph = dr.display_upstream_of(*outputs, **graph_style.hamilton_kwargs())
+        digraph = dr.visualize_path_between(start, end, **kwargs)
+    elif outputs_only and outputs:
+        _require_nodes(
+            dr,
+            outputs,
+            "the outputs",
+            hint="Check the [outputs.*] sections, or draw every node instead.",
+        )
+        digraph = dr.display_upstream_of(*outputs, **kwargs)
     else:
-        digraph = dr.display_all_functions(**graph_style.hamilton_kwargs())
+        digraph = dr.display_all_functions(**kwargs)
     if digraph is None:
         raise CatenaValueError(
             "Failed to build the graph visualisation. Is graphviz installed? "
@@ -752,6 +807,17 @@ def build_graph(
             'git+https://github.com/NERC-CEH/catena"`.'
         )
     return graph_style.apply(digraph)
+
+
+def _require_nodes(
+    dr: Driver, names: Iterable[str], what: str, hint: str = "Check for typos."
+) -> None:
+    """Raise unless every name is a node of the driver's DAG."""
+    missing = [repr(name) for name in names if name not in dr.graph.nodes]
+    if missing:
+        raise CatenaValueError(
+            f"Cannot draw {what}: no node is called {', '.join(missing)}. {hint}"
+        )
 
 
 PREVIEW_OVERLAY: Mapping[str, str] = MappingProxyType({"data-preview": ""})

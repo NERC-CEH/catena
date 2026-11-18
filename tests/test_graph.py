@@ -917,6 +917,83 @@ class TestOutputsOnly:
             build_graph(self._config(tmp_path, outputs))
 
 
+def _drawn(source: str) -> set[str]:
+    """The nodes a DOT source draws, input and config tables included."""
+    return set(re.findall(r"^\s*(\w+) \[label", source, re.MULTILINE))
+
+
+@requires_dot
+class TestViews:
+    """`build_graph` reaches Hamilton's other views and input options."""
+
+    @pytest.fixture
+    def config(self, tmp_path) -> Path:
+        return TestOutputsOnly._config(tmp_path, TestOutputsOnly._WEEKLY)
+
+    def test_upstream_of(self, config):
+        source = build_graph(config, upstream_of=["combine"]).source
+        assert _drawn(source) == {
+            "combine",
+            "daily_a",
+            "_daily_a_inputs",
+            "_daily_a_config",
+        }
+
+    def test_downstream_of(self, config):
+        source = build_graph(config, downstream_of=["daily_a"]).source
+        assert _drawn(source) == {
+            "daily_a",
+            "combine",
+            "weekly",
+            "_daily_a_inputs",
+            "_daily_a_config",
+        }
+
+    def test_between(self, config):
+        source = build_graph(config, between=("daily_a", "weekly")).source
+        assert {"daily_a", "combine", "weekly"} <= _drawn(source)
+        assert "daily_b" not in source
+
+    def test_views_keep_catenas_styling(self, config):
+        source = build_graph(config, downstream_of=["daily_a"]).source
+        assert "<i>degC</i>" in _node_line(source, "weekly")
+        assert DEFAULT_PALETTE["output"] in _node_line(source, "weekly")
+
+    def test_hide_inputs(self, config):
+        source = build_graph(config, hide_inputs=True).source
+        assert _drawn(source) == {"daily_a", "combine", "weekly"}
+
+    def test_deduplicate_inputs(self, config):
+        source = build_graph(config, outputs_only=False, deduplicate_inputs=True).source
+        tables = [ln for ln in source.splitlines() if "<td>temperature</td>" in ln]
+        assert len(tables) == 1
+        assert {"_daily_a_config", "_daily_b_config"} <= _drawn(source)
+
+    def test_one_view_at_a_time(self, config):
+        with pytest.raises(CatenaValueError, match="upstream_of and between"):
+            build_graph(config, upstream_of=["combine"], between=("daily_a", "weekly"))
+
+    def test_a_view_is_not_every_node(self, config):
+        with pytest.raises(CatenaValueError, match="every node"):
+            build_graph(config, outputs_only=False, downstream_of=["daily_a"])
+
+    @pytest.mark.parametrize(
+        "view",
+        [
+            {"upstream_of": ["nope"]},
+            {"downstream_of": ["combine", "nope"]},
+            {"between": ("nope", "weekly")},
+        ],
+    )
+    def test_unknown_node_is_a_user_error(self, config, view):
+        with pytest.raises(CatenaValueError, match="'nope'"):
+            build_graph(config, **view)
+
+    def test_no_path_is_a_user_error(self, config):
+        with pytest.raises(CatenaValueError, match="leads to 'weekly'"):
+            build_graph(config, between=("unrelated", "weekly"))
+
+
 class TestGraphvizSpec:
     def test_none_returns_defaults(self):
         spec = load_graphviz_spec(None)
