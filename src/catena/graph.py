@@ -770,14 +770,34 @@ def _numbers(text: str) -> list[float]:
     return [float(v) for v in text.replace(",", " ").split()]
 
 
+def _name_box(obj: Mapping[str, Any]) -> tuple[float, float, float, float]:
+    """Return `(left, top, width, height)` of a node's first label line.
+
+    In Graphviz's layout coordinates: points, origin at the bottom left. The
+    first text drawn in the label is the node name; its height is taken from
+    the font size. A node with no text falls back to its whole box.
+    """
+    size = 14.0
+    for op in obj.get("_ldraw_", []):
+        if op["op"] == "F":
+            size = float(op["size"])
+        elif op["op"] == "T":
+            (x, y), width = op["pt"], float(op["width"])
+            x -= {"l": 0.0, "c": width / 2, "r": width}[op["align"]]
+            return x, y + 0.8 * size, width, size
+    x, y = _numbers(obj["pos"])
+    w, h = float(obj["width"]) * 72, float(obj["height"]) * 72
+    return x - w / 2, y + h / 2, w, h
+
+
 def _overlays(
     digraph: "graphviz.Digraph", svg: str, attrs: Mapping[str, str]
 ) -> list[str]:
-    """Return an absolutely positioned `<a>` over each linked node.
+    """Return an absolutely positioned `<a>` over each linked node's name.
 
-    Node boxes come from Graphviz's JSON layout, in points with the origin at
-    the bottom left, and are mapped through the SVG's `graph0` transform into
-    percentages of its `viewBox`, so they scale with the drawing.
+    Name boxes come from Graphviz's JSON layout and are mapped through the
+    SVG's `graph0` transform into percentages of its `viewBox`, so they scale
+    with the drawing.
     """
     viewbox, transform = _VIEWBOX_RE.search(svg), _TRANSFORM_RE.search(svg)
     if viewbox is None or transform is None:
@@ -792,10 +812,9 @@ def _overlays(
         url = obj.get("URL")
         if not url or "pos" not in obj:
             continue
-        x, y = _numbers(obj["pos"])
-        w, h = float(obj["width"]) * 72, float(obj["height"]) * 72
-        left = (sx * (x - w / 2 + tx) - vx) / vw * 100
-        top = (sy * (ty - y - h / 2) - vy) / vh * 100
+        x, y, w, h = _name_box(obj)
+        left = (sx * (x + tx) - vx) / vw * 100
+        top = (sy * (ty - y) - vy) / vh * 100
         # `font-size:0` hides any icon a theme appends to the link.
         box = (
             f"position:absolute;font-size:0;left:{left:.3f}%;top:{top:.3f}%;"
@@ -816,8 +835,8 @@ def graph_html(
     """Render `digraph` as an HTML fragment to place in a documentation page.
 
     The SVG is inlined, so its node links work (an SVG shown through `<img>`
-    has none), and it scales down to fit the page. Each linked node also gets
-    an invisible `<a>` laid over it carrying `overlay`'s attributes, because
+    has none), and it scales down to fit the page. Each linked node's name also
+    gets an invisible `<a>` laid over it carrying `overlay`'s attributes, because
     themes that preview a link's target on hover only handle HTML links. The
     overlays must be in the page when it loads, so write the fragment into the
     page source or a notebook's output rather than adding it from a script.

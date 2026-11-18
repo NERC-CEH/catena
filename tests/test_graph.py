@@ -761,18 +761,16 @@ class TestGraphHtml:
         ]
         assert all(a.attrib["data-preview"] == "" for a in overlays)
 
-    def test_overlay_covers_its_node(self, fragment):
+    def test_overlay_covers_its_node_name(self, fragment):
         root = ET.fromstring(fragment)
         svg = root.find(f"{_SVG}svg")
         assert svg is not None
         _, _, width, height = map(float, svg.attrib["viewBox"].split())
         graph = svg.find(f"{_SVG}g")
         assert graph is not None
+        transform = graph.attrib["transform"]
         tx, ty = map(
-            float,
-            re.findall(r"translate\(([-\d.]+) ([-\d.]+)\)", graph.attrib["transform"])[
-                0
-            ],
+            float, re.findall(r"translate\(([-\d.]+) ([-\d.]+)\)", transform)[0]
         )
         for overlay in root.findall("a"):
             link = next(
@@ -789,11 +787,16 @@ class TestGraphHtml:
             )
             xs = [(float(x) + tx) / width * 100 for x, _ in coords]
             ys = [(float(y) + ty) / height * 100 for _, y in coords]
+            name = next(t for t in link.iter(f"{_SVG}text"))
+            assert name.attrib["font-weight"] == "bold"
+            name_x = (float(name.attrib["x"]) + tx) / width * 100
+            baseline = (float(name.attrib["y"]) + ty) / height * 100
             box = _percent(overlay.attrib["style"])
-            assert box["left"] == pytest.approx(min(xs), abs=0.5)
-            assert box["top"] == pytest.approx(min(ys), abs=0.5)
-            assert box["left"] + box["width"] == pytest.approx(max(xs), abs=0.5)
-            assert box["top"] + box["height"] == pytest.approx(max(ys), abs=0.5)
+            right, bottom = box["left"] + box["width"], box["top"] + box["height"]
+            assert box["left"] == pytest.approx(name_x, abs=0.1)
+            assert box["top"] < baseline < bottom
+            assert min(xs) < box["left"] < right < max(xs)
+            assert min(ys) < box["top"] < bottom < max(ys)
 
     def test_overlay_attributes_are_a_parameter(self, linked_digraph):
         fragment = graph_html(linked_digraph, overlay={"data-kind": "node"})
