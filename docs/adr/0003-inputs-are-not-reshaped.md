@@ -1,4 +1,4 @@
-# 3. Inputs are not reshaped
+# 3. Inputs are not reshaped, and catena has no geospatial layer
 
 - **Status:** proposed
 - **Date:** 2026-11-17
@@ -16,12 +16,23 @@ As a general library, catena inherited that assumption, and it costs more than i
 - Whether an input was reshaped depended on metadata a user does not see, the presence of a CRS.
 - Stacking a grid chunked along both axes gives irregular chunks along `pixel`.
 
+Without stacking, the optional `geo` extra and the `catena.gridded` subpackage held two unrelated things:
+
+- A geospatial layer of about 110 lines, the only code that used `rioxarray` or `pyproj`.
+  When an input carried a CRS, it checked that every such input shared one CRS and grid, and added `latitude` and `longitude` inputs.
+- The parallel subset I/O (shared Zarr stores, region writes, merging NetCDF parts) and the `catena gridded` commands.
+  Since ADR 0002 this works over any dimension and needs only `xarray` and `zarr`, yet `catena gridded` refused to run without `rioxarray` and `pyproj`, and the core imported it lazily as though it needed the extra.
+
 ## Decision
 
 1. **Inputs reach nodes with the dimensions their files have.** catena does not stack, transpose or rename them.
-2. **CRS metadata still activates the geospatial layer**, which now only checks that gridded inputs share one grid and adds `latitude` and `longitude` as 2-D arrays on the grid's own spatial dimensions, in `(y, x)` order.
-3. **Outputs are written as the nodes return them.** A result with a stacked (MultiIndex) dimension is refused with a catena error naming it, since no supported format can store one.
+2. **Outputs are written as the nodes return them.** A result with a stacked (MultiIndex) dimension is refused with a catena error naming it, since no supported format can store one.
    catena does not unstack it.
+3. **catena reads no meaning into a CRS.** The automatic grid check, the computed `latitude` and `longitude`, the `geo` extra and the `catena.gridded` subpackage are removed.
+4. **Grid agreement is an opt-in input check.** A new `crs_equal` check compares the CRS each file stores, as text and with no dependencies; with `coords_equal` over the spatial coordinates it replaces the automatic check.
+   Input checks now also run under `[subset]`: they are given the whole, unsliced files, so the reason for skipping them there did not hold.
+5. **Latitude and longitude are downstream nodes.** A guide shows two node functions that compute them from an input's CRS with `rioxarray` and `pyproj`, and the test suite runs that code.
+6. **Parallel subset I/O is core.** It lives in `catena.subsets`, and its commands are `catena subset create-store` and `catena subset merge`, needing only the `cli` extra.
 
 ## Consequences
 
@@ -31,6 +42,13 @@ As a general library, catena inherited that assumption, and it costs more than i
   viresco's models need this change.
 - `stack_if_gridded`, `unstack_if_gridded` and `catena.gridded.spatial` are removed.
 - Code that used `.rio` on a dataset relied on stacking having imported `rioxarray`; it must now import it itself.
+- A pipeline whose gridded inputs disagree, and which declares no `crs_equal` or `coords_equal`, is no longer stopped: xarray's default inner join silently drops the cells that do not align.
+  The docs say so where grids come up; making alignment exact during execution is a separate proposal.
+- `crs_equal` compares stored text, so two equivalent CRSs written differently, by different tools say, fail it.
+  The failure is loud and the check is optional; comparing with `pyproj` would fix it at the cost of a dependency.
+- `latitude` and `longitude` are ordinary nodes, so the wiring check no longer needs an exemption for them, and `check_wiring` loses its `exempt` argument.
+- viresco defines its own `latitude` and `longitude` nodes, and declares the grid checks it relies on.
+- catena no longer depends on `rioxarray` or `pyproj`; they remain in the test dependency group for tests that write CRS-bearing files and for the guide.
 
 ## Alternatives considered
 
@@ -40,3 +58,7 @@ As a general library, catena inherited that assumption, and it costs more than i
   Convenient for a model that stacks, but implicit, and wrong when the model dropped cells: the unstacked grid can lose whole rows and no longer match a store `create-store` built from a full run.
 - **Provide a generic reshape step in the TOML spec.**
   An inline `[[node]]` expression such as `x.stack(pixel=("y", "x"))` already does this where a user wants it.
+- **Keep the geospatial layer as a single `catena/geo.py` behind lazy imports.**
+  Small, but it keeps catena adding inputs nobody declared, triggered by metadata the user does not see, and keeps two dependencies for one convenience a downstream node provides in a few lines.
+- **Keep the grid check automatic, without `rioxarray`.**
+  Comparing coordinates needs to know which dimensions are spatial; inferring that from CF metadata is the guess the opt-in check avoids by having the user name them.

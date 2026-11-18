@@ -171,7 +171,6 @@ def load_raw_datasets(input_specs: dict[str, IOSpec]) -> dict[str, xr.Dataset]:
 def load_inputs(
     input_specs: dict[str, IOSpec],
     subset_spec: SubsetSpec | None = None,
-    geospatial: bool | None = None,
 ) -> dict[str, xr.DataArray]:
     """Load all configured inputs and return them as a flat dict of named DataArrays.
 
@@ -184,11 +183,9 @@ def load_inputs(
     A section naming a variable the file does not contain raises a catena error
     reporting the section, the file, and every missing name at once.
 
-    Inputs keep the dimensions they have in their files; nothing is reshaped.
-    When an input carries CRS metadata, catena checks that every such input shares
-    one grid and adds 2-D `latitude` and `longitude` inputs on its spatial
-    dimensions (see `catena.gridded`). Pass `geospatial=True`/`False` to force this
-    on or off.
+    Inputs keep the dimensions and coordinates they have in their files; nothing
+    is reshaped. To check that inputs share a grid, configure the `coords_equal`
+    and `crs_equal` checks (`catena.input_checks`).
 
     Parameters
     ----------
@@ -198,15 +195,7 @@ def load_inputs(
     subset_spec:
         If provided, slice every input file carrying its `dim` to the specified
         range. Typically `parsed_config.subset_spec`.
-    geospatial:
-        Force the geospatial path on (`True`) or off (`False`). When `None`
-        (default) it is auto-detected from the presence of CRS metadata.
     """
-    from .gridded.io import (  # lazy: optional geo extra (see catena.gridded)
-        compute_lat_lon,
-        has_crs,
-    )
-
     inputs: dict[str, xr.DataArray] = {}
     raw_datasets = load_raw_datasets(input_specs)
     if subset_spec is not None:
@@ -223,9 +212,6 @@ def load_inputs(
                 f"catena requires at most one time dimension per input dataset."
             )
 
-    if geospatial is None:
-        geospatial = any(has_crs(ds) for ds in raw_datasets.values())
-
     for label, spec in input_specs.items():
         ds = raw_datasets[label]
         mapping = var_mapping(label, spec, available=[str(v) for v in ds.data_vars])
@@ -237,13 +223,6 @@ def load_inputs(
                     f"with an already-loaded input."
                 )
             inputs[node_name] = ds[file_var]
-
-    if geospatial:
-        spatial = {label: ds for label, ds in raw_datasets.items() if has_crs(ds)}
-        if spatial:
-            lat, lon = compute_lat_lon(spatial)
-            inputs["latitude"] = lat
-            inputs["longitude"] = lon
 
     return inputs
 
@@ -438,17 +417,6 @@ def assert_output_paths_writable(
                 f"output {label!r} parent directory {str(parent)!r} is not writable "
                 f"(path {spec.path!r})."
             )
-
-
-def auxiliary_input_names(inputs: dict[str, Any]) -> set[str]:
-    """Names of auto-derived inputs `load_inputs` emits that nodes needn't consume.
-
-    The geospatial `latitude` / `longitude` arrays are computed from the input
-    files' CRS, so a pipeline may legitimately ignore them. The wiring check
-    (`catena.wiring_check.check_wiring`) excludes them from its "unused
-    input" diagnostic.
-    """
-    return {"latitude", "longitude"} & set(inputs)
 
 
 def get_final_vars(output_specs: dict[str, IOSpec]) -> list[str]:

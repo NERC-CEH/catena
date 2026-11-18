@@ -52,8 +52,6 @@ def check_wiring(
     dr: driver.Driver,
     final_vars: list[str],
     inputs: dict[str, Any],
-    *,
-    exempt: "frozenset[str] | set[str]" = frozenset(),
 ) -> None:
     """Validate that loaded inputs satisfy (and match) the DAG's external inputs.
 
@@ -65,10 +63,6 @@ def check_wiring(
         The node names to be computed (as from `catena.io.get_final_vars`).
     inputs
         The loaded input dict (as from `catena.io.load_inputs`).
-    exempt
-        Loaded input names to exclude from the *unused* check — auto-derived
-        inputs (date indices, lat/lon) that `load_inputs` always emits but no
-        node is required to consume. See `catena.io.auxiliary_input_names`.
 
     Raises
     ------
@@ -88,7 +82,7 @@ def check_wiring(
     }
 
     # Warn before raising, so an unbound input does not hide an unused one.
-    unused = set(inputs) - external - set(exempt)
+    unused = set(inputs) - external
     if unused:
         warnings.warn(
             f"loaded input(s) consumed by no node: {sorted(unused)}",

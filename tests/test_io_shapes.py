@@ -70,14 +70,6 @@ def test_inputs_keep_their_file_dims(request, fixture, dims):
     assert inputs["var_a_d"].dims == dims
 
 
-def test_grid_lat_lon_are_2d_on_the_grid(grid_path):
-    inputs = load_inputs({"d": IOSpec(path=grid_path, vars=["var_a"])})
-    for name in ("latitude", "longitude"):
-        assert inputs[name].dims == ("y", "x")
-        for dim in ("y", "x"):
-            assert inputs[name].indexes[dim].equals(inputs["var_a_d"].indexes[dim])
-
-
 def test_grid_output_is_written_as_returned(grid_path):
     inputs = load_inputs({"d": IOSpec(path=grid_path, vars=["var_a"])})
     out = get_outputs(

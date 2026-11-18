@@ -24,32 +24,29 @@ It installs as `ukceh-catena` and imports as `catena`.
 
 This installs the library and its Python API from the latest `main`.
 To install a specific release, append its tag to the URL, e.g. `git+https://github.com/NERC-CEH/catena@v0.4.0`.
-The `catena` command, geospatial support and graph rendering are optional extras.
+The `catena` command and graph rendering are optional extras.
 
 ## Extras
 
 | Extra | Installs | Needed for |
 | --- | --- | --- |
 | `cli` | `typer` | the `catena` command (`catena run`, `catena graph`, `catena subset`) |
-| `geo` | `rioxarray`, `pyproj` | CRS-aware gridded inputs (grid checks, computed `latitude`/`longitude`) |
 | `viz` | `apache-hamilton[visualization]` | rendering the DAG with `catena graph` |
 | `all` | everything above | every optional feature |
-
-Non-gridded pipelines never need `geo`: it is imported only when an input carries CRS metadata.
 
 Name extras in square brackets:
 
 === "pip"
 
     ```sh
-    pip install "ukceh-catena[geo] @ git+https://github.com/NERC-CEH/catena"
+    pip install "ukceh-catena[cli] @ git+https://github.com/NERC-CEH/catena"
     pip install "ukceh-catena[all] @ git+https://github.com/NERC-CEH/catena"
     ```
 
 === "uv"
 
     ```sh
-    uv add "ukceh-catena[geo] @ git+https://github.com/NERC-CEH/catena"
+    uv add "ukceh-catena[cli] @ git+https://github.com/NERC-CEH/catena"
     uv add "ukceh-catena[all] @ git+https://github.com/NERC-CEH/catena"
     ```
 

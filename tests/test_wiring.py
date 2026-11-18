@@ -128,16 +128,6 @@ class TestUnused:
         with pytest.warns(WiringWarning, match="consumed by no node"):
             check_wiring(dr, ["out"], {"x": _da(), "stray": _da()})
 
-    def test_exempt_suppresses_warning(self, register):
-        import warnings
-
-        dr = _consumer_module(register)
-        with warnings.catch_warnings():
-            warnings.simplefilter("error")
-            check_wiring(
-                dr, ["out"], {"x": _da(), "latitude": _da()}, exempt={"latitude"}
-            )
-
     def test_clean_wiring_is_silent(self, register):
         import warnings
 

@@ -2,9 +2,11 @@
 
 use_directory_urls = false
 
-# Architecture decision records are for maintainers, not users.
+# Architecture decision records are for maintainers, not users. Bytecode appears
+# beside a guide's .py file when the test suite imports it.
 exclude_docs = """
 adr/
+__pycache__/
 """
 
 site_name = "catena"
@@ -31,6 +33,7 @@ nav = [
           "guides/nodes/bring-your-own-module.md",
           "guides/nodes/contracts.md",
           "guides/nodes/resampling-and-units.md",
+          "guides/nodes/latitude-and-longitude.md",
       ]},
       { "Write configs" = [
           "guides/configs/write-a-config.md",
@@ -81,7 +84,6 @@ nav = [
           "reference/modules/catena.subsets.md",
           "reference/modules/catena.graph.md",
           "reference/modules/catena.graph_style.md",
-          "reference/modules/catena.gridded/io.md",
       ]},
   ]},
 ]

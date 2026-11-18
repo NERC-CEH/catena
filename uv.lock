@@ -2731,18 +2731,10 @@ dependencies = [
 [package.optional-dependencies]
 all = [
     { name = "apache-hamilton", extra = ["visualization"] },
-    { name = "pyproj" },
-    { name = "rioxarray", version = "0.23.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
-    { name = "rioxarray", version = "0.24.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
     { name = "typer" },
 ]
 cli = [
     { name = "typer" },
-]
-geo = [
-    { name = "pyproj" },
-    { name = "rioxarray", version = "0.23.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
-    { name = "rioxarray", version = "0.24.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
 ]
 viz = [
     { name = "apache-hamilton", extra = ["visualization"] },
@@ -2758,12 +2750,15 @@ dev = [
     { name = "mkdocs-typer2", extra = ["termynal"] },
     { name = "mkdocstrings-python" },
     { name = "pre-commit" },
+    { name = "pyproj" },
     { name = "pyright" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "rioxarray", version = "0.23.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
+    { name = "rioxarray", version = "0.24.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
     { name = "ruff" },
     { name = "rust-just" },
-    { name = "ukceh-catena", extra = ["cli", "geo", "viz"] },
+    { name = "ukceh-catena", extra = ["cli", "viz"] },
     { name = "zensical" },
 ]
 docs = [
@@ -2781,9 +2776,12 @@ recipes = [
 ]
 test = [
     { name = "coverage" },
+    { name = "pyproj" },
     { name = "pytest" },
     { name = "pytest-cov" },
-    { name = "ukceh-catena", extra = ["cli", "geo", "viz"] },
+    { name = "rioxarray", version = "0.23.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
+    { name = "rioxarray", version = "0.24.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
+    { name = "ukceh-catena", extra = ["cli", "viz"] },
 ]
 
 [package.metadata]
@@ -2793,16 +2791,14 @@ requires-dist = [
     { name = "dask", specifier = ">=2025.1.0" },
     { name = "netcdf4", specifier = ">=1.7.4" },
     { name = "numpy", specifier = ">=2.4.2" },
-    { name = "pyproj", marker = "extra == 'geo'", specifier = ">=3.7.2" },
-    { name = "rioxarray", marker = "extra == 'geo'", specifier = ">=0.22.0" },
     { name = "tomli-w", specifier = ">=1.2.0" },
     { name = "typer", marker = "extra == 'cli'", specifier = ">=0.24.1" },
-    { name = "ukceh-catena", extras = ["cli", "viz", "geo"], marker = "extra == 'all'" },
+    { name = "ukceh-catena", extras = ["cli", "viz"], marker = "extra == 'all'" },
     { name = "xarray", specifier = ">=2026.2.0" },
     { name = "xarray-annotated", extras = ["cf"], specifier = ">=0.9.0rc1" },
     { name = "zarr", specifier = ">=3.2.1" },
 ]
-provides-extras = ["cli", "viz", "geo", "all"]
+provides-extras = ["cli", "viz", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2814,13 +2810,14 @@ dev = [
     { name = "mkdocs-typer2", extras = ["termynal"], specifier = ">=0.4.1" },
     { name = "mkdocstrings-python", specifier = ">=2.0.3" },
     { name = "pre-commit", specifier = ">=4.5.1" },
+    { name = "pyproj", specifier = ">=3.7.2" },
     { name = "pyright", specifier = ">=1.1.409" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
+    { name = "rioxarray", specifier = ">=0.22.0" },
     { name = "ruff", specifier = ">=0.15.4" },
     { name = "rust-just", specifier = ">=1.46.0" },
     { name = "ukceh-catena", extras = ["cli", "viz"] },
-    { name = "ukceh-catena", extras = ["cli", "viz", "geo"] },
     { name = "zensical", specifier = ">=0.0.24,<0.0.74" },
 ]
 docs = [
@@ -2836,9 +2833,11 @@ docs = [
 recipes = [{ name = "matplotlib", specifier = ">=3.10.8" }]
 test = [
     { name = "coverage", specifier = ">=7.13.5" },
+    { name = "pyproj", specifier = ">=3.7.2" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
-    { name = "ukceh-catena", extras = ["cli", "viz", "geo"] },
+    { name = "rioxarray", specifier = ">=0.22.0" },
+    { name = "ukceh-catena", extras = ["cli", "viz"] },
 ]
 
 [[package]]

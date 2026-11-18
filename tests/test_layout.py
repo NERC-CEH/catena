@@ -1,7 +1,7 @@
 """Boundaries the package layout is meant to enforce, as tests rather than directories.
 
-`catena` keeps every module at the top level except the two subpackages behind
-install extras, so a directory can no longer mark where an optional or heavyweight
+`catena` keeps every module at the top level except the subpackage behind an
+install extra, so a directory can no longer mark where an optional or heavyweight
 dependency is allowed to appear. These tests do that instead, and unlike a directory
 they fail in CI when someone crosses the line.
 """
@@ -48,13 +48,13 @@ def _module_sources() -> dict[str, str]:
 class TestSubpackagesAreOptionalExtras:
     """A subpackage exists only when its contents are behind an install extra."""
 
-    def test_only_cli_and_gridded_are_subpackages(self):
+    def test_only_cli_is_a_subpackage(self):
         packages = {
             mod.name
             for mod in pkgutil.walk_packages(catena.__path__, "catena.")
             if mod.ispkg
         }
-        assert packages == {"catena.cli", "catena.gridded"}
+        assert packages == {"catena.cli"}
 
 
 class TestHamiltonIsConfinedToTheDagModules:

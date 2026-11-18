@@ -12,11 +12,11 @@ from typing import Annotated
 import numpy as np
 import pandas as pd
 import xarray as xr
-from xarray_annotated import Freq, Unit, check_annotations, enabled
+from xarray_annotated import Freq, check_annotations, enabled
 
 from catena.config import IOSpec
 from catena.io import get_final_vars
-from catena.pipeline import dry_run, run
+from catena.pipeline import run
 
 GRID = {"y": 2, "x": 2}
 N_DAYS = 365
@@ -59,76 +59,6 @@ class TestLoadedInputs:
         for name in ("elevation", "roughness", "soil_moisture"):
             da = pipeline_inputs[name]
             assert not np.any(np.isnan(da.values)), f"{name} contains NaN"
-
-
-class TestGridInputs:
-    """Test that load_inputs() computes latitude and longitude from spatial CRS data."""
-
-    def test_latitude_in_uk_bounds(self, pipeline_inputs):
-        lat = pipeline_inputs["latitude"].values
-        assert np.all(lat >= 49.0)
-        assert np.all(lat <= 55.0)
-
-    def test_longitude_in_uk_bounds(self, pipeline_inputs):
-        lon = pipeline_inputs["longitude"].values
-        assert np.all(lon >= -5.0)
-        assert np.all(lon <= 3.0)
-
-    def test_lat_lon_on_the_grid(self, pipeline_inputs):
-        assert {d: pipeline_inputs["latitude"].sizes[d] for d in GRID} == GRID
-        assert {d: pipeline_inputs["longitude"].sizes[d] for d in GRID} == GRID
-
-    def test_lat_lon_carry_cf_units(self, pipeline_inputs):
-        assert pipeline_inputs["latitude"].attrs["units"] == "degrees_north"
-        assert pipeline_inputs["longitude"].attrs["units"] == "degrees_east"
-
-
-class TestLatLonUnitContract:
-    """A node may declare a unit on the computed `latitude`."""
-
-    @staticmethod
-    def _config(tmp_path, synthetic_data_dir, monkeypatch):
-        @check_annotations
-        def scaled_latitude(
-            latitude: Annotated[xr.DataArray, Unit("degrees")],
-        ) -> Annotated[xr.DataArray, Unit("degrees")]:
-            return latitude * 1
-
-        module = types.ModuleType("latitude_model")
-        scaled_latitude.__module__ = module.__name__
-        module.scaled_latitude = scaled_latitude  # type: ignore[attr-defined]
-        monkeypatch.setitem(sys.modules, module.__name__, module)
-
-        config = tmp_path / "config.toml"
-        config.write_text(
-            f"""
-[inputs.static]
-path = "{synthetic_data_dir / "static.nc"}"
-vars = ["elevation"]
-
-[latitude_model]
-_import_path = "latitude_model"
-
-[outputs.latitude]
-path = "{tmp_path / "latitude.nc"}"
-suffix = ""
-vars = ["scaled_latitude"]
-"""
-        )
-        return config
-
-    def test_dry_run(self, tmp_path, synthetic_data_dir, monkeypatch):
-        config = self._config(tmp_path, synthetic_data_dir, monkeypatch)
-        with enabled(True):
-            report = dry_run(str(config))
-        assert {s.name: s.status for s in report.stages}["contracts"] == "ok"
-
-    def test_run(self, tmp_path, synthetic_data_dir, monkeypatch):
-        config = self._config(tmp_path, synthetic_data_dir, monkeypatch)
-        with enabled(True):
-            run(str(config))
-        written = xr.open_dataarray(tmp_path / "latitude.nc")
-        assert np.all((written.values >= 49.0) & (written.values <= 55.0))
 
 
 class TestDriverExecution:

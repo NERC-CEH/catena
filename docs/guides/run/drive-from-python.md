@@ -96,7 +96,6 @@ The driver can be inspected with Hamilton's own methods, such as `dr.display_all
 ### 3. Load inputs
 
 `load_inputs()` opens the input files and returns a flat dict of `DataArray`s keyed by node name.
-When inputs carry a CRS, `latitude` and `longitude` nodes are computed too.
 
 ### 4. Execute
 

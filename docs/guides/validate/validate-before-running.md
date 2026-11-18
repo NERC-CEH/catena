@@ -17,10 +17,10 @@ catena run config.toml --dry-run
 It checks, in order, and prints a summary per stage:
 
 1. **Config** — the TOML parses into a valid pipeline.
-2. **Inputs** — every input file exists and opens, and gridded inputs share one grid.
+2. **Inputs** — every input file exists and opens.
    Only headers are read, not arrays.
 3. **Input checks** — any [`[validation]` checks](#input-compatibility-checks) you declared pass (aligned time axes, matching coordinates).
-   Skipped if you declared none, or under `[subset]`.
+   Skipped if you declared none.
 4. **DAG** — the driver builds, and the contract check passes on every edge with a contract at both ends.
 5. **Execution plan and wiring** — every variable in `[outputs.*]` is reachable from the inputs, required inputs are all bound, and unused inputs are reported ([below](#the-wiring-check)).
    With no `[outputs.*]`, this checks every terminal node of the DAG, the nodes nothing else consumes.
@@ -52,6 +52,7 @@ checks = [
 Each entry runs a named check over the listed `[inputs.*]` sections; `["*"]` means all of them.
 The checks run on every `catena run`, and a failure aborts before any node executes, listing every check that failed and why.
 They are opt-in because differing inputs are normal — a daily forcing beside a monthly boundary condition — so only you know which relationships must hold.
+Gridded inputs that must share one grid are a common case: declare `crs_equal` and `coords_equal` over their spatial coordinates, since nothing else checks it.
 The available checks and their arguments are in the [configuration reference](../../reference/configuration.md#validation).
 
 ## The wiring check

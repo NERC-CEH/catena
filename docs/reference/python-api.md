@@ -69,11 +69,3 @@ Everything that touches a Hamilton `Driver` or graph object.
 | [`catena.subsets`](modules/catena.subsets.md) | Parallel subset runs: shared Zarr stores, region writes, and merging the parts. |
 | [`catena.graph`](modules/catena.graph.md) | `build_graph`; `GraphStyle`, which applies the same styling to any Hamilton view; `compose_styles` and `link_style`. |
 | [`catena.graph_style`](modules/catena.graph_style.md) | The `GraphvizSpec` defaults, and the TOML override `catena graph --style` reads. |
-
-### Gridded
-
-Installed with the `geo` extra, and imported only when needed.
-
-| Module | Contents |
-| --- | --- |
-| [`catena.gridded.io`](modules/catena.gridded/io.md) | Grid checks and latitude/longitude for CRS-bearing inputs. |

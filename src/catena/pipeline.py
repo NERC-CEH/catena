@@ -26,7 +26,6 @@ from .errors import CatenaError, CatenaValueError
 from .io import (
     assert_dim_in_inputs,
     assert_output_paths_writable,
-    auxiliary_input_names,
     get_final_vars,
     get_outputs,
     load_inputs,
@@ -181,7 +180,7 @@ def run(
 
     target_vars = get_final_vars(parsed.output_specs)
     logger.info("DAG built: executing %d output node(s)", len(target_vars))
-    check_wiring(dr, target_vars, inputs, exempt=auxiliary_input_names(inputs))
+    check_wiring(dr, target_vars, inputs)
     if parsed.blocking_spec is not None:
         results = execute_blocked(dr, inputs, target_vars, parsed.blocking_spec)
     else:
@@ -467,7 +466,7 @@ def _plan_stage(
     with warnings.catch_warnings(record=True) as wiring_warnings:
         warnings.simplefilter("always")
         try:
-            check_wiring(dr, targets, inputs, exempt=auxiliary_input_names(inputs))
+            check_wiring(dr, targets, inputs)
         except CatenaError as exc:
             errors.append(str(exc))
     findings = tuple(str(w.message) for w in wiring_warnings)

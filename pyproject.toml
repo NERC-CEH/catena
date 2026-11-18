@@ -29,10 +29,7 @@ dependencies = [
 # catena.build_graph) needs none of this: typer is confined to `catena.cli`.
 cli = ["typer>=0.24.1"]
 viz = ["apache-hamilton[visualization]>=1.90.0"]
-# Geospatial inputs (grid checks and lat/lon reprojection for CRS-bearing inputs).
-# Only needed when inputs carry CRS metadata; imported lazily by catena.gridded.
-geo = ["pyproj>=3.7.2", "rioxarray>=0.22.0"]
-all = ["ukceh-catena[cli,viz,geo]"]
+all = ["ukceh-catena[cli,viz]"]
 
 [project.scripts]
 catena = "catena.cli:main"
@@ -65,8 +62,11 @@ recipes = [
     "matplotlib>=3.10.8",
 ]
 test = [
-    "ukceh-catena[cli,viz,geo]",
+    "ukceh-catena[cli,viz]",
     "coverage>=7.13.5",
+    # For tests that write CRS-bearing files, and the latitude/longitude guide.
+    "pyproj>=3.7.2",
+    "rioxarray>=0.22.0",
     "pytest>=9.0.2",
     "pytest-cov>=7.1.0",
 ]
