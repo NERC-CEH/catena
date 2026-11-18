@@ -101,10 +101,16 @@ def _(mo):
 
 
 @app.cell
-def _(config_path, mo, nodes_path):
+def _():
+    import catena
+
+    return (catena,)
+
+
+@app.cell
+def _(catena, config_path, mo, nodes_path):
     import inspect
 
-    import catena
     from catena.graph import graph_html
 
     def api_url(fn):
@@ -115,7 +121,7 @@ def _(config_path, mo, nodes_path):
 
     graph = catena.build_graph(config_path, link=api_url)
     mo.Html(graph_html(graph))
-    return (catena,)
+    return
 
 
 @app.cell(hide_code=True)
