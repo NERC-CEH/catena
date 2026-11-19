@@ -6,6 +6,7 @@ glyphs, colour and column alignment over a `RunReport` or a `DryRunReport`, plus
 a handler that prints the library's progress logging as a run reaches it.
 """
 
+import json
 import logging
 import os
 from pathlib import Path
@@ -67,21 +68,32 @@ def run(
             "paths without executing the pipeline or writing any outputs.",
         ),
     ] = False,
+    json_output: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="With --dry-run, print the report as one JSON document instead, "
+            "whether the dry run passes or fails.",
+        ),
+    ] = False,
 ) -> None:
     """Execute a pipeline defined in a configuration file."""
     try:
         subset_spec = None if subset is None else SubsetSpec.from_string(subset)
     except CatenaValueError as exc:
         raise typer.BadParameter(str(exc), param_hint="--subset") from exc
+    if json_output and not dry_run:
+        raise typer.BadParameter("applies only with --dry-run", param_hint="--json")
     if dry_run:
+        echo = _echo_json if json_output else _echo_report
         try:
             report = _dry_run(
                 config_file, allow_overrides=allow_overrides, subset=subset_spec
             )
         except DryRunError as exc:
-            _echo_report(exc.report)
+            echo(exc.report)
             raise typer.Exit(1) from exc
-        _echo_report(report)
+        echo(report)
         return
 
     _echo_progress_as_it_happens()
@@ -160,6 +172,11 @@ def _format_size(size_bytes: int) -> str:
     raise AssertionError("unreachable")
 
 
+def _echo_json(report: DryRunReport) -> None:
+    """Print a `DryRunReport` as one JSON document."""
+    typer.echo(json.dumps(report.to_dict(), indent=2))
+
+
 def _echo_report(report: DryRunReport) -> None:
     """Print a `DryRunReport` per stage, with errors and findings indented under.
 
@@ -176,8 +193,8 @@ def _echo_report(report: DryRunReport) -> None:
     typer.echo(f"Dry run for {report.config_file}")
     for stage in report.stages:
         typer.echo(f"  {glyphs[stage.status]} {stage.detail}")
-        for error in stage.errors:
-            error = error.replace(cwd, "").replace("\n", "\n        ")
+        for fault in stage.errors:
+            error = str(fault).replace(cwd, "").replace("\n", "\n        ")
             typer.echo(f"      {typer.style('✗', fg=typer.colors.RED)} {error}")
         for finding in stage.findings:
             typer.echo(f"      {typer.style('!', fg=typer.colors.YELLOW)} {finding}")

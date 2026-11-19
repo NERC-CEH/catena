@@ -23,6 +23,7 @@ import pandas as pd
 import xarray as xr
 
 from .errors import CatenaError, CatenaValueError
+from .faults import Fault
 from .io import time_dims
 from .specs import CheckSpec
 
@@ -229,17 +230,17 @@ CHECKS: dict[str, Check] = {
 }
 
 
-def run_input_checks(
+def input_check_failures(
     raw_datasets: dict[str, xr.Dataset], checks: list[CheckSpec]
-) -> None:
-    """Apply each `CheckSpec` to the loaded raw Datasets, aggregating failures.
+) -> list[Fault]:
+    """Apply each `CheckSpec` to the loaded raw Datasets, and return what failed.
 
     Each dataset is named `[inputs.<label>]` in a failure message. A variadic
-    check that receives fewer than two datasets is a quiet no-op. Individual check
-    failures are collected and raised together as a single `InputCheckError`
-    naming every failed check.
+    check that receives fewer than two datasets is a quiet no-op. Each failed
+    check is one `input_check_failed` fault, whose `reason` is the check's name
+    and whose `location` names the inputs it was given.
     """
-    failures: list[tuple[CheckSpec, CatenaError]] = []
+    faults: list[Fault] = []
     for spec in checks:
         entry = CHECKS[spec.check]
         datasets = {f"[inputs.{label}]": raw_datasets[label] for label in spec.inputs}
@@ -253,13 +254,27 @@ def run_input_checks(
         try:
             entry.func(datasets, **spec.kwargs)
         except CatenaError as exc:
-            failures.append((spec, exc))
+            faults.append(
+                Fault(
+                    "input_check_failed",
+                    f"check '{spec.check}' over {spec.inputs}: {exc}",
+                    reason=spec.check,
+                    location=", ".join(datasets),
+                )
+            )
+    return faults
 
-    if failures:
-        lines = [
-            f"  - check '{spec.check}' over {spec.inputs}: {exc}"
-            for spec, exc in failures
-        ]
+
+def run_input_checks(
+    raw_datasets: dict[str, xr.Dataset], checks: list[CheckSpec]
+) -> None:
+    """Apply each `CheckSpec` to the loaded raw Datasets, aggregating failures.
+
+    Failures `input_check_failures` finds are raised together as a single
+    `InputCheckError` naming every failed check.
+    """
+    if faults := input_check_failures(raw_datasets, checks):
         raise InputCheckError(
-            f"{len(failures)} input check(s) failed:\n" + "\n".join(lines)
+            f"{len(faults)} input check(s) failed:\n"
+            + "\n".join(f"  - {fault}" for fault in faults)
         )

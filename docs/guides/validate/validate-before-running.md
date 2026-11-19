@@ -36,6 +36,37 @@ If any stage failed, the dry run exits `1`.
 A config that does not parse stops it at once.
 If checks are [switched off](../nodes/contracts.md#turning-the-checks-off), the contract stages say so.
 
+## Output for a program
+
+```sh
+catena run config.toml --dry-run --json
+```
+
+`--json` prints the same report as one JSON document, for a CI script, an editor or an agent fixing a config, with the same exit code.
+Each stage lists its faults as records, so a program reads what went wrong without parsing a message:
+
+For the [broken flux config](#reading-a-contract-failure) below, the `dag` stage's one fault is:
+
+```json
+{
+  "kind": "contract_conflict",
+  "message": "'sat_gpp': output of sat_gpp and input of compare_with_satellite conflict on unit: Unit('umol m-2 s-1') and Unit('g m-2 d-1') are dimensionally incompatible",
+  "node": "sat_gpp",
+  "source": "output of sat_gpp",
+  "target": "input of compare_with_satellite",
+  "facet": "unit",
+  "reason": "unit_incompatible",
+  "expected": {"unit": "g m-2 d-1"},
+  "found": {"unit": "umol m-2 s-1"},
+  "hint": null,
+  "location": null
+}
+```
+
+The [`catena.faults`](../../reference/modules/catena.faults.md) reference lists every `kind` and field.
+The top-level `schema_version` changes if the layout does.
+From Python, `DryRunReport.to_dict()` returns the same data.
+
 ## Input compatibility checks
 
 Some expectations concern the input files themselves, which nothing in the DAG records: "these two records must share a time axis", say, or "every input must have the same vertical levels".
