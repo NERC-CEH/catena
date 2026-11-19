@@ -19,6 +19,7 @@ from catena.config import NodeSpec, ResampleSpec
 from catena.contract_check import (
     check_dag_contracts,
     check_input_contracts,
+    dag_contract_conflicts,
 )
 from catena.errors import CatenaValueError
 
@@ -215,6 +216,29 @@ class TestExactMatch:
         cons = register("ue3_cons", _consumer("pascal"))
         with xra.enabled(True):
             check_dag_contracts(_build(prod, cons))
+
+
+class TestConflictRecords:
+    """`dag_contract_conflicts` says what `check_dag_contracts` says, as records."""
+
+    def test_one_fault_per_conflict_with_both_declarations(self, register):
+        prod = register("cr_prod", _producer("Pa"))
+        cons = register("cr_cons", _consumer("hPa"))
+        with xra.enabled(True):
+            [fault] = dag_contract_conflicts(_build(prod, cons))
+        assert fault.kind == "contract_conflict"
+        assert fault.node == "gpp_weekly"
+        assert fault.source is not None
+        assert fault.source.startswith("output of gpp_weekly")
+        assert fault.target == "input of consumer"
+        assert (fault.facet, fault.reason) == ("unit", "unit_different")
+        assert (fault.found, fault.expected) == ({"unit": "Pa"}, {"unit": "hPa"})
+
+    def test_off_returns_nothing(self, register):
+        prod = register("cr2_prod", _producer("Pa"))
+        cons = register("cr2_cons", _consumer("hPa"))
+        with xra.enabled(False):
+            assert dag_contract_conflicts(_build(prod, cons)) == []
 
 
 # ---------------------------------------------------------------------------

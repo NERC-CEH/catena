@@ -48,6 +48,18 @@ def terminal_nodes(dr: driver.Driver) -> list[str]:
     )
 
 
+def unused_inputs(
+    dr: driver.Driver, final_vars: list[str], inputs: dict[str, Any]
+) -> list[str]:
+    """Return the loaded inputs no node upstream of `final_vars` consumes, sorted."""
+    external = {
+        node.name
+        for node in dr.what_is_upstream_of(*final_vars)
+        if node.is_external_input
+    }
+    return sorted(set(inputs) - external)
+
+
 def check_wiring(
     dr: driver.Driver,
     final_vars: list[str],
@@ -75,17 +87,10 @@ def check_wiring(
     WiringWarning
         If a loaded input is consumed by no node (unused).
     """
-    external = {
-        node.name
-        for node in dr.what_is_upstream_of(*final_vars)
-        if node.is_external_input
-    }
-
     # Warn before raising, so an unbound input does not hide an unused one.
-    unused = set(inputs) - external
-    if unused:
+    if unused := unused_inputs(dr, final_vars, inputs):
         warnings.warn(
-            f"loaded input(s) consumed by no node: {sorted(unused)}",
+            f"loaded input(s) consumed by no node: {unused}",
             WiringWarning,
             stacklevel=2,
         )

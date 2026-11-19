@@ -2795,7 +2795,7 @@ requires-dist = [
     { name = "typer", marker = "extra == 'cli'", specifier = ">=0.24.1" },
     { name = "ukceh-catena", extras = ["cli", "viz"], marker = "extra == 'all'" },
     { name = "xarray", specifier = ">=2026.2.0" },
-    { name = "xarray-annotated", extras = ["cf"], specifier = ">=0.9.0rc1" },
+    { name = "xarray-annotated", extras = ["cf"], specifier = ">=0.9.0rc2" },
     { name = "zarr", specifier = ">=3.2.1" },
 ]
 provides-extras = ["cli", "viz", "all"]
@@ -3044,7 +3044,7 @@ wheels = [
 
 [[package]]
 name = "xarray-annotated"
-version = "0.9.0rc1"
+version = "0.9.0rc2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pandas" },
@@ -3052,9 +3052,9 @@ dependencies = [
     { name = "pint-xarray" },
     { name = "xarray" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bc/99/204de543a6bdf73cc239f06a872e60ef1386b907f181288be0469f458f87/xarray_annotated-0.9.0rc1.tar.gz", hash = "sha256:154e91bb6c35856179fd3a991fe59c77fc2b53aa99c2552b3a5d43d193a19421", size = 49923, upload-time = "2026-11-07T22:13:17.37Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1a/0a/5d1dae640950cec6bec210b4e4c6e36bf8173d4b3d38f56a8d6a302a07d8/xarray_annotated-0.9.0rc2.tar.gz", hash = "sha256:35c3a6c5221bc235948829797bf2c1d2ec1d6db4de8af82d72002ff52443bd94", size = 54527, upload-time = "2026-11-19T10:37:21.889Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c0/73/13f15f3a47affe3c3f59a411ef5b8562c35318b2d1333169ece4112872c0/xarray_annotated-0.9.0rc1-py3-none-any.whl", hash = "sha256:3a351c1934975faec27e97e901b75feeedeb36123122b2b58be1ab67fecc31c1", size = 60206, upload-time = "2026-11-07T22:13:16.117Z" },
+    { url = "https://files.pythonhosted.org/packages/02/a6/87fe82b473ac2c5a35e751b4873536ef7fea7402b0ea03f08c23696a749d/xarray_annotated-0.9.0rc2-py3-none-any.whl", hash = "sha256:10759856a9c0d1ace24dbb9c2d8874a936b13e10dd8a28c72449a23a569d3964", size = 65202, upload-time = "2026-11-19T10:37:20.712Z" },
 ]
 
 [package.optional-dependencies]

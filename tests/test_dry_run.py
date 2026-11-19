@@ -11,6 +11,7 @@ Three layers:
   checking that `catena run --dry-run` renders every stage of it.
 """
 
+import json
 import os
 import sys
 import types
@@ -25,7 +26,7 @@ from catena import dry_run
 from catena.build import build_driver
 from catena.cli.app import app
 from catena.config import IOSpec, NodeSpec, ResampleSpec, SubsetSpec, load_config
-from catena.contract_check import check_input_contracts
+from catena.contract_check import check_input_contracts, input_contract_violations
 from catena.errors import CatenaError, CatenaValueError
 from catena.io import assert_output_paths_writable
 from catena.pipeline import DryRunError
@@ -88,6 +89,30 @@ def _input(units_attr: str | None = None) -> xr.DataArray:
 # ---------------------------------------------------------------------------
 # check_input_contracts — direct, against an external input consumed with a unit
 # ---------------------------------------------------------------------------
+
+
+class TestInputViolationRecords:
+    """`input_contract_violations` says what `check_input_contracts` says, as records."""
+
+    def test_one_fault_per_violation_with_its_facts(self, register):
+        register("vr_cons", _consumer("Pa"))
+        dr = build_driver(["vr_cons"], {})
+        with xra.enabled(True):
+            [fault] = input_contract_violations(dr, {"vpd_weekly": _input("hPa")})
+        assert (fault.kind, fault.node) == ("contract_violation", "vpd_weekly")
+        assert fault.target == "input of consumer"
+        assert (fault.facet, fault.reason) == ("unit", "unit_different")
+        assert (fault.expected, fault.found) == ({"unit": "Pa"}, "hPa")
+        assert fault.hint is not None
+        assert fault.hint in fault.message
+
+    def test_consumers_failing_alike_share_one_fault(self, register):
+        register("vr_a", _consumer("Pa", name="cons_a"))
+        register("vr_b", _consumer("Pa", name="cons_b"))
+        dr = build_driver(["vr_a", "vr_b"], {})
+        with xra.enabled(True):
+            [fault] = input_contract_violations(dr, {"vpd_weekly": _input("hPa")})
+        assert fault.target == "input of cons_a, cons_b"
 
 
 class TestCheckInputUnitsDirect:
@@ -329,6 +354,7 @@ class TestDryRunReport:
         assert isinstance(excinfo.value, DryRunError)
         report = excinfo.value.report
         assert _stage(report, "inputs").status == "failed"
+        assert [f.kind for f in _stage(report, "inputs").errors] == ["input_unreadable"]
         # The DAG does not depend on the inputs, so it is still checked.
         assert _stage(report, "dag").status == "ok"
         assert _stage(report, "plan").status == "skipped"
@@ -346,6 +372,8 @@ class TestDryRunReport:
         with pytest.raises(DryRunError, match="no attribute 'sqroot'") as excinfo:
             dry_run(cfg)
         assert "dag" in [s.name for s in excinfo.value.report.failed]
+        [fault] = _stage(excinfo.value.report, "dag").errors
+        assert fault.kind == "dag_build_failed"
 
     def test_mismatched_grids_fail_a_configured_check(
         self, tmp_path, synthetic_data_dir
@@ -365,6 +393,9 @@ class TestDryRunReport:
         with pytest.raises(DryRunError, match="coords_equal") as excinfo:
             dry_run(cfg)
         assert [s.name for s in excinfo.value.report.failed] == ["checks"]
+        [fault] = _stage(excinfo.value.report, "checks").errors
+        assert (fault.kind, fault.reason) == ("input_check_failed", "coords_equal")
+        assert fault.location == "[inputs.daily], [inputs.static]"
 
     def test_unreachable_output_var_raises(self, tmp_path, synthetic_data_dir):
         out = tmp_path / "out.nc"
@@ -392,8 +423,8 @@ class TestDryRunReport:
             f'[outputs.daily]\npath = "{out}"\nvars = ["temperature"]\n'
         )
         report = dry_run(_config(tmp_path, synthetic_data_dir, outputs))
-        findings = _stage(report, "plan").findings
-        assert any("consumed by no node" in f for f in findings)
+        [finding] = _stage(report, "plan").findings
+        assert (finding.kind, finding.node) == ("unused_input", "humidity_extra")
 
 
 _TOTAL_MODULE = """\
@@ -449,7 +480,9 @@ class TestEveryFaultInOneRun:
             dry_run(_unbound_config(tmp_path))
         report = excinfo.value.report
         assert [s.name for s in report.failed] == ["plan"]
-        assert "Required input offset" in _stage(report, "plan").errors[0]
+        [fault] = _stage(report, "plan").errors
+        assert fault.kind == "plan_invalid"
+        assert "Required input offset" in fault.message
 
     def test_unbound_input_with_outputs_is_a_fault(self, tmp_path):
         with (
@@ -463,8 +496,9 @@ class TestEveryFaultInOneRun:
             dry_run(_unbound_config(tmp_path, units="K", outputs=True))
         report = excinfo.value.report
         assert [s.name for s in report.failed] == ["dag", "plan"]
-        assert "'temperature'" in _stage(report, "dag").errors[0]
-        assert "Required input offset" in _stage(report, "plan").errors[0]
+        [conflict] = _stage(report, "dag").errors
+        assert (conflict.kind, conflict.node) == ("contract_conflict", "temperature")
+        assert "Required input offset" in _stage(report, "plan").errors[0].message
         assert _stage(report, "outputs").status == "ok"
 
     def test_an_unbound_input_does_not_hide_an_unused_one(
@@ -479,8 +513,8 @@ class TestEveryFaultInOneRun:
         with xra.enabled(True), pytest.raises(DryRunError) as excinfo:
             dry_run(cfg)
         plan = _stage(excinfo.value.report, "plan")
-        assert "Required input offset" in plan.errors[0]
-        assert any("humidity_extra" in f for f in plan.findings)
+        assert "Required input offset" in plan.errors[0].message
+        assert [f.node for f in plan.findings] == ["humidity_extra"]
 
     def test_a_failed_blocking_dim_labels_the_inputs_invalid(
         self, tmp_path, synthetic_data_dir
@@ -490,7 +524,9 @@ class TestEveryFaultInOneRun:
         )
         with pytest.raises(DryRunError) as excinfo:
             dry_run(cfg)
-        assert _stage(excinfo.value.report, "inputs").detail == "inputs invalid"
+        inputs = _stage(excinfo.value.report, "inputs")
+        assert inputs.detail == "inputs invalid"
+        assert [f.kind for f in inputs.errors] == ["blocking_dim_missing"]
 
     def test_cli_shows_paths_relative_to_the_working_directory(
         self, tmp_path, monkeypatch
@@ -521,6 +557,15 @@ class TestEveryFaultInOneRun:
         ):
             dry_run(_unbound_config(tmp_path), final_vars=["total"])
 
+    def test_each_unknown_final_var_is_one_fault(self, tmp_path):
+        with xra.enabled(True), pytest.raises(DryRunError) as excinfo:
+            dry_run(_unbound_config(tmp_path), final_vars=["nope", "nada"])
+        errors = _stage(excinfo.value.report, "plan").errors
+        assert [(f.kind, f.node, f.location) for f in errors] == [
+            ("unknown_target", "nope", "final_vars"),
+            ("unknown_target", "nada", "final_vars"),
+        ]
+
     def test_unknown_final_vars_are_named(self, tmp_path):
         with (
             xra.enabled(True),
@@ -537,6 +582,77 @@ class TestEveryFaultInOneRun:
         assert "'temperature'" in result.output
         assert "Dry run failed: 2 stage(s)" in result.output
         assert "Dry run passed." not in result.output
+
+
+class TestStructuredReport:
+    """Each fault is a record, and the whole report serialises to JSON."""
+
+    def test_unparseable_config_is_a_report_of_one_stage(self, tmp_path):
+        cfg = tmp_path / "config.toml"
+        cfg.write_text("[inputs\n")
+        with pytest.raises(DryRunError, match="not valid TOML") as excinfo:
+            dry_run(cfg)
+        report = excinfo.value.report
+        assert report.config_file == cfg
+        [stage] = report.stages
+        assert (stage.name, stage.status) == ("config", "failed")
+        assert [f.kind for f in stage.errors] == ["config_invalid"]
+
+    def test_unwritable_output_is_its_own_kind(self, tmp_path, synthetic_data_dir):
+        blocker = tmp_path / "blocker"
+        blocker.write_text("")
+        outputs = (
+            f'[outputs.daily]\npath = "{blocker / "out.nc"}"\nvars = ["temperature"]\n'
+        )
+        with pytest.raises(DryRunError) as excinfo:
+            dry_run(_config(tmp_path, synthetic_data_dir, outputs))
+        errors = _stage(excinfo.value.report, "outputs").errors
+        assert [f.kind for f in errors] == ["output_not_writable"]
+
+    def test_to_dict_round_trips_through_json(self, tmp_path):
+        with xra.enabled(True), pytest.raises(DryRunError) as excinfo:
+            dry_run(_unbound_config(tmp_path, units="K", outputs=True))
+        data = json.loads(json.dumps(excinfo.value.report.to_dict()))
+        assert data["schema_version"] == 1
+        assert data["ok"] is False
+        dag = next(stage for stage in data["stages"] if stage["name"] == "dag")
+        [fault] = dag["errors"]
+        assert fault["kind"] == "contract_conflict"
+        assert fault["facet"] == "unit"
+        assert {fault["found"]["unit"], fault["expected"]["unit"]} >= {"K"}
+
+    def test_cli_json_on_a_pass(self, tmp_path, synthetic_data_dir):
+        cfg = _config(tmp_path, synthetic_data_dir)
+        result = runner.invoke(app, ["run", cfg, "--dry-run", "--json"])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data["ok"] is True
+        assert data["config_file"] == cfg
+
+    def test_cli_json_on_a_failure(self, tmp_path):
+        cfg = _unbound_config(tmp_path, units="K", outputs=True)
+        with xra.enabled(True):
+            result = runner.invoke(app, ["run", cfg, "--dry-run", "--json"])
+        assert result.exit_code == 1
+        assert "\x1b[" not in result.output
+        data = json.loads(result.output)
+        assert data["ok"] is False
+        kinds = [f["kind"] for stage in data["stages"] for f in stage["errors"]]
+        assert kinds == ["contract_conflict", "plan_invalid"]
+
+    def test_cli_json_on_an_unparseable_config(self, tmp_path):
+        cfg = tmp_path / "config.toml"
+        cfg.write_text("[inputs\n")
+        result = runner.invoke(app, ["run", str(cfg), "--dry-run", "--json"])
+        assert result.exit_code == 1
+        [stage] = json.loads(result.output)["stages"]
+        assert stage["errors"][0]["kind"] == "config_invalid"
+
+    def test_cli_json_needs_dry_run(self, tmp_path, synthetic_data_dir):
+        cfg = _config(tmp_path, synthetic_data_dir)
+        result = runner.invoke(app, ["run", cfg, "--json"])
+        assert result.exit_code == 2
+        assert "--dry-run" in result.output
 
 
 class TestSwitchedOff:

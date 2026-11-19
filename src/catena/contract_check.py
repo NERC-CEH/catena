@@ -9,6 +9,10 @@ a run; `check_input_contracts` validates the metadata of the actually-loaded inp
 `DataArray`\\ s against the contracts declared by their consumers, without
 executing any node (the basis of `catena run --dry-run`).
 
+Each check raises one `CatenaValueError` naming everything it found.
+`dag_contract_conflicts` and `input_contract_violations` return the same as a list
+of `catena.faults.Fault` records instead, one per fault.
+
 **Facets.** The checks cover every `xarray-annotated` facet — **units** (pint/CF),
 **dims** / **coords** / **dtype** (schema), and **freq** (the spacing and phase of
 the time axis) — and apply the rules `xarray_annotated.check_annotations` applies at
@@ -48,6 +52,7 @@ from hamilton import driver
 from hamilton.node import Node
 from xarray_annotated import (
     Declared,
+    Violation,
     assert_valid_declaration,
     declaration_conflicts,
     declaration_from_hint,
@@ -56,6 +61,7 @@ from xarray_annotated import (
 )
 
 from .errors import CatenaValueError
+from .faults import Fault
 
 # Node name -> (declaration, producer label).
 _Produced = dict[str, tuple[Declared, str]]
@@ -126,18 +132,23 @@ def _collect_declarations(
 # ---------------------------------------------------------------------------
 
 
-def check_dag_contracts(dr: driver.Driver) -> None:
-    """Verify declared contracts are consistent across every built-DAG edge.
+def dag_contract_conflicts(dr: driver.Driver) -> list[Fault]:
+    """Return one `Fault` per provable conflict across the built DAG's edges.
 
-    Runs the build-time edge check for all facets (units, dims, dtype, freq; coords
-    is skipped — its declarations are lower bounds). A provable mismatch raises
-    `CatenaValueError` naming every offending edge. This is a no-op when
+    Covers units, dims, dtype and freq; coords is skipped, as its declarations are
+    lower bounds. Each fault is a `contract_conflict`, naming the variable, the two
+    ends of the edge, the facet and both declarations. Returns an empty list when
     `xarray-annotated` is switched off.
+
+    Raises
+    ------
+    CatenaValueError
+        If a declaration is malformed.
     """
     if not resolve_enabled():
-        return
+        return []
     produced, consumed = _collect_declarations(dr)
-    findings: list[str] = []
+    faults: list[Fault] = []
     for name, consumers in consumed.items():
         candidates: list[tuple[Declared, str]] = []
         if name in produced:
@@ -160,18 +171,40 @@ def check_dag_contracts(dr: driver.Driver) -> None:
         # relation.) Candidates are producer-first, so combinations() still leads with
         # "output of ...".
         for (a_decl, a_src), (b_decl, b_src) in combinations(candidates, 2):
-            findings.extend(
-                f"  {name!r}: {a_src} and {b_src} conflict on {conflict}"
-                for conflict in declaration_conflicts(a_decl, b_decl)
-            )
-    if findings:
+            for conflict in declaration_conflicts(a_decl, b_decl):
+                record = conflict.to_dict()
+                faults.append(
+                    Fault(
+                        "contract_conflict",
+                        f"{name!r}: {a_src} and {b_src} conflict on {conflict}",
+                        node=name,
+                        source=a_src,
+                        target=b_src,
+                        facet=conflict.facet,
+                        reason=conflict.kind,
+                        expected=record["b"],
+                        found=record["a"],
+                    )
+                )
+    return faults
+
+
+def check_dag_contracts(dr: driver.Driver) -> None:
+    """Verify declared contracts are consistent across every built-DAG edge.
+
+    Raises `CatenaValueError` naming every conflict `dag_contract_conflicts`
+    finds, or for a malformed declaration. This is a no-op when `xarray-annotated`
+    is switched off.
+    """
+    if faults := dag_contract_conflicts(dr):
         raise CatenaValueError(
-            "contract declaration mismatch(es) in DAG:\n" + "\n".join(findings)
+            "contract declaration mismatch(es) in DAG:\n"
+            + "\n".join(f"  {fault}" for fault in faults)
         )
 
 
-def check_input_contracts(dr: driver.Driver, inputs: dict[str, Any]) -> None:
-    """Validate loaded inputs' metadata against the contracts declared for them.
+def input_contract_violations(dr: driver.Driver, inputs: dict[str, Any]) -> list[Fault]:
+    """Return one `Fault` per way a loaded input fails the contracts declared for it.
 
     The runtime leg that cannot be done statically, run for every facet: an input's
     `units` attribute (units), its dims / coords / dtype (schema), and the inferred
@@ -182,22 +215,59 @@ def check_input_contracts(dr: driver.Driver, inputs: dict[str, Any]) -> None:
     a `DataArray` fails unless its hint allows the value, as `| None` allows
     `None`.
 
-    Every failing input is reported in one `CatenaValueError`, with every failing
-    facet of a `DataArray`. A malformed declaration raises `CatenaValueError` too.
-    This is a no-op when `xarray-annotated` is switched off.
+    Each fault is a `contract_violation`. Two consumers whose declarations fail the
+    same way share one fault, which names both. Returns an empty list when
+    `xarray-annotated` is switched off.
+
+    Raises
+    ------
+    CatenaValueError
+        If a declaration is malformed.
     """
     if not resolve_enabled():
-        return
+        return []
     _, consumed = _collect_declarations(dr)
-    findings: list[str] = []
+    faults: list[Fault] = []
     for name, value in inputs.items():
-        decls = [decl for decl, _ in consumed.get(name, ())]
-        try:
-            found = [v for d in decls for v in declaration_violations(value, d, name)]
-        except ValueError as exc:
-            raise CatenaValueError(f"malformed contract declaration: {exc}") from exc
-        # By message, as `Declared` equality ignores `others`: `| None` on one consumer
-        # does not excuse a None for another.
-        findings.extend(f"  {violation}" for violation in dict.fromkeys(found))
-    if findings:
-        raise CatenaValueError("input contract mismatch(es):\n" + "\n".join(findings))
+        # Keyed by message, as `Declared` equality ignores `others`: `| None` on one
+        # consumer does not excuse a None for another.
+        found: dict[str, tuple[Violation, list[str]]] = {}
+        for decl, who in consumed.get(name, ()):
+            try:
+                violations = declaration_violations(value, decl, name)
+            except ValueError as exc:
+                raise CatenaValueError(
+                    f"malformed contract declaration: {exc}"
+                ) from exc
+            for violation in violations:
+                found.setdefault(violation.message, (violation, []))[1].append(who)
+        for violation, consumers in found.values():
+            record = violation.to_dict()
+            faults.append(
+                Fault(
+                    "contract_violation",
+                    violation.message,
+                    node=name,
+                    target=f"input of {', '.join(dict.fromkeys(consumers))}",
+                    facet=violation.facet,
+                    reason=violation.kind,
+                    expected=record["declared"],
+                    found=record["found"],
+                    hint=violation.hint,
+                )
+            )
+    return faults
+
+
+def check_input_contracts(dr: driver.Driver, inputs: dict[str, Any]) -> None:
+    """Validate loaded inputs' metadata against the contracts declared for them.
+
+    Raises `CatenaValueError` naming every fault `input_contract_violations`
+    finds, or for a malformed declaration. This is a no-op when `xarray-annotated`
+    is switched off.
+    """
+    if faults := input_contract_violations(dr, inputs):
+        raise CatenaValueError(
+            "input contract mismatch(es):\n"
+            + "\n".join(f"  {fault}" for fault in faults)
+        )

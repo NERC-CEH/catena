@@ -129,6 +129,9 @@ class TestSpecsIsALeaf:
     def test_specs_imports_only_errors(self):
         assert _catena_imports(_module_sources()["catena.specs"]) <= {"catena.errors"}
 
+    def test_faults_imports_no_catena_module(self):
+        assert not _catena_imports(_module_sources()["catena.faults"])
+
     def test_errors_imports_nothing(self):
         tree = ast.parse(_module_sources()["catena.errors"])
         imports = [

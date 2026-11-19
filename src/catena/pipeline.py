@@ -23,6 +23,7 @@ from .blocking import execute_blocked
 from .build import build_driver_from_config
 from .config import load_config
 from .errors import CatenaError, CatenaValueError
+from .faults import Fault, FaultKind
 from .io import (
     assert_dim_in_inputs,
     assert_output_paths_writable,
@@ -32,7 +33,7 @@ from .io import (
     save_outputs,
 )
 from .specs import CacheSpec, ParsedConfig, SubsetSpec
-from .wiring_check import check_wiring, terminal_nodes
+from .wiring_check import WiringWarning, check_wiring, terminal_nodes, unused_inputs
 
 __all__ = [
     "DryRunError",
@@ -239,8 +240,22 @@ class Stage:
     # stage is fixed here so every renderer (the CLI, a CI script, a test) words it
     # the same way.
     detail: str
-    findings: tuple[str, ...] = ()
-    errors: tuple[str, ...] = ()
+    findings: tuple[Fault, ...] = ()
+    errors: tuple[Fault, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the stage as JSON-ready data, with each fault as a dict."""
+        return {
+            "name": self.name,
+            "status": self.status,
+            "detail": self.detail,
+            "findings": [fault.to_dict() for fault in self.findings],
+            "errors": [fault.to_dict() for fault in self.errors],
+        }
+
+
+DRY_RUN_SCHEMA_VERSION = 1
+"""The version of the layout `DryRunReport.to_dict` returns."""
 
 
 @dataclass(frozen=True)
@@ -256,6 +271,26 @@ class DryRunReport:
         """The stages that found a fault."""
         return tuple(stage for stage in self.stages if stage.status == "failed")
 
+    def to_dict(self) -> dict[str, Any]:
+        """Return the report as JSON-ready data.
+
+        `schema_version` is raised whenever the layout changes in a way a
+        consumer could notice, other than by gaining a key.
+
+        Examples
+        --------
+        >>> report = DryRunReport(None, (Stage("config", "ok", "config parsed"),))
+        >>> data = report.to_dict()
+        >>> data["schema_version"], data["ok"], data["stages"][0]["status"]
+        (1, True, 'ok')
+        """
+        return {
+            "schema_version": DRY_RUN_SCHEMA_VERSION,
+            "config_file": None if self.config_file is None else str(self.config_file),
+            "ok": not self.failed,
+            "stages": [stage.to_dict() for stage in self.stages],
+        }
+
 
 class DryRunError(CatenaValueError):
     """A dry run found at least one fault.
@@ -267,9 +302,9 @@ class DryRunError(CatenaValueError):
     def __init__(self, report: DryRunReport) -> None:
         self.report = report
         lines = [
-            f"[{stage.name}] {error}"
+            f"[{stage.name}] {fault}"
             for stage in report.failed
-            for error in stage.errors
+            for fault in stage.errors
         ]
         super().__init__(f"dry run found {len(lines)} fault(s):\n" + "\n".join(lines))
 
@@ -297,21 +332,27 @@ def dry_run(
 
     `subset` replaces the config's `[subset]` section, as for `run`.
 
-    A stage that finds a fault is marked `failed` with the fault in
-    `Stage.errors`, and the dry run carries on through every later stage that does
-    not depend on it, so one run reports every fault it can reach. A stage that
-    cannot run because one it depends on failed is `skipped`. If any stage
-    failed, `DryRunError` is raised at the end, carrying the report. A config
-    that fails to parse raises its own error at once, as nothing else can run.
+    A stage that finds a fault is marked `failed`, with one `catena.faults.Fault`
+    per fault in `Stage.errors`, and the dry run carries on through every later
+    stage that does not depend on it, so one run reports every fault it can reach.
+    A stage that cannot run because one it depends on failed is `skipped`. If any
+    stage failed, `DryRunError` is raised at the end, carrying the report. A config
+    that fails to parse ends the dry run at once, with a report holding only the
+    failed `config` stage, as nothing else can run.
 
     Contract stages report `skipped` when `xarray-annotated` is switched off. No
     model runs and nothing is written.
     """
     from xarray_annotated import resolve_enabled
 
-    from .contract_check import check_dag_contracts, check_input_contracts
+    from .contract_check import dag_contract_conflicts, input_contract_violations
 
-    parsed, config_file = prepare_config(config, subset)
+    try:
+        parsed, config_file = prepare_config(config, subset)
+    except CatenaValueError as exc:
+        config_file = None if isinstance(config, ParsedConfig) else Path(config)
+        stage = _failed("config", "config invalid", "config_invalid", exc)
+        raise DryRunError(DryRunReport(config_file, (stage,))) from exc
     # Reported in `detail` rather than `findings`: a finding renders as a warning,
     # and where a module came from is information, not a problem.
     sources = _registered_sources(parsed)
@@ -327,7 +368,9 @@ def dry_run(
         )
     except CatenaError as exc:
         inputs = None
-        stages.append(_failed("inputs", "inputs failed to load", exc))
+        stages.append(
+            _failed("inputs", "inputs failed to load", "input_unreadable", exc)
+        )
     else:
         detail = (
             f"inputs loaded: {len(inputs)} variable(s) "
@@ -337,7 +380,9 @@ def dry_run(
             if parsed.blocking_spec is not None:
                 assert_dim_in_inputs(inputs, parsed.blocking_spec.dim, "blocking")
         except CatenaError as exc:
-            stages.append(_failed("inputs", "inputs invalid", exc))
+            stages.append(
+                _failed("inputs", "inputs invalid", "blocking_dim_missing", exc)
+            )
         else:
             stages.append(Stage("inputs", "ok", detail))
 
@@ -352,24 +397,26 @@ def dry_run(
         )
     except CatenaError as exc:
         dr = None
-        stages.append(_failed("dag", "DAG failed to build", exc))
+        stages.append(_failed("dag", "DAG failed to build", "dag_build_failed", exc))
     else:
+        detail = "DAG built; static contract check failed"
         try:
-            check_dag_contracts(dr)
+            conflicts = dag_contract_conflicts(dr)
         except CatenaError as exc:
-            stages.append(
-                _failed("dag", "DAG built; static contract check failed", exc)
-            )
+            stages.append(_failed("dag", detail, "contract_malformed", exc))
         else:
-            stages.append(
-                Stage(
-                    "dag",
-                    "ok",
-                    "DAG built (static contract check passed)"
-                    if checking
-                    else "DAG built (contract checks switched off)",
+            if conflicts:
+                stages.append(Stage("dag", "failed", detail, errors=tuple(conflicts)))
+            else:
+                stages.append(
+                    Stage(
+                        "dag",
+                        "ok",
+                        "DAG built (static contract check passed)"
+                        if checking
+                        else "DAG built (contract checks switched off)",
+                    )
                 )
-            )
 
     if dr is None or inputs is None:
         stages.append(_skipped("plan", "execution plan", dr, inputs))
@@ -383,18 +430,28 @@ def dry_run(
     elif dr is None or inputs is None:
         stages.append(_skipped("contracts", "input contracts", dr, inputs))
     else:
+        detail = "input contracts invalid"
         try:
-            check_input_contracts(dr, inputs)
+            violations = input_contract_violations(dr, inputs)
         except CatenaError as exc:
-            stages.append(_failed("contracts", "input contracts invalid", exc))
+            stages.append(_failed("contracts", detail, "contract_malformed", exc))
         else:
-            stages.append(Stage("contracts", "ok", "input contracts validated"))
+            if violations:
+                stages.append(
+                    Stage("contracts", "failed", detail, errors=tuple(violations))
+                )
+            else:
+                stages.append(Stage("contracts", "ok", "input contracts validated"))
 
     if parsed.output_specs:
         try:
             assert_output_paths_writable(parsed.output_specs, parsed.subset_spec)
         except CatenaError as exc:
-            stages.append(_failed("outputs", "output paths not writable", exc))
+            stages.append(
+                _failed(
+                    "outputs", "output paths not writable", "output_not_writable", exc
+                )
+            )
         else:
             stages.append(
                 Stage(
@@ -418,8 +475,9 @@ def dry_run(
     return report
 
 
-def _failed(name: str, detail: str, exc: Exception) -> Stage:
-    return Stage(name, "failed", detail, errors=(str(exc),))
+def _failed(name: str, detail: str, kind: FaultKind, exc: Exception) -> Stage:
+    """Report a stage whose one fault is an error raised with no record behind it."""
+    return Stage(name, "failed", detail, errors=(Fault(kind, str(exc)),))
 
 
 def _skipped(name: str, what: str, dr: object, inputs: object) -> Stage:
@@ -437,11 +495,16 @@ def _checks_stage(parsed: ParsedConfig, *, inputs_loaded: bool) -> Stage:
         return Stage("checks", "skipped", "input checks: none configured")
     if not inputs_loaded:
         return Stage("checks", "skipped", "input checks: skipped (inputs unavailable)")
+    from .input_checks import input_check_failures
+    from .io import load_raw_datasets
+
     try:
-        n_checks = _run_input_checks(parsed)
+        raw = load_raw_datasets(parsed.input_specs)
     except CatenaError as exc:
-        return _failed("checks", "input checks failed", exc)
-    return Stage("checks", "ok", f"input checks passed ({n_checks})")
+        return _failed("checks", "input checks failed", "input_unreadable", exc)
+    if faults := input_check_failures(raw, parsed.checks):
+        return Stage("checks", "failed", "input checks failed", errors=tuple(faults))
+    return Stage("checks", "ok", f"input checks passed ({len(parsed.checks)})")
 
 
 def _plan_stage(
@@ -460,16 +523,28 @@ def _plan_stage(
         requested, what, source = terminal_nodes(dr), "terminal node(s)", ""
     known = set(dr.graph.nodes)
     targets = [var for var in requested if var in known]
-    errors: list[str] = []
-    if unknown := [var for var in requested if var not in known]:
-        errors.append(f"{source} requests node(s) the DAG does not define: {unknown}")
-    with warnings.catch_warnings(record=True) as wiring_warnings:
-        warnings.simplefilter("always")
+    errors = [
+        Fault(
+            "unknown_target",
+            f"{source} requests node {var!r}, which the DAG does not define",
+            node=var,
+            location=source,
+        )
+        for var in requested
+        if var not in known
+    ]
+    findings = tuple(
+        Fault(
+            "unused_input", f"loaded input {name!r} is consumed by no node", node=name
+        )
+        for name in unused_inputs(dr, targets, inputs)
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", WiringWarning)
         try:
             check_wiring(dr, targets, inputs)
         except CatenaError as exc:
-            errors.append(str(exc))
-    findings = tuple(str(w.message) for w in wiring_warnings)
+            errors.append(Fault("plan_invalid", str(exc)))
     if errors:
         return Stage(
             "plan", "failed", "execution plan invalid", findings, tuple(errors)

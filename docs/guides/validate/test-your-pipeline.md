@@ -65,6 +65,7 @@ A dry run that finds a fault raises `catena.DryRunError`, whose message lists ev
 If you drive the DAG yourself rather than through `[outputs.*]`, pass the nodes you will execute as `final_vars`, so the wiring is checked for those and not for every terminal node.
 
 `Stage.errors` holds each stage's faults and `Stage.findings` the soft issues, such as an input no node consumes.
+Each is a [`Fault`](../../reference/modules/catena.faults.md#catena.faults.Fault): its `kind` says what went wrong, and where a contract is at fault, `node`, `facet`, `expected` and `found` say where and how, so a test need not match the wording of a message.
 To assert that a config is broken in one specific way, as when a parameter is left out deliberately and supplied on each run, inspect the report:
 
 ```python
@@ -76,7 +77,9 @@ def test_only_the_calibrated_parameter_is_missing():
         catena.dry_run(Path("config.toml"), final_vars=["calibrated_output"])
     [plan] = excinfo.value.report.failed
     assert plan.name == "plan"
-    assert "['scaling_factor']" in plan.errors[0]
+    [fault] = plan.errors
+    assert fault.kind == "plan_invalid"
+    assert "['scaling_factor']" in fault.message
 ```
 
 If your inputs are large or absent in CI, point the test at a small synthetic file with the same variables and metadata: the checks read headers, not arrays.
