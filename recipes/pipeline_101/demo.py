@@ -126,13 +126,13 @@ def _():
 def _(catena, config_path, mo, nodes_path):
     import inspect
 
-    from dotdoc import graph_html
+    from dotdoc import autoref, graph_html
 
     def api_url(fn):
-        """Link a function from nodes.py to its entry at the end of this page."""
+        """Link a function from nodes.py to its entry under its documented path."""
         if inspect.getsourcefile(inspect.unwrap(fn)) != str(nodes_path.resolve()):
             return None
-        return f"#pipeline_101.nodes.{fn.__qualname__}"
+        return autoref(f"pipeline_101.nodes.{fn.__qualname__}")
 
     graph = catena.build_graph(config_path, link=api_url)
     mo.Html(graph_html(graph))
