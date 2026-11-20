@@ -13,12 +13,12 @@ Recognised top-level sections are listed below.
 
 !!! note "Paths are resolved relative to the config file"
 
-    Every relative path in a config — `path` in `[inputs.*]`, `[outputs.*]` and `[cache]`, and a `.py` `_import_path` — is resolved against the config file's directory, not the working directory.
+    Every relative path in a config — `path` in `[inputs]`, `[outputs]` and `[cache]`, and a `.py` `_import_path` — is resolved against the config file's directory, not the working directory.
 
 ## Inputs
 
 `[inputs.<label>]` declares where to load data from and which variables to expose.
-The `<label>` is arbitrary (`climate`, `daily`, `static`, …).
+The `<label>` is arbitrary (`climate`, `daily`, `static`, …), except that it may not be `inputs`.
 
 ```toml
 [inputs.daily]
@@ -67,6 +67,20 @@ vars = { latitude = "lat", elevation = "altitude" }
 
 The nodes keep the coordinates' attributes, `units` included, so contracts check them like any other input.
 
+### A single input file
+
+A pipeline that reads one file may write a single `[inputs]` section with no label:
+
+```toml
+[inputs]
+path = "data/daily.nc"
+vars = ["temperature", "precipitation"]
+```
+
+It takes the same keys, but its suffix defaults to `""`, so the nodes above are `temperature` and `precipitation`.
+Its label is `inputs`, which is how a [`[validation]`](#validation) check would refer to it.
+A config uses one form or the other: `[inputs]` keys and `[inputs.<label>]` sections cannot be mixed.
+
 ## Outputs
 
 `[outputs.<label>]` declares which computed variables to write, and where.
@@ -81,6 +95,16 @@ vars = ["temperature_anomaly", "aridity_index"]
 `vars` takes the same list/mapping forms as inputs — the mapping form (`{gpp_daily = "gpp"}`) writes node `gpp_daily` to file variable `gpp`.
 Format is inferred from the extension.
 Missing parent directories are created when the output is written.
+
+As with inputs, a pipeline that writes one file may use a single `[outputs]` section, whose suffix defaults to `""`:
+
+```toml
+[outputs]
+path = "results/daily.nc"
+vars = ["temperature_anomaly", "aridity_index"]
+```
+
+The label `outputs` is reserved for this form.
 
 ## Modules
 

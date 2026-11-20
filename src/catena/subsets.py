@@ -28,7 +28,7 @@ from .errors import (
     CatenaValueError,
 )
 from .formats import format_for
-from .specs import IOSpec, ParsedConfig, SubsetSpec
+from .specs import IOSpec, ParsedConfig, SubsetSpec, io_section_name
 
 
 def subset_suffix(spec: SubsetSpec) -> str:
@@ -242,10 +242,10 @@ def create_output_store(
         for name, var in probed.data_vars.items():
             if dim not in var.dims:
                 raise CatenaValueError(
-                    f"[outputs.{label}] variable {name!r} has no {dim!r} dimension "
-                    f"(its dimensions are {list(var.dims)}), so runs over subsets "
-                    f"of {dim!r} cannot share one store for it. Write it to a "
-                    f"NetCDF output, or leave it out."
+                    f"{io_section_name('outputs', label)} variable {name!r} has no "
+                    f"{dim!r} dimension (its dimensions are {list(var.dims)}), so "
+                    f"runs over subsets of {dim!r} cannot share one store for it. "
+                    f"Write it to a NetCDF output, or leave it out."
                 )
             shape = tuple(n_along_dim if d == dim else var.sizes[d] for d in var.dims)
             chunks = tuple(
@@ -345,17 +345,17 @@ def merge_subset_outputs(
         if format_for(spec.path).needs_store:
             if out is not None:
                 raise CatenaValueError(
-                    f"[outputs.{label}] is a Zarr store, which subset runs write in "
-                    f"place; 'out' applies to NetCDF outputs only."
+                    f"{io_section_name('outputs', label)} is a Zarr store, which "
+                    f"subset runs write in place; 'out' applies to NetCDF outputs only."
                 )
             _assert_store_complete(path)
             written.append(str(path))
             continue
         if dim is None:
             raise CatenaValueError(
-                f"[outputs.{label}] is merged from NetCDF parts named after the "
-                f"dimension the subset runs partitioned. Name it (CLI: --dim), or "
-                f"give the config a [subset] section."
+                f"{io_section_name('outputs', label)} is merged from NetCDF "
+                f"parts named after the dimension the subset runs partitioned. "
+                f"Name it (CLI: --dim), or give the config a [subset] section."
             )
         parts = _find_subset_parts(path, dim)
         ds = xr.open_mfdataset(

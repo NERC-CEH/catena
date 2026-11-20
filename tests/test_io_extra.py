@@ -410,6 +410,10 @@ class TestMissingVars:
         with pytest.raises(ValueError, match=r"\[inputs\.daily\] names variables"):
             self._load(input_path, ["var_a", "absent"])
 
+    def test_flat_section_is_named_without_a_label(self, input_path):
+        with pytest.raises(ValueError, match=r"^\[inputs\] names variables"):
+            load_inputs({"inputs": IOSpec(path=str(input_path), vars=["absent"])})
+
     def test_message_names_the_file_and_the_variable(self, input_path):
         with pytest.raises(ValueError, match="names variables") as excinfo:
             self._load(input_path, ["absent"])

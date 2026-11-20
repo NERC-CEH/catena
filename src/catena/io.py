@@ -11,7 +11,7 @@ import xarray as xr
 
 from .errors import CatenaFileNotFoundError, CatenaPermissionError, CatenaValueError
 from .formats import format_for
-from .specs import IOSpec, SubsetSpec
+from .specs import IO_SECTIONS, IOSpec, SubsetSpec, io_section_name
 from .subsets import open_region_store, save_zarr_region, subset_path
 
 
@@ -19,10 +19,13 @@ def effective_suffix(label: str, spec: IOSpec) -> str:
     """Resolve the node-name suffix for an input/output section.
 
     Honours an explicit `IOSpec.suffix` when set; otherwise defaults to
-    `_<label>`. Set `suffix = ""` for bare names.
+    `_<label>`, or to bare names for the flat `[inputs]`/`[outputs]` form (whose
+    label is `"inputs"` or `"outputs"`). Set `suffix = ""` for bare names.
     """
     if spec.suffix is not None:
         return spec.suffix
+    if label in IO_SECTIONS:
+        return ""
     return f"_{label}"
 
 
@@ -64,8 +67,9 @@ def _check_requested_vars(
     if not missing:
         return
     available = sorted(str(var) for var in ds.data_vars)
+    where = io_section_name("inputs", label)
     lines = [
-        f"[inputs.{label}] names variables that are not in {path}: "
+        f"{where} names variables that are not in {path}: "
         f"{', '.join(repr(var) for var in missing)}."
     ]
     for var in missing:
@@ -159,7 +163,7 @@ def load_raw_datasets(input_specs: dict[str, IOSpec]) -> dict[str, xr.Dataset]:
     Raises `CatenaFileNotFoundError` listing every input path that does not exist.
     """
     missing = [
-        f"  [inputs.{label}] {spec.path}"
+        f"  {io_section_name('inputs', label)} {spec.path}"
         for label, spec in input_specs.items()
         if not Path(spec.path).exists()
     ]
@@ -208,8 +212,9 @@ def load_inputs(
         tdims = time_dims(ds)
         if len(tdims) > 1:
             raise CatenaValueError(
-                f"[inputs.{label}] has multiple time dimensions {sorted(tdims)}; "
-                f"catena requires at most one time dimension per input dataset."
+                f"{io_section_name('inputs', label)} has multiple time "
+                f"dimensions {sorted(tdims)}; catena requires at most one time "
+                f"dimension per input dataset."
             )
 
     for label, spec in input_specs.items():
@@ -218,8 +223,9 @@ def load_inputs(
         _check_requested_vars(label, spec.path, ds, mapping)
         for node_name, file_var in mapping.items():
             if node_name in inputs:
+                where = io_section_name("inputs", label)
                 raise CatenaValueError(
-                    f"input node name {node_name!r} (from [inputs.{label}]) collides "
+                    f"input node name {node_name!r} (from {where}) collides "
                     f"with an already-loaded input."
                 )
             inputs[node_name] = ds[file_var]
@@ -272,7 +278,8 @@ def dim_size(datasets: dict[str, xr.Dataset], dim: str, section: str) -> int:
     sizes = {label: ds.sizes[dim] for label, ds in datasets.items() if dim in ds.dims}
     if len(set(sizes.values())) > 1:
         detail = ", ".join(
-            f"[inputs.{label}]={n}" for label, n in sorted(sizes.items())
+            f"{io_section_name('inputs', label)}={n}"
+            for label, n in sorted(sizes.items())
         )
         raise CatenaValueError(
             f"Inputs disagree on the size of the [{section}] dimension {dim!r}: "
@@ -287,9 +294,9 @@ def _check_not_stacked(label: str, ds: xr.Dataset) -> None:
     )
     if stacked:
         raise CatenaValueError(
-            f"[outputs.{label}] has stacked dimension(s) {stacked}, which cannot be "
-            f"written to a file. Unstack them in the node that stacked them, e.g. "
-            f"with `.unstack({stacked[0]!r})`."
+            f"{io_section_name('outputs', label)} has stacked dimension(s) "
+            f"{stacked}, which cannot be written to a file. Unstack them in the "
+            f"node that stacked them, e.g. with `.unstack({stacked[0]!r})`."
         )
 
 
@@ -443,8 +450,9 @@ def get_final_vars(output_specs: dict[str, IOSpec]) -> list[str]:
     for label, spec in output_specs.items():
         for node in var_mapping(label, spec):
             if node in seen:
+                where = io_section_name("outputs", label)
                 raise CatenaValueError(
-                    f"output node name {node!r} (from [outputs.{label}]) is requested "
+                    f"output node name {node!r} (from {where}) is requested "
                     f"by more than one output section."
                 )
             seen.add(node)

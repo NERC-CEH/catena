@@ -95,6 +95,32 @@ vars = ["temperature"]
             assert "catena_config" not in ds.attrs
 
 
+class TestFlatIOSections:
+    def test_flat_sections_run_with_bare_node_names(self, tmp_path, synthetic_data_dir):
+        """[inputs] and [outputs] bind bare names: no suffix from a label."""
+        out = tmp_path / "out.nc"
+        cfg = tmp_path / "config.toml"
+        cfg.write_text(
+            f"""\
+[[node]]
+name = "warmth"
+inputs = ["temperature"]
+expression = "temperature * 2"
+
+[inputs]
+path = "{synthetic_data_dir / "daily.nc"}"
+vars = ["temperature"]
+
+[outputs]
+path = "{out}"
+vars = ["warmth"]
+"""
+        )
+        report = run(cfg)
+        assert set(report.outputs) == {"outputs"}
+        assert set(xr.open_dataset(out).data_vars) == {"warmth"}
+
+
 class TestRunPreFlight:
     """Everything that must fail *before* the DAG executes."""
 

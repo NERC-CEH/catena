@@ -25,7 +25,7 @@ import xarray as xr
 from .errors import CatenaError, CatenaValueError
 from .faults import Fault
 from .io import time_dims
-from .specs import CheckSpec
+from .specs import CheckSpec, io_section_name
 
 logger = logging.getLogger(__name__)
 
@@ -235,15 +235,18 @@ def input_check_failures(
 ) -> list[Fault]:
     """Apply each `CheckSpec` to the loaded raw Datasets, and return what failed.
 
-    Each dataset is named `[inputs.<label>]` in a failure message. A variadic
-    check that receives fewer than two datasets is a quiet no-op. Each failed
-    check is one `input_check_failed` fault, whose `reason` is the check's name
-    and whose `location` names the inputs it was given.
+    Each dataset is named by its section (`[inputs.<label>]`) in a failure
+    message. A variadic check that receives fewer than two datasets is a quiet
+    no-op. Each failed check is one `input_check_failed` fault, whose `reason`
+    is the check's name and whose `location` names the inputs it was given.
     """
     faults: list[Fault] = []
     for spec in checks:
         entry = CHECKS[spec.check]
-        datasets = {f"[inputs.{label}]": raw_datasets[label] for label in spec.inputs}
+        datasets = {
+            io_section_name("inputs", label): raw_datasets[label]
+            for label in spec.inputs
+        }
         if entry.arity == "variadic" and len(datasets) < 2:
             logger.info(
                 "check '%s' over %s is a no-op (fewer than two datasets)",
