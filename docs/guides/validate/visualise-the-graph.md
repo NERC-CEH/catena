@@ -33,8 +33,13 @@ The graphs on this page are drawn from a small pipeline: two daily inputs, three
     ```
     <!-- fmt:on -->
 
-```bash exec="true"
-python docs/guides/validate/graph_example/show.py
+```python exec="true" session="visualise"
+import sys
+
+sys.path.insert(0, "docs/_scripts")
+from catena_blocks import graph_example
+
+print(graph_example())
 ```
 
 - It draws what the `[outputs.*]` sections need; pass `--all-nodes` to draw every node the config's modules define.
@@ -65,8 +70,8 @@ Two more options thin out the input tables, in any view:
 
 Here only what `aridity_index_daily` needs is drawn, without the input tables:
 
-```bash exec="true"
-python docs/guides/validate/graph_example/show.py --upstream-of aridity_index_daily --hide-inputs
+```python exec="true" session="visualise"
+print(graph_example("--upstream-of", "aridity_index_daily", "--hide-inputs"))
 ```
 
 ## What to look for
@@ -105,8 +110,8 @@ This style file pins the colours of the two frequencies, lays the graph out top 
     ```
     <!-- fmt:on -->
 
-```bash exec="true"
-python docs/guides/validate/graph_example/show.py --style style.toml
+```python exec="true" session="visualise"
+print(graph_example("--style", "style.toml"))
 ```
 
 A style function receives each Hamilton node, including the tags set on its function with Hamilton's [`@tag`](https://hamilton.apache.org/reference/decorators/tag/) decorator, so `by_stage` dashes `precipitation_checked`, tagged `stage="qc"` in `nodes.py`.
