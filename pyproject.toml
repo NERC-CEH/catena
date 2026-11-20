@@ -30,7 +30,7 @@ dependencies = [
 cli = ["typer>=0.24.1"]
 viz = [
     "apache-hamilton[visualization]>=1.90.0",
-    "dotdoc[hamilton]>=0.1.0rc1",
+    "dotdoc[hamilton]>=0.1.0",
 ]
 all = ["ukceh-catena[cli,viz]"]
 

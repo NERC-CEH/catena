@@ -114,7 +114,8 @@ def _tooltip_style(dr: Driver) -> "StyleFunction":
     defines the node, then the node's declared output contract, one facet per
     line. Field nodes get the contract only.
     """
-    from dotdoc.hamilton import summary, tooltip_style
+    from dotdoc import summary
+    from dotdoc.hamilton import tooltip_style
 
     produced, _ = _collect_declarations(dr)
 
