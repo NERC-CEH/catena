@@ -22,13 +22,13 @@ Here is a complete config — the one from [Pipeline 101](../../recipes/pipeline
 Three kinds of section do the work:
 
 `[inputs.<label>]`
-:   Where data comes from. One section per file, `path` plus the `vars` you want. The format follows the [file extension](../../reference/data-formats.md).
+:   Where data comes from. One section per file, `path` plus the `vars` you want. The format follows the [file extension](../../reference/data-formats.md). A pipeline with one input file can write a single `[inputs]` section instead.
 
 `[[node]]`, `[[resample]]`, and your own module sections
 :   What gets computed. An inline `[[node]]` holds a Python expression; a section with an `_import_path` pulls in a module of node functions.
 
 `[outputs.<label>]`
-:   What gets written. One section per output file, `path` plus the nodes to put in it.
+:   What gets written. One section per output file, `path` plus the nodes to put in it. Likewise, a single `[outputs]` section will do for one file.
 
 The optional sections `[validation]`, `[cache]`, `[blocking]` and `[subset]` change how the pipeline is checked or executed, never what it computes.
 
@@ -41,6 +41,7 @@ Three rules cover almost everything:
 
 1. An `[inputs.<label>]` section with `vars = ["temperature"]` produces a node called `temperature_<label>`.
    The suffix is the section label, so `[inputs.daily]` gives `temperature_daily`.
+   A single unlabelled `[inputs]` section has no suffix, so it gives `temperature`.
 2. A node's `inputs` are node names, written exactly, suffix included.
 3. An `[outputs.<label>]` section's `vars` are node names too.
 
@@ -62,7 +63,7 @@ To see what actually connected to what, draw it with [`catena graph config.toml 
 Most work on a config is adapting one that already runs.
 
 **Point it at different data.**
-Change `path` in the `[inputs.*]` sections and in the `[outputs.*]` sections.
+Change `path` in the input sections and in the output sections.
 If the new files name their variables differently, use the mapping form of `vars` rather than renaming anything downstream.
 
 **Add a variable from a file you already read.**
@@ -74,7 +75,7 @@ If it fits in one expression, add an [inline `[[node]]`](inline-nodes-and-fan-ou
 Otherwise [write a module](../nodes/bring-your-own-module.md) and add a section pointing at it.
 
 **Ask for different results.**
-Edit `vars` in the `[outputs.*]` section.
+Edit `vars` in the output sections.
 Only the nodes your outputs depend on are executed, so removing a variable makes the run smaller.
 Any node can be requested, including an intermediate you want to inspect.
 

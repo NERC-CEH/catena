@@ -22,6 +22,7 @@ from .importing import (
 )
 from .input_checks import CHECKS
 from .specs import (
+    IO_SECTIONS,
     BlockingSpec,
     CacheSpec,
     CheckSpec,
@@ -33,7 +34,40 @@ from .specs import (
     SubsetSpec,
     _validate_vars,
     expand_node_entries,
+    io_section_name,
 )
+
+
+def _io_sections(kind: str, raw: Any) -> dict[str, dict]:
+    """Return the raw `kind` I/O table as a `{label: params}` mapping.
+
+    A table whose values are all tables is labelled sections (`[inputs.daily]`);
+    one with no table values is the flat form (`[inputs]`), returned under the
+    label `kind`.
+    """
+    assert kind in IO_SECTIONS
+    if not isinstance(raw, dict):
+        raise CatenaValueError(
+            f"'{kind}' must be a table: [{kind}] for a single file, or "
+            f"[{kind}.<label>] for each of several, got {raw!r}."
+        )
+    labelled = [key for key, value in raw.items() if isinstance(value, dict)]
+    if not labelled:
+        return {kind: raw} if raw else {}
+    flat = [key for key in raw if key not in labelled]
+    if flat:
+        raise CatenaValueError(
+            f"[{kind}] mixes keys of a single section ({flat}) with labelled "
+            f"sections ({[f'{kind}.{key}' for key in labelled]}). Use [{kind}] "
+            f"alone for a single file, or one [{kind}.<label>] for each file."
+        )
+    if kind in raw:
+        raise CatenaValueError(
+            f"[{kind}.{kind}] uses the label '{kind}', which is reserved for "
+            f"the single-section [{kind}] form. Choose another label."
+        )
+    return raw
+
 
 # ---------------------------------------------------------------------------
 # The parser: raw TOML dict -> ParsedConfig
@@ -103,51 +137,51 @@ class Config:
         return tomli_w.dumps(self._data)
 
     def _parse_inputs(self, data: dict, input_specs: dict) -> None:
-        """Handle [inputs.*] sections.
+        """Handle the [inputs] or [inputs.*] sections.
 
         An input section may omit `vars` entirely, which binds every variable in
         the file through the section's suffix. It may not list *no* variables,
         which would bind nothing.
         """
-        for label, params in data.pop("inputs", {}).items():
+        for label, params in _io_sections("inputs", data.pop("inputs", {})).items():
+            where = io_section_name("inputs", label)
             if "path" not in params:
                 raise CatenaValueError(
-                    f"[inputs.{label}] is missing a 'path' key. "
+                    f"{where} is missing a 'path' key. "
                     f"Input sections must specify a file path."
                 )
             vars_ = params.get("vars")
             if vars_ is not None and len(vars_) == 0:
                 raise CatenaValueError(
-                    f"[inputs.{label}] has an empty 'vars'. Either list the "
+                    f"{where} has an empty 'vars'. Either list the "
                     f"variables to load, or omit 'vars' entirely to load every "
                     f"variable in the file."
                 )
             input_specs[label] = IOSpec(
                 path=self._resolve(params["path"]),
-                vars=(
-                    None if vars_ is None else _validate_vars(f"inputs.{label}", vars_)
-                ),
+                vars=None if vars_ is None else _validate_vars(where, vars_),
                 suffix=params.get("suffix"),
             )
 
     def _parse_outputs(self, data: dict, output_specs: dict) -> None:
-        """Handle [outputs.*] sections."""
-        for label, params in data.pop("outputs", {}).items():
+        """Handle the [outputs] or [outputs.*] sections."""
+        for label, params in _io_sections("outputs", data.pop("outputs", {})).items():
+            where = io_section_name("outputs", label)
             vars_ = params.get("vars") or []
             if not vars_:
                 raise CatenaValueError(
-                    f"[outputs.{label}] has no 'vars'. "
+                    f"{where} has no 'vars'. "
                     f"Output sections must list at least one variable, "
                     f"or be removed from the config."
                 )
             if "path" not in params:
                 raise CatenaValueError(
-                    f"[outputs.{label}] is missing a 'path' key. "
+                    f"{where} is missing a 'path' key. "
                     f"Output sections must specify a file path."
                 )
             output_specs[label] = IOSpec(
                 path=self._resolve(params["path"]),
-                vars=_validate_vars(f"outputs.{label}", vars_),
+                vars=_validate_vars(where, vars_),
                 suffix=params.get("suffix"),
             )
 
@@ -337,11 +371,12 @@ class Config:
         """Parse config into a ParsedConfig.
 
         Recognised top-level keys and sections (processed directly):
-        - [inputs.*]      — I/O specs; the subsection key is an inert label
+        - [inputs.*]      — I/O specs; the subsection key is an inert label, or a
+                            single flat [inputs] section (label "inputs")
         - [validation]    — declared expectations to validate; `checks` holds the
                             input-Dataset compatibility checks
                             (see catena.input_checks)
-        - [outputs.*]     — I/O specs; the subsection key is an inert label
+        - [outputs.*]     — I/O specs, as for [inputs.*]
         - [[node]]        — config-driven custom nodes (supports for_each fan-out)
         - [[resample]]    — preset desugaring to fan-out nodes
         - [cache]         — Hamilton result caching (path, recompute, disable)

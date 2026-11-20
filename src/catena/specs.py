@@ -47,6 +47,22 @@ never treated as a user module, so a package registering one of these names woul
 register something no config could ever reach.
 """
 
+IO_SECTIONS: tuple[str, ...] = ("inputs", "outputs")
+"""The I/O section kinds. Each is also the label of its own flat form: a config
+holding a single `[inputs]` table parses to the label `"inputs"`, so neither name
+may be used as the label of a labelled section.
+"""
+
+
+def io_section_name(kind: str, label: str) -> str:
+    """Return the config's name for an I/O section, for messages.
+
+    `[inputs.daily]` for a labelled section, `[inputs]` for the flat form, whose
+    label is `kind` itself.
+    """
+    return f"[{kind}]" if label == kind else f"[{kind}.{label}]"
+
+
 CONTRACT_KEYS: tuple[str, ...] = (
     "units",
     "dims",
@@ -586,9 +602,10 @@ class IOSpec:
 
     `suffix` controls the list/load-everything forms' node names. When `None`
     (the default) the effective suffix is derived from the section label
-    (`_<label>`). Set `suffix = ""` on any section for bare names, or
-    `suffix = "_x"` to choose an explicit suffix. It is ignored for the mapping
-    form (which is already explicit). See `catena.io.effective_suffix`.
+    (`_<label>`), or is empty for the flat `[inputs]`/`[outputs]` form. Set
+    `suffix = ""` on any section for bare names, or `suffix = "_x"` to choose
+    an explicit suffix. It is ignored for the mapping form (which is already
+    explicit). See `catena.io.effective_suffix`.
     """
 
     path: str
@@ -596,8 +613,11 @@ class IOSpec:
     suffix: str | None = None
 
 
-def _validate_vars(label: str, vars_: Any) -> list[str] | dict[str, str]:
-    """Validate a section's `vars` is a list[str] or a dict[str, str]."""
+def _validate_vars(section: str, vars_: Any) -> list[str] | dict[str, str]:
+    """Validate a section's `vars` is a list[str] or a dict[str, str].
+
+    `section` is the section's name as `io_section_name` gives it, for messages.
+    """
     if isinstance(vars_, dict):
         bad = [
             (k, v)
@@ -606,14 +626,14 @@ def _validate_vars(label: str, vars_: Any) -> list[str] | dict[str, str]:
         ]
         if bad:
             raise CatenaValueError(
-                f"[{label}] 'vars' mapping must be {{node_name = file_var}} with "
+                f"{section} 'vars' mapping must be {{node_name = file_var}} with "
                 f"string keys and values, got offending entries {bad!r}."
             )
         return dict(vars_)
     if isinstance(vars_, list) and all(isinstance(v, str) for v in vars_):
         return list(vars_)
     raise CatenaValueError(
-        f"[{label}] 'vars' must be a list of names or a {{node_name = file_var}} "
+        f"{section} 'vars' must be a list of names or a {{node_name = file_var}} "
         f"mapping, got {vars_!r}."
     )
 

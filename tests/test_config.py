@@ -303,6 +303,59 @@ class TestValidation:
             config.parse()
 
 
+class TestFlatIOSections:
+    """A single file may be written as a flat [inputs] or [outputs] table."""
+
+    def test_flat_input_parses_under_its_kind(self):
+        parsed = Config.loads('[inputs]\npath = "a.nc"\nvars = ["t"]\n').parse()
+        assert parsed.input_specs == {"inputs": IOSpec(path="a.nc", vars=["t"])}
+
+    def test_flat_output_parses_under_its_kind(self):
+        parsed = Config.loads('[outputs]\npath = "o.nc"\nvars = ["g"]\n').parse()
+        assert parsed.output_specs == {"outputs": IOSpec(path="o.nc", vars=["g"])}
+
+    def test_flat_and_labelled_forms_combine(self):
+        parsed = Config.loads(
+            '[inputs]\npath = "a.nc"\n\n[outputs.daily]\npath = "o.nc"\nvars = ["g"]\n'
+        ).parse()
+        assert list(parsed.input_specs) == ["inputs"]
+        assert list(parsed.output_specs) == ["daily"]
+
+    def test_flat_input_omitting_vars_loads_everything(self):
+        parsed = Config.loads('[inputs]\npath = "a.nc"\n').parse()
+        assert parsed.input_specs["inputs"].vars is None
+
+    def test_mixed_forms_rejected(self):
+        config = Config({"inputs": {"path": "a.nc", "daily": {"path": "b.nc"}}})
+        with pytest.raises(CatenaValueError, match=r"\[inputs\] mixes.*'path'"):
+            config.parse()
+
+    @pytest.mark.parametrize("kind", ["inputs", "outputs"])
+    def test_label_matching_kind_rejected(self, kind):
+        config = Config({kind: {kind: {"path": "a.nc", "vars": ["x"]}}})
+        with pytest.raises(CatenaValueError, match=rf"\[{kind}\.{kind}\].*reserved"):
+            config.parse()
+
+    def test_non_table_rejected(self):
+        with pytest.raises(CatenaValueError, match="'inputs' must be a table"):
+            Config({"inputs": "a.nc"}).parse()
+
+    def test_errors_name_the_flat_section(self):
+        with pytest.raises(CatenaValueError, match=r"^\[outputs\] has no 'vars'"):
+            Config({"outputs": {"path": "o.nc"}}).parse()
+        with pytest.raises(CatenaValueError, match=r"^\[inputs\] is missing"):
+            Config({"inputs": {"vars": ["x"]}}).parse()
+
+    def test_empty_table_declares_nothing(self):
+        assert Config({"inputs": {}}).parse().input_specs == {}
+
+    def test_round_trips_through_dumps(self):
+        toml = '[inputs]\npath = "a.nc"\nvars = ["t"]\n'
+        assert Config.loads(Config.loads(toml).dumps()).parse().input_specs == (
+            Config.loads(toml).parse().input_specs
+        )
+
+
 class TestRetiredSections:
     """[grid] and [graphviz] used to be swallowed silently; both now raise.
 
