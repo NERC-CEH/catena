@@ -108,12 +108,14 @@ The [flux recipe](../../recipes/flux-pipeline.md) keeps a `broken.toml` beside i
 A stand-in for the satellite retrieval is built from the modelled weekly GPP, but declared in `umol m-2 s-1`, the units of the molar flux several nodes upstream, rather than the `g m-2 d-1` that `compare_with_satellite` consumes.
 Each declaration looks fine on its own; they are only inconsistent with each other.
 
-```bash exec="true"
-python recipes/flux_pipeline/make_data.py > /dev/null
-```
+```python exec="true" session="validate"
+import sys
 
-```bash exec="true" source="block" result="text" returncode="1"
-catena run --dry-run recipes/flux_pipeline/broken.toml
+sys.path.insert(0, "docs/_scripts")
+from catena_blocks import cli, make_data
+
+make_data("flux_pipeline")
+print(cli("run --dry-run recipes/flux_pipeline/broken.toml", returncode=1))
 ```
 
 The failure names both ends of the edge, and comes from the DAG alone, before any node runs.

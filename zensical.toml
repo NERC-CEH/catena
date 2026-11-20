@@ -2,9 +2,11 @@
 
 use_directory_urls = false
 
-# Architecture decision records are for maintainers, not users.
+# Architecture decision records are for maintainers, not users; `_scripts/`
+# holds the helpers that executed code blocks import.
 exclude_docs = """
 adr/
+_scripts/
 """
 
 site_name = "catena"
@@ -171,6 +173,7 @@ check_paths = true
 custom_fences = [
   { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
   { name = "bash", class = "bash", format = "markdown_exec.formatter", validator = "markdown_exec.validator" },
+  { name = "python", class = "python", format = "markdown_exec.formatter", validator = "markdown_exec.validator" },
 ]
 [project.markdown_extensions.pymdownx.tabbed]
 alternate_style = true

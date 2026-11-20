@@ -25,18 +25,16 @@ Styling defaults live in `catena.graph_style`; a `--style` TOML file is
 deep-merged over them, and may name a `style_function` composed over the
 built-in one, and a `link_function` that links nodes to their documentation.
 
-`graph_html` renders a digraph as an HTML fragment for a documentation page,
-with optional overlays that let a theme's link previews work on the nodes.
+To place a linked graph in a documentation page, render it with
+`dotdoc.graph_html`.
 """
 
 import html
 import importlib
 import inspect
-import json
 import re
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
-from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from hamilton import graph_types
@@ -55,19 +53,12 @@ from .pipeline import ConfigSource, prepare_config
 if TYPE_CHECKING:
     # graphviz ships in the optional `viz` extra, and `catena.build_graph` is
     # re-exported from the package root, so importing it here would make
-    # `import catena` fail for anyone who did not install that extra.
+    # `import catena` fail for anyone who did not install that extra. dotdoc,
+    # in the same extra, imports graphviz, so it too is imported where used.
     import graphviz
+    from dotdoc.hamilton import LinkFunction, StyleFunction
 
-__all__ = [
-    "PREVIEW_OVERLAY",
-    "GraphStyle",
-    "build_graph",
-    "compose_styles",
-    "graph_html",
-    "link_style",
-]
-
-StyleFunction = Callable[..., tuple[dict, str | None, str | None]]
+__all__ = ["GraphStyle", "build_graph"]
 
 
 def make_style_function(
@@ -75,7 +66,7 @@ def make_style_function(
     output_vars: set[str],
     freq_map: dict[str, str],
     freq_colors: dict[str, str],
-) -> StyleFunction:
+) -> "StyleFunction":
     """Build the default `custom_style_function` for `display_all_functions`.
 
     Nodes are filled by their **declared frequency** (`freq_map`, read off the DAG's
@@ -84,134 +75,19 @@ def make_style_function(
     stand out.  Units are *not* handled here (the style hook cannot set a node's
     label); they are injected later by `relabel_with_units`.
     """
-    palette = spec.palette
+    from dotdoc.hamilton import compose_styles, fill_by
 
-    def custom_style(
+    def outline(
         *, node: graph_types.HamiltonNode, node_class: str
     ) -> tuple[dict, str | None, str | None]:
-        freq = freq_map.get(node.name)
-
-        style: dict = {}
-        if freq is not None:
-            style["fillcolor"] = freq_colors[freq]
-
-        if node.name in output_vars:
-            style["color"] = palette["output"]
-            style["penwidth"] = "2.5"
-            return style, node_class, "output"
-
-        return style, node_class, freq
-
-    return custom_style
-
-
-def compose_styles(*style_functions: StyleFunction) -> StyleFunction:
-    r"""Combine Hamilton `custom_style_function`\ s into one.
-
-    Hamilton's display methods take a single style function. Each node's style
-    dicts are merged left to right, so a later function overrides an earlier
-    one's attributes. The legend entry comes from the last function that names
-    one.
-    """
-
-    def composed(
-        *, node: graph_types.HamiltonNode, node_class: str
-    ) -> tuple[dict, str | None, str | None]:
-        style: dict = {}
-        base: str | None = node_class
-        legend: str | None = None
-        for function in style_functions:
-            attrs, fn_base, fn_legend = function(node=node, node_class=node_class)
-            style.update(attrs)
-            if fn_legend is not None:
-                base, legend = fn_base, fn_legend
-        return style, base, legend
-
-    return composed
-
-
-LinkFunction = Callable[[Callable], str | None]
-
-
-def _own_functions(dr: Driver) -> dict[str, Callable]:
-    """Return `node -> function` for the nodes a function itself defines.
-
-    A field node (one per `@extract_fields` output) shares its originating
-    function with the node it depends on, so it is left out; external inputs,
-    which Hamilton gives the consuming function as their originating function,
-    are left out too.
-    """
-    own: dict[str, Callable] = {}
-    for n in dr.graph.nodes.values():
-        if n.user_defined or not n.originating_functions:
-            continue
-        fn = n.originating_functions[0]
-        if any(
-            not dep.user_defined
-            and dep.originating_functions
-            and dep.originating_functions[0] is fn
-            for dep in n.dependencies
-        ):
-            continue
-        own[n.name] = fn
-    return own
-
-
-def _summary(fn: Callable) -> str | None:
-    """Return the first paragraph of `fn`'s docstring, on one line."""
-    doc = inspect.getdoc(fn)
-    if not doc:
-        return None
-    return " ".join(doc.split("\n\n", 1)[0].split())
-
-
-def _link_style(own: Mapping[str, Callable], link: LinkFunction) -> StyleFunction:
-    def style(
-        *, node: graph_types.HamiltonNode, node_class: str
-    ) -> tuple[dict, str | None, str | None]:
-        fn = own.get(node.name)
-        if fn is None or fn.__module__.startswith(GENERATED_MODULE_PREFIX):
+        if node.name not in output_vars:
             return {}, node_class, None
-        url = link(fn)
-        return ({} if url is None else {"URL": url}), node_class, None
+        attrs = {"color": spec.palette["output"], "penwidth": "2.5"}
+        return attrs, node_class, "output"
 
-    return style
-
-
-def link_style(dr: Driver, link: LinkFunction) -> StyleFunction:
-    """Build a Hamilton `custom_style_function` that links nodes to their docs.
-
-    Each node a function defines gets `URL` set to `link(function)`, which
-    Graphviz renders as a link in SVG output. Field nodes from
-    `@extract_fields` share their parent's function and get no link, nor do
-    inputs, config, or nodes generated from `[[node]]` and `[[resample]]`
-    entries.
-
-    Parameters
-    ----------
-    dr
-        The driver whose DAG will be drawn.
-    link
-        Receives a node's originating function and returns its URL, or `None`
-        for no link. `function.__module__` and `function.__qualname__` give
-        the dotted path that most API documentation tools anchor on.
-
-    Examples
-    --------
-    Compose it with catena's own styling:
-
-    ```python
-    style = GraphStyle.from_driver(dr)
-    links = link_style(dr, lambda fn: f"api.html#{fn.__module__}.{fn.__qualname__}")
-    digraph = dr.display_all_functions(
-        **{
-            **style.hamilton_kwargs(),
-            "custom_style_function": compose_styles(style.node_style, links),
-        }
+    return compose_styles(
+        fill_by(lambda node: freq_map.get(node.name), freq_colors), outline
     )
-    ```
-    """
-    return _link_style(_own_functions(dr), link)
 
 
 def _format_declared(decl: Declared) -> list[str]:
@@ -231,36 +107,38 @@ def _format_declared(decl: Declared) -> list[str]:
     return lines
 
 
-def _tooltips(dr: Driver, own: Mapping[str, Callable]) -> dict[str, str]:
-    """Return `node -> tooltip` for the DAG's function nodes.
+def _tooltip_style(dr: Driver) -> "StyleFunction":
+    """Build the style function giving each function node its tooltip.
 
     A tooltip is the first paragraph of the docstring of the function that
     defines the node, then the node's declared output contract, one facet per
     line. Field nodes get the contract only.
     """
+    from dotdoc import summary
+    from dotdoc.hamilton import tooltip_style
+
     produced, _ = _collect_declarations(dr)
-    tooltips: dict[str, str] = {}
-    for n in dr.graph.nodes.values():
-        if n.user_defined:
-            continue
-        fn = own.get(n.name)
-        summary = _summary(fn) if fn is not None else None
-        lines = [summary] if summary is not None else []
-        if n.name in produced:
-            lines.extend(_format_declared(produced[n.name][0]))
-        if lines:
-            tooltips[n.name] = "\\n".join(line.replace("\\", "\\\\") for line in lines)
-    return tooltips
+
+    def tooltip(node: graph_types.HamiltonNode, fn: Callable | None) -> list[str]:
+        if node.is_external_input:
+            return []
+        lines = [doc] if fn is not None and (doc := summary(fn)) else []
+        if node.name in produced:
+            lines.extend(_format_declared(produced[node.name][0]))
+        return lines
+
+    return tooltip_style(dr, tooltip)
 
 
-def _tooltip_style(tooltips: Mapping[str, str]) -> StyleFunction:
-    def style(
-        *, node: graph_types.HamiltonNode, node_class: str
-    ) -> tuple[dict, str | None, str | None]:
-        tooltip = tooltips.get(node.name)
-        return ({} if tooltip is None else {"tooltip": tooltip}), node_class, None
+def _skip_generated(link: "LinkFunction") -> "LinkFunction":
+    """Wrap `link` to give no link to a function generated by `nodegen`."""
 
-    return style
+    def wrapped(node: graph_types.HamiltonNode, fn: Callable | None) -> str | None:
+        if fn is not None and fn.__module__.startswith(GENERATED_MODULE_PREFIX):
+            return None
+        return link(node, fn)
+
+    return wrapped
 
 
 def _import_function(path: str, key: str) -> Callable:
@@ -482,7 +360,6 @@ def separate_config_inputs(
     digraph.body[:] = body
 
 
-_LEGEND_ATTR_RE = re.compile(r'(?:URL|tooltip)="(?:[^"\\]|\\.)*" ?')
 _FILL_RE = re.compile(r'fillcolor=(?:"[^"]*"|\S+) ?')
 
 
@@ -491,10 +368,14 @@ def clean_legend(digraph: "graphviz.Digraph") -> None:
 
     Hamilton draws a legend entry with the style of the last node that named
     it, so the `output` swatch would carry that node's frequency fill and any
-    entry its link. Links and tooltips are dropped from every entry, and the
-    `output` swatch keeps only its outline. The `input` entry is dropped when
-    no input table is drawn, as with `hide_inputs=True`.
+    entry its link. Links and tooltips are dropped from every entry (see
+    `dotdoc.hamilton.clean_legend`), and the `output` swatch keeps only its
+    outline. The `input` entry is dropped when no input table is drawn, as
+    with `hide_inputs=True`.
     """
+    from dotdoc.hamilton import clean_legend as drop_links
+
+    drop_links(digraph)
     has_inputs = any(
         _node_id(line).endswith("_inputs")
         for line in digraph.body
@@ -510,11 +391,8 @@ def clean_legend(digraph: "graphviz.Digraph") -> None:
             break
         if not has_inputs and line.strip().startswith("input ["):
             digraph.body[i] = ""
-            continue
-        line = _LEGEND_ATTR_RE.sub("", line)
-        if line.strip().startswith("output ["):
-            line = _FILL_RE.sub("", line)
-        digraph.body[i] = line.replace(" ]", "]")
+        elif line.strip().startswith("output ["):
+            digraph.body[i] = _FILL_RE.sub("", line).replace(" ]", "]")
 
 
 # Hamilton's own style for a function node, which the swatches copy.
@@ -623,9 +501,8 @@ class GraphStyle:
         freqs: dict[str, str],
         freq_colors: dict[str, str],
         config_inputs: dict[str, dict[str, str]],
-        own_functions: dict[str, Callable],
-        tooltips: dict[str, str],
-        link: LinkFunction | None,
+        tooltip_style: "StyleFunction | None",
+        link_style: "StyleFunction | None",
     ) -> None:
         self.spec = spec
         self.outputs = outputs
@@ -633,9 +510,8 @@ class GraphStyle:
         self._freqs = freqs
         self._freq_colors = freq_colors
         self._config_inputs = config_inputs
-        self._own_functions = own_functions
-        self._tooltips = tooltips
-        self._link = link
+        self._tooltip_style = tooltip_style
+        self._link_style = link_style
 
     @classmethod
     def from_driver(
@@ -644,7 +520,7 @@ class GraphStyle:
         *,
         outputs: Iterable[str] = (),
         spec: GraphvizSpec | None = None,
-        link: LinkFunction | None = None,
+        link: "LinkFunction | None" = None,
     ) -> "GraphStyle":
         """Read the styling off `dr`'s DAG.
 
@@ -657,14 +533,16 @@ class GraphStyle:
         spec
             Styling options; the defaults when omitted. See `catena.graph_style`.
         link
-            Link each node to its documentation; see `link_style`. Overrides the
-            spec's `link_function`.
+            Link each node to its documentation; see `dotdoc.hamilton.link_style`.
+            Nodes generated from `[[node]]` and `[[resample]]` entries get no
+            link. Overrides the spec's `link_function`.
         """
+        from dotdoc.hamilton import link_style
+
         spec = spec if spec is not None else GraphvizSpec()
         if link is None and spec.link_function is not None:
             link = _import_function(spec.link_function, "link_function")
         units, freqs = _node_maps(dr)
-        own = _own_functions(dr)
         return cls(
             spec=spec,
             outputs=frozenset(outputs),
@@ -672,28 +550,30 @@ class GraphStyle:
             freqs=freqs,
             freq_colors=assign_freq_colors(freqs, spec.palette),
             config_inputs=_config_inputs(dr, dr.graph.config),
-            own_functions=own,
-            tooltips=_tooltips(dr, own) if spec.tooltips else {},
-            link=link,
+            tooltip_style=_tooltip_style(dr) if spec.tooltips else None,
+            link_style=None if link is None else link_style(dr, _skip_generated(link)),
         )
 
     @property
-    def node_style(self) -> StyleFunction:
+    def node_style(self) -> "StyleFunction":
         """The Hamilton `custom_style_function` for this DAG.
 
         catena's frequency fill, output outline and tooltips, then the spec's
         `style_function` and the links, each composed over the last.
         """
+        from dotdoc.hamilton import compose_styles
+
         styles = [
             make_style_function(
                 self.spec, set(self.outputs), self._freqs, self._freq_colors
-            ),
-            _tooltip_style(self._tooltips),
+            )
         ]
+        if self._tooltip_style is not None:
+            styles.append(self._tooltip_style)
         if self.spec.style_function is not None:
             styles.append(_import_function(self.spec.style_function, "style_function"))
-        if self._link is not None:
-            styles.append(_link_style(self._own_functions, self._link))
+        if self._link_style is not None:
+            styles.append(self._link_style)
         return compose_styles(*styles)
 
     def hamilton_kwargs(self) -> dict[str, Any]:
@@ -730,7 +610,7 @@ def build_graph(
     *,
     style: str | Path | None = None,
     allow_overrides: bool = False,
-    link: LinkFunction | None = None,
+    link: "LinkFunction | None" = None,
     outputs_only: bool = True,
     upstream_of: Iterable[str] = (),
     downstream_of: Iterable[str] = (),
@@ -757,7 +637,7 @@ def build_graph(
     allow_overrides
         Allow a later module to override a node defined by an earlier one.
     link
-        Link each node to its documentation; see `link_style`.
+        Link each node to its documentation; see `GraphStyle.from_driver`.
     outputs_only
         Draw only the nodes the requested outputs depend on. `False` draws
         every node the config's modules define.
@@ -861,140 +741,3 @@ def _require_nodes(
         raise CatenaValueError(
             f"Cannot draw {what}: no node is called {', '.join(missing)}. {hint}"
         )
-
-
-PREVIEW_OVERLAY: Mapping[str, str] = MappingProxyType({"data-preview": ""})
-"""The overlay attributes that turn on instant previews of the link target in
-Zensical and Material for MkDocs."""
-
-_SVG_SIZE_RE = re.compile(r'\s(?:width|height)="(?P<value>[\d.]+)pt"')
-_VIEWBOX_RE = re.compile(r'viewBox="(?P<box>[^"]+)"')
-_TRANSFORM_RE = re.compile(
-    r'id="graph0"[^>]*transform="scale\((?P<scale>[^)]+)\)'
-    r'[^"]*translate\((?P<translate>[^)]+)\)"'
-)
-
-
-# Themes underline every link in page content, which includes the `<a>` that
-# Graphviz wraps around any node with a tooltip. Only a linked node's name
-# (its first label line) keeps the underline. No square brackets: Markdown
-# escapes them, even inside `<style>`.
-_GRAPH_CSS = (
-    "<style>"
-    ".catena-graph svg a{text-decoration:none}"
-    ".catena-graph svg a:any-link text:first-of-type{text-decoration:underline}"
-    "</style>"
-)
-
-
-def _numbers(text: str) -> list[float]:
-    return [float(v) for v in text.replace(",", " ").split()]
-
-
-def _name_box(obj: Mapping[str, Any]) -> tuple[float, float, float, float]:
-    """Return `(left, top, width, height)` of a node's first label line.
-
-    In Graphviz's layout coordinates: points, origin at the bottom left. The
-    first text drawn in the label is the node name; its height is taken from
-    the font size. A node with no text falls back to its whole box.
-    """
-    size = 14.0
-    for op in obj.get("_ldraw_", []):
-        if op["op"] == "F":
-            size = float(op["size"])
-        elif op["op"] == "T":
-            (x, y), width = op["pt"], float(op["width"])
-            x -= {"l": 0.0, "c": width / 2, "r": width}[op["align"]]
-            return x, y + 0.8 * size, width, size
-    x, y = _numbers(obj["pos"])
-    w, h = float(obj["width"]) * 72, float(obj["height"]) * 72
-    return x - w / 2, y + h / 2, w, h
-
-
-def _overlays(
-    digraph: "graphviz.Digraph", svg: str, attrs: Mapping[str, str]
-) -> list[str]:
-    """Return an absolutely positioned `<a>` over each linked node's name.
-
-    Name boxes come from Graphviz's JSON layout and are mapped through the
-    SVG's `graph0` transform into percentages of its `viewBox`, so they scale
-    with the drawing.
-    """
-    viewbox, transform = _VIEWBOX_RE.search(svg), _TRANSFORM_RE.search(svg)
-    if viewbox is None or transform is None:
-        raise ValueError("Graphviz drew an SVG without the expected layout.")
-    vx, vy, vw, vh = _numbers(viewbox["box"])
-    sx, sy = _numbers(transform["scale"])
-    tx, ty = _numbers(transform["translate"])
-    layout = json.loads(digraph.pipe(format="json", encoding="utf-8"))
-    extra = "".join(f' {k}="{html.escape(v)}"' for k, v in attrs.items())
-    overlays = []
-    for obj in layout.get("objects", []):
-        url = obj.get("URL")
-        if not url or "pos" not in obj:
-            continue
-        x, y, w, h = _name_box(obj)
-        left = (sx * (x + tx) - vx) / vw * 100
-        top = (sy * (ty - y) - vy) / vh * 100
-        # `font-size:0` hides any icon a theme appends to the link.
-        box = (
-            f"position:absolute;font-size:0;left:{left:.3f}%;top:{top:.3f}%;"
-            f"width:{sx * w / vw * 100:.3f}%;height:{sy * h / vh * 100:.3f}%"
-        )
-        overlays.append(
-            f'<a href="{html.escape(url)}" style="{box}" aria-hidden="true" '
-            f'tabindex="-1"{extra}></a>'
-        )
-    return overlays
-
-
-def graph_html(
-    digraph: "graphviz.Digraph",
-    *,
-    overlay: Mapping[str, str] | None = PREVIEW_OVERLAY,
-) -> str:
-    """Render `digraph` as an HTML fragment to place in a documentation page.
-
-    The SVG is inlined, so its node links work (an SVG shown through `<img>`
-    has none), and it scales down to fit the page. Only a linked node's name is
-    underlined, whatever the theme does to links. Each linked node's name also
-    gets an invisible `<a>` laid over it carrying `overlay`'s attributes, because
-    themes that preview a link's target on hover only handle HTML links. The
-    overlays must be in the page when it loads, so write the fragment into the
-    page source or a notebook's output rather than adding it from a script.
-
-    Parameters
-    ----------
-    digraph
-        A digraph from `build_graph` or `GraphStyle.apply`, linked with a
-        `link` function.
-    overlay
-        Attributes for each overlay link, or `None` for no overlays. The
-        default turns on instant previews in Zensical and Material for MkDocs.
-
-    Returns
-    -------
-    str
-        A `<div>` holding a short stylesheet, the SVG and the overlays, with
-        no blank lines, so a Markdown page can hold it as one raw HTML block.
-
-    Examples
-    --------
-    In a marimo notebook exported to a documentation page:
-
-    ```python
-    digraph = catena.build_graph("config.toml", link=api_url)
-    mo.Html(graph_html(digraph))
-    ```
-    """
-    svg = digraph.pipe(format="svg", encoding="utf-8")
-    svg = svg[svg.index("<svg") :]
-    root_end = svg.index(">")
-    root = svg[:root_end]
-    width = next((m["value"] for m in _SVG_SIZE_RE.finditer(root)), None)
-    root = _SVG_SIZE_RE.sub("", root) + ' style="display:block;width:100%;height:auto"'
-    svg = "\n".join(line for line in (root + svg[root_end:]).splitlines() if line)
-    overlays = _overlays(digraph, svg, overlay) if overlay is not None else []
-    size = f"max-width:{width}pt;" if width is not None else ""
-    opening = f'<div class="catena-graph" style="position:relative;{size}">'
-    return "".join([opening, _GRAPH_CSS, svg, *overlays, "</div>"])

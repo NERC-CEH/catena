@@ -10,13 +10,14 @@ library, where the behaviour lives.
 
 import re
 import shutil
-import xml.etree.ElementTree as ET
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 import xarray as xr
+from dotdoc import graph_html
+from dotdoc.hamilton import compose_styles
 
 from catena import build_graph
 from catena.build import build_driver
@@ -28,9 +29,6 @@ from catena.graph import (
     _node_maps,
     assign_freq_colors,
     color_edges_by_frequency,
-    compose_styles,
-    graph_html,
-    link_style,
     make_style_function,
     relabel_with_units,
     separate_config_inputs,
@@ -518,28 +516,6 @@ def _swatches(legend: str) -> dict[str, str]:
     return swatches
 
 
-class TestComposeStyles:
-    @staticmethod
-    def _fn(attrs, legend=None):
-        return lambda *, node, node_class: (dict(attrs), node_class, legend)
-
-    def test_later_attributes_win(self):
-        composed = compose_styles(
-            self._fn({"fillcolor": "red", "color": "blue"}),
-            self._fn({"fillcolor": "green"}),
-        )
-        style, base, legend = composed(node=None, node_class="function")
-        assert style == {"fillcolor": "green", "color": "blue"}
-        assert (base, legend) == ("function", None)
-
-    def test_last_named_legend_wins(self):
-        composed = compose_styles(
-            self._fn({}, legend="7D"), self._fn({}, legend="output"), self._fn({})
-        )
-        _, _, legend = composed(node=None, node_class="function")
-        assert legend == "output"
-
-
 _LINKS_MODULE = '''\
 from typing import Annotated, TypedDict
 
@@ -577,8 +553,8 @@ def undocumented(right: xr.DataArray) -> xr.DataArray:
 '''
 
 
-def _url(fn) -> str:
-    return f"api.html#{fn.__qualname__}"
+def _url(node, fn) -> str | None:
+    return None if fn is None else f"api.html#{fn.__qualname__}"
 
 
 @pytest.fixture(scope="module")
@@ -626,32 +602,23 @@ class TestLinks:
 
     def test_link_returning_none_draws_no_link(self, links_driver):
         style = GraphStyle.from_driver(
-            links_driver, link=lambda fn: None if fn.__name__ == "split" else "x"
+            links_driver, link=lambda node, fn: None if node.name == "split" else "x"
         )
         source = links_driver.display_all_functions(**style.hamilton_kwargs()).source
         assert "URL=" not in _node_line(source, "split")
         assert "URL=" in _node_line(source, "undocumented")
-
-    def test_link_style_composes_with_hamilton_directly(self, links_driver):
-        links = link_style(links_driver, _url)
-        source = links_driver.display_upstream_of(
-            "start", custom_style_function=links
-        ).source
-        line = _node_line(source, "start")
-        assert "URL=" in line
-        assert "tooltip=" not in line
 
     def test_generated_nodes_are_not_linked(self, tmp_path):
         config = tmp_path / "config.toml"
         config.write_text(
             '[[node]]\nname = "y"\ninputs = ["x"]\nexpression = "x + 1"\n'
         )
-        source = build_graph(config, link=lambda fn: "x").source
+        source = build_graph(config, link=lambda node, fn: "x").source
         assert "URL=" not in _node_line(source, "y")
 
     def test_style_file_names_a_link_function(self, tmp_path, monkeypatch):
         (tmp_path / "docs_links.py").write_text(
-            "def api_url(fn):\n    return 'docs/' + fn.__name__\n"
+            "def api_url(node, fn):\n    return 'docs/' + node.name\n"
         )
         (tmp_path / "links.py").write_text(_LINKS_MODULE)
         monkeypatch.syspath_prepend(str(tmp_path))
@@ -777,110 +744,22 @@ expression = 'x.str.strip(r"\n")'
         assert "tooltip=" not in build_graph(config, style=style).source
 
 
-_SVG = "{http://www.w3.org/2000/svg}"
-_XLINK_HREF = "{http://www.w3.org/1999/xlink}href"
-
-
 @pytest.fixture(scope="module")
 def linked_digraph(links_driver):
     style = GraphStyle.from_driver(links_driver, link=_url)
     return style.apply(links_driver.display_all_functions(**style.hamilton_kwargs()))
 
 
-def _percent(style: str) -> dict[str, float]:
-    return {k: float(v) for k, v in re.findall(r"(\w+):([-\d.]+)%", style)}
-
-
-@pytest.fixture(scope="module")
-def fragment(linked_digraph) -> str:
-    return graph_html(linked_digraph)
-
-
 @requires_dot
-class TestGraphHtml:
-    def test_is_one_element_without_prolog_or_blank_lines(self, fragment):
-        assert fragment.startswith('<div class="catena-graph"')
-        assert "<?xml" not in fragment
-        assert "<!DOCTYPE" not in fragment
-        assert "\n\n" not in fragment
-        ET.fromstring(fragment)
-
-    def test_only_linked_node_names_are_underlined(self, fragment):
-        style = ET.fromstring(fragment).find("style")
-        assert style is not None
-        assert style.text is not None
-        assert "svg a{text-decoration:none}" in style.text
-        assert "a:any-link text:first-of-type{text-decoration:underline}" in (
-            style.text
-        )
-        # Markdown escapes square brackets, even inside <style>.
-        assert "[" not in style.text
-
-    def test_svg_scales_to_fit(self, fragment):
-        svg = ET.fromstring(fragment).find(f"{_SVG}svg")
-        assert svg is not None
-        assert "width" not in svg.attrib
-        assert "height" not in svg.attrib
-        assert "width:100%" in svg.attrib["style"]
-
-    def test_one_overlay_per_linked_node(self, fragment):
-        overlays = ET.fromstring(fragment).findall("a")
-        hrefs = sorted(a.attrib["href"] for a in overlays)
-        assert hrefs == [
-            "api.html#split",
-            "api.html#start__equilibrate",
-            "api.html#undocumented",
-        ]
-        assert all(a.attrib["data-preview"] == "" for a in overlays)
-
-    def test_overlay_covers_its_node_name(self, fragment):
-        root = ET.fromstring(fragment)
-        svg = root.find(f"{_SVG}svg")
-        assert svg is not None
-        _, _, width, height = map(float, svg.attrib["viewBox"].split())
-        graph = svg.find(f"{_SVG}g")
-        assert graph is not None
-        transform = graph.attrib["transform"]
-        tx, ty = map(
-            float, re.findall(r"translate\(([-\d.]+) ([-\d.]+)\)", transform)[0]
-        )
-        for overlay in root.findall("a"):
-            link = next(
-                a
-                for a in svg.iter(f"{_SVG}a")
-                if a.attrib.get(_XLINK_HREF) == overlay.attrib["href"]
-            )
-            outline = next(
-                el for el in link if el.tag in (f"{_SVG}path", f"{_SVG}polygon")
-            )
-            coords = re.findall(
-                r"([-\d.]+),([-\d.]+)",
-                outline.attrib.get("d", "") or outline.attrib["points"],
-            )
-            xs = [(float(x) + tx) / width * 100 for x, _ in coords]
-            ys = [(float(y) + ty) / height * 100 for _, y in coords]
-            name = next(t for t in link.iter(f"{_SVG}text"))
-            assert name.attrib["font-weight"] == "bold"
-            name_x = (float(name.attrib["x"]) + tx) / width * 100
-            baseline = (float(name.attrib["y"]) + ty) / height * 100
-            box = _percent(overlay.attrib["style"])
-            right, bottom = box["left"] + box["width"], box["top"] + box["height"]
-            assert box["left"] == pytest.approx(name_x, abs=0.1)
-            assert box["top"] < baseline < bottom
-            assert min(xs) < box["left"] < right < max(xs)
-            assert min(ys) < box["top"] < bottom < max(ys)
-
-    def test_overlay_attributes_are_a_parameter(self, linked_digraph):
-        fragment = graph_html(linked_digraph, overlay={"data-kind": "node"})
-        overlays = ET.fromstring(fragment).findall("a")
-        assert overlays
-        assert all(a.attrib == a.attrib | {"data-kind": "node"} for a in overlays)
-        assert "data-preview" not in fragment
-
-    def test_no_overlays(self, linked_digraph):
-        fragment = graph_html(linked_digraph, overlay=None)
-        assert ET.fromstring(fragment).findall("a") == []
-        assert "api.html#split" in fragment
+def test_dotdoc_overlays_each_linked_node(linked_digraph):
+    overlays = re.findall(
+        r'<a href="([^"]+)"[^>]*data-preview', graph_html(linked_digraph)
+    )
+    assert sorted(overlays) == [
+        "api.html#split",
+        "api.html#start__equilibrate",
+        "api.html#undocumented",
+    ]
 
 
 _RENAMED_MODULE = """

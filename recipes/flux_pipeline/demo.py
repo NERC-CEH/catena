@@ -111,16 +111,18 @@ def _():
 def _(catena, config_path, mo, nodes_path):
     import inspect
 
-    from catena.graph import graph_html
+    from dotdoc import autoref, graph_html
 
-    def api_url(fn):
-        """Link a function from nodes.py to its entry at the end of this page."""
-        if inspect.getsourcefile(inspect.unwrap(fn)) != str(nodes_path.resolve()):
+    def api_url(node, fn):
+        """Link a function from nodes.py to its entry under its documented path."""
+        if fn is None or inspect.getsourcefile(inspect.unwrap(fn)) != str(
+            nodes_path.resolve()
+        ):
             return None
-        return f"#flux_pipeline.nodes.{fn.__qualname__}"
+        return autoref(f"flux_pipeline.nodes.{fn.__qualname__}")
 
     graph = catena.build_graph(config_path, link=api_url)
-    mo.Html(graph_html(graph))
+    mo.Html(graph_html(graph, controls=True))
     return
 
 

@@ -28,7 +28,10 @@ dependencies = [
 # The `catena` command-line interface. The Python API (catena.run, catena.dry_run,
 # catena.build_graph) needs none of this: typer is confined to `catena.cli`.
 cli = ["typer>=0.24.1"]
-viz = ["apache-hamilton[visualization]>=1.90.0"]
+viz = [
+    "apache-hamilton[visualization]>=1.90.0",
+    "dotdoc[hamilton]>=0.1.0",
+]
 all = ["ukceh-catena[cli,viz]"]
 
 [project.scripts]
@@ -124,7 +127,7 @@ convention = "numpy"
 
 [tool.uv]
 exclude-newer = "1 week"
-exclude-newer-package = { marimo-md-export = false , xarray-annotated = false }
+exclude-newer-package = { dotdoc = false, marimo-md-export = false , xarray-annotated = false }
 
 [tool.uv.build-backend]
 module-name = "catena"

@@ -33,8 +33,13 @@ The graphs on this page are drawn from a small pipeline: two daily inputs, three
     ```
     <!-- fmt:on -->
 
-```bash exec="true"
-python docs/guides/validate/graph_example/show.py
+```python exec="true" session="visualise"
+import sys
+
+sys.path.insert(0, "docs/_scripts")
+from catena_blocks import graph_example
+
+print(graph_example())
 ```
 
 - It draws what the `[outputs.*]` sections need; pass `--all-nodes` to draw every node the config's modules define.
@@ -65,8 +70,8 @@ Two more options thin out the input tables, in any view:
 
 Here only what `aridity_index_daily` needs is drawn, without the input tables:
 
-```bash exec="true"
-python docs/guides/validate/graph_example/show.py --upstream-of aridity_index_daily --hide-inputs
+```python exec="true" session="visualise"
+print(graph_example("--upstream-of", "aridity_index_daily", "--hide-inputs"))
 ```
 
 ## What to look for
@@ -105,8 +110,8 @@ This style file pins the colours of the two frequencies, lays the graph out top 
     ```
     <!-- fmt:on -->
 
-```bash exec="true"
-python docs/guides/validate/graph_example/show.py --style style.toml
+```python exec="true" session="visualise"
+print(graph_example("--style", "style.toml"))
 ```
 
 A style function receives each Hamilton node, including the tags set on its function with Hamilton's [`@tag`](https://hamilton.apache.org/reference/decorators/tag/) decorator, so `by_stage` dashes `precipitation_checked`, tagged `stage="qc"` in `nodes.py`.
@@ -115,15 +120,17 @@ It is composed over catena's own style function, and the attributes it returns w
 
 ## Linking nodes to API documentation
 
-A style file can name a `link_function`: it receives each node's Python function and returns a URL, or `None` for no link.
+A style file can name a `link_function`: it receives each node and the Python function that defines it, and returns a URL, or `None` for no link.
+The function is `None` for inputs, config, and field nodes.
 
 ```toml
 link_function = "my_package.docs:api_url"
 ```
 
 ```python
-def api_url(fn):
-    return f"../reference/api.html#{fn.__module__}.{fn.__qualname__}"
+def api_url(node, fn):
+    if fn is not None:
+        return f"../reference/api.html#{fn.__module__}.{fn.__qualname__}"
 ```
 
 In SVG output each linked node is clickable.
@@ -134,17 +141,17 @@ Set `tooltips = false` in the style file to drop the hover text.
 ### In a documentation page
 
 An SVG shown through `<img>`, or Markdown's `![](graph.svg)`, has no working links.
-[`graph_html`](../../reference/modules/catena.graph.md#catena.graph.graph_html) renders the digraph as an HTML fragment that inlines the SVG instead:
+[dotdoc](https://jmarshrossney.github.io/dotdoc/)'s [`graph_html`](https://jmarshrossney.github.io/dotdoc/api/#dotdoc.html.graph_html) renders the digraph as an HTML fragment that inlines the SVG instead:
 
 ```python
-from catena.graph import graph_html
+from dotdoc import graph_html
 
 html = graph_html(catena.build_graph("config.toml", link=api_url))
 ```
 
 Write `html` into the page source, or return `mo.Html(html)` from a marimo notebook that is exported to the page.
-Zensical and Material for MkDocs preview a link's target on hover, but only for HTML links, so `graph_html` lays an invisible link with a `data-preview` attribute over each linked node.
-Pass `overlay=` other attributes for another theme, or `overlay=None` for none.
+Zensical and Material for MkDocs preview a link's target on hover, but only for HTML links, so `graph_html` lays an invisible link with a `data-preview` attribute over each linked node's name.
+See its documentation for the other options, such as zoom controls and dark-scheme colours.
 The [recipes](../../recipes/flux-pipeline.md#the-dag) are built this way, linking each node to the documentation of `nodes.py` at the end of the page.
 
 ## From Python
@@ -186,10 +193,10 @@ Frequencies and units are read off the whole DAG, so a node looks the same in ev
 ### Adding your own styling
 
 Hamilton's display methods take a single `custom_style_function`.
-[`compose_styles`](../../reference/modules/catena.graph.md#catena.graph.compose_styles) merges several into one, later attributes winning, so your own style function can sit on top of catena's:
+dotdoc's [`compose_styles`](https://jmarshrossney.github.io/dotdoc/api/#dotdoc.hamilton.compose_styles) merges several into one, later attributes winning, so your own style function can sit on top of catena's:
 
 ```python
-from catena.graph import compose_styles, link_style
+from dotdoc.hamilton import compose_styles, link_style
 
 
 def mine(*, node, node_class):

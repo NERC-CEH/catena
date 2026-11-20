@@ -1,3 +1,8 @@
+# On import, Hamilton loads an extension for every library it finds installed,
+# pulling in matplotlib and dask.dataframe, which catena does not use through
+# Hamilton. Skipping that saves about 0.6 s on each import of catena.
+export HAMILTON_AUTOLOAD_EXTENSIONS := "0"
+
 _: lint typecheck test
 
 # Format and lint the package using ruff.

@@ -10,7 +10,7 @@ Recognised top-level keys in a `--style` file:
 
 ```toml
 style_function = "my_pkg.styling:my_style"   # composed over the built-in style
-link_function = "my_pkg.docs:api_url"        # node function -> URL, or None
+link_function = "my_pkg.docs:api_url"        # (node, function) -> URL, or None
 tooltips = true                              # docstring summary and contract
 show_legend = true
 
@@ -83,8 +83,9 @@ class GraphvizSpec:
         `custom_style_function`, composed over the built-in one.
     link_function
         Optional `"module:function"` import path to a function that takes a
-        node's originating function and returns its documentation URL, or
-        `None`. See `catena.graph.link_style`.
+        node and the function that defines it (`None` for inputs, config and
+        field nodes) and returns its documentation URL, or `None`. See
+        `catena.graph.GraphStyle.from_driver`.
     tooltips
         Whether hovering over a node in SVG output shows the first paragraph
         of its docstring and its declared contract.

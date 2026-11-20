@@ -24,8 +24,13 @@ It has one input file, one configurable node function in a Python module, one no
 
 <!-- The input file comes from `recipes/pipeline_101/make_data.py`. -->
 
-```bash exec="true"
-python recipes/pipeline_101/make_data.py > /dev/null
+```python exec="true" session="index"
+import sys
+
+sys.path.insert(0, "docs/_scripts")
+from catena_blocks import cli, make_data, png
+
+make_data("pipeline_101")
 ```
 
 === "Python module"
@@ -51,33 +56,28 @@ python recipes/pipeline_101/make_data.py > /dev/null
 
     Node labels carry the declared units, requested outputs are highlighted, and each node's config is drawn apart from its data inputs, so a wiring mistake is often visible before anything runs.
 
-    ```bash exec="true" source="block" result="text"
-    catena graph recipes/pipeline_101/config.toml --png \
-      --output recipes/pipeline_101/pipeline
-    ```
-
-    ```bash exec="true"
-    python - <<'EOF'
-    import base64
-    from pathlib import Path
-
-    png = base64.b64encode(Path("recipes/pipeline_101/pipeline.png").read_bytes()).decode()
-    print(f'<img src="data:image/png;base64,{png}" alt="The Pipeline 101 DAG" style="max-width:100%">')
-    EOF
+    ```python exec="true" session="index"
+    print(
+        cli(
+            "graph recipes/pipeline_101/config.toml --png \\\n"
+            "  --output recipes/pipeline_101/pipeline"
+        )
+    )
+    print(png("recipes/pipeline_101/pipeline.png", "The Pipeline 101 DAG"))
     ```
 
 === "Dry-run"
 
     `--dry-run` parses the config, opens the input headers, builds the DAG and checks every contract, without loading any data.
 
-    ```bash exec="true" source="block" result="text"
-    catena run --dry-run recipes/pipeline_101/config.toml
+    ```python exec="true" session="index"
+    print(cli("run --dry-run recipes/pipeline_101/config.toml"))
     ```
 
 === "Run"
 
-    ```bash exec="true" source="block" result="text"
-    catena run recipes/pipeline_101/config.toml
+    ```python exec="true" session="index"
+    print(cli("run recipes/pipeline_101/config.toml"))
     ```
 
 The [Pipeline 101 notebook](recipes/pipeline-101.md) runs the same pipeline through the Python API.
