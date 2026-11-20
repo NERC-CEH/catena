@@ -120,15 +120,17 @@ It is composed over catena's own style function, and the attributes it returns w
 
 ## Linking nodes to API documentation
 
-A style file can name a `link_function`: it receives each node's Python function and returns a URL, or `None` for no link.
+A style file can name a `link_function`: it receives each node and the Python function that defines it, and returns a URL, or `None` for no link.
+The function is `None` for inputs, config, and field nodes.
 
 ```toml
 link_function = "my_package.docs:api_url"
 ```
 
 ```python
-def api_url(fn):
-    return f"../reference/api.html#{fn.__module__}.{fn.__qualname__}"
+def api_url(node, fn):
+    if fn is not None:
+        return f"../reference/api.html#{fn.__module__}.{fn.__qualname__}"
 ```
 
 In SVG output each linked node is clickable.

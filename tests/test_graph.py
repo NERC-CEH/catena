@@ -553,8 +553,8 @@ def undocumented(right: xr.DataArray) -> xr.DataArray:
 '''
 
 
-def _url(fn) -> str:
-    return f"api.html#{fn.__qualname__}"
+def _url(node, fn) -> str | None:
+    return None if fn is None else f"api.html#{fn.__qualname__}"
 
 
 @pytest.fixture(scope="module")
@@ -602,7 +602,7 @@ class TestLinks:
 
     def test_link_returning_none_draws_no_link(self, links_driver):
         style = GraphStyle.from_driver(
-            links_driver, link=lambda fn: None if fn.__name__ == "split" else "x"
+            links_driver, link=lambda node, fn: None if node.name == "split" else "x"
         )
         source = links_driver.display_all_functions(**style.hamilton_kwargs()).source
         assert "URL=" not in _node_line(source, "split")
@@ -613,12 +613,12 @@ class TestLinks:
         config.write_text(
             '[[node]]\nname = "y"\ninputs = ["x"]\nexpression = "x + 1"\n'
         )
-        source = build_graph(config, link=lambda fn: "x").source
+        source = build_graph(config, link=lambda node, fn: "x").source
         assert "URL=" not in _node_line(source, "y")
 
     def test_style_file_names_a_link_function(self, tmp_path, monkeypatch):
         (tmp_path / "docs_links.py").write_text(
-            "def api_url(fn):\n    return 'docs/' + fn.__name__\n"
+            "def api_url(node, fn):\n    return 'docs/' + node.name\n"
         )
         (tmp_path / "links.py").write_text(_LINKS_MODULE)
         monkeypatch.syspath_prepend(str(tmp_path))

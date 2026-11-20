@@ -113,9 +113,11 @@ def _(catena, config_path, mo, nodes_path):
 
     from dotdoc import autoref, graph_html
 
-    def api_url(fn):
+    def api_url(node, fn):
         """Link a function from nodes.py to its entry under its documented path."""
-        if inspect.getsourcefile(inspect.unwrap(fn)) != str(nodes_path.resolve()):
+        if fn is None or inspect.getsourcefile(inspect.unwrap(fn)) != str(
+            nodes_path.resolve()
+        ):
             return None
         return autoref(f"flux_pipeline.nodes.{fn.__qualname__}")
 

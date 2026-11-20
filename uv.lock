@@ -546,10 +546,14 @@ wheels = [
 
 [[package]]
 name = "dotdoc"
-version = "0.1.0.dev0"
-source = { git = "https://github.com/jmarshrossney/dotdoc?rev=main#652216a728bfbe87edc3e48224bdb4792c65f19a" }
+version = "0.1.0rc1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "graphviz" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/55/42/24054150be1ff34ae091bedb8d381ae932f73c4677097828a870f389c3c2/dotdoc-0.1.0rc1.tar.gz", hash = "sha256:7b3f6057cf2161d0bbc4d41c71c1cf83522e2498e74c86d877905887dfbbe84d", size = 13889, upload-time = "2026-11-20T16:09:47.055Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/79/33/a0452e35ee48767fe3ffe4b8cbf674058cf75f26276543407ef048463a8c/dotdoc-0.1.0rc1-py3-none-any.whl", hash = "sha256:a618ab7630f9840dcd648363f7b3fa29b439f8c9996ca6669122a0995d9abad7", size = 14113, upload-time = "2026-11-20T16:09:46.048Z" },
 ]
 
 [package.optional-dependencies]
@@ -2805,7 +2809,7 @@ requires-dist = [
     { name = "apache-hamilton", specifier = ">=1.90.0" },
     { name = "apache-hamilton", extras = ["visualization"], marker = "extra == 'viz'", specifier = ">=1.90.0" },
     { name = "dask", specifier = ">=2025.1.0" },
-    { name = "dotdoc", extras = ["hamilton"], marker = "extra == 'viz'", git = "https://github.com/jmarshrossney/dotdoc?rev=main" },
+    { name = "dotdoc", extras = ["hamilton"], marker = "extra == 'viz'", specifier = ">=0.1.0rc1" },
     { name = "netcdf4", specifier = ">=1.7.4" },
     { name = "numpy", specifier = ">=2.4.2" },
     { name = "tomli-w", specifier = ">=1.2.0" },
