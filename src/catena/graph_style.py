@@ -84,7 +84,7 @@ class GraphvizSpec:
     link_function
         Optional `"module:function"` import path to a function that takes a
         node's originating function and returns its documentation URL, or
-        `None`. See `catena.graph.link_style`.
+        `None`. See `catena.graph.GraphStyle.from_driver`.
     tooltips
         Whether hovering over a node in SVG output shows the first paragraph
         of its docstring and its declared contract.

@@ -31,7 +31,7 @@ The `catena` command and graph rendering are optional extras.
 | Extra | Installs | Needed for |
 | --- | --- | --- |
 | `cli` | `typer` | the `catena` command (`catena run`, `catena graph`, `catena subset`) |
-| `viz` | `apache-hamilton[visualization]` | rendering the DAG with `catena graph` |
+| `viz` | `apache-hamilton[visualization]`, `dotdoc[hamilton]` | rendering the DAG with `catena graph` or `catena.build_graph`, and placing it in a documentation page |
 | `all` | everything above | every optional feature |
 
 Name extras in square brackets:

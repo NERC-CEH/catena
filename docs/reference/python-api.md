@@ -68,5 +68,5 @@ Everything that touches a Hamilton `Driver` or graph object.
 | [`catena.pipeline`](modules/catena.pipeline.md) | `run` and `dry_run`, and the reports they return. |
 | [`catena.faults`](modules/catena.faults.md) | `Fault`, the record of one fault a dry run reports, and the list of fault kinds. |
 | [`catena.subsets`](modules/catena.subsets.md) | Parallel subset runs: shared Zarr stores, region writes, and merging the parts. |
-| [`catena.graph`](modules/catena.graph.md) | `build_graph`; `GraphStyle`, which applies the same styling to any Hamilton view; `compose_styles` and `link_style`; `graph_html`, which renders a graph for a documentation page. |
+| [`catena.graph`](modules/catena.graph.md) | `build_graph`; `GraphStyle`, which applies the same styling to any Hamilton view. |
 | [`catena.graph_style`](modules/catena.graph_style.md) | The `GraphvizSpec` defaults, and the TOML override `catena graph --style` reads. |

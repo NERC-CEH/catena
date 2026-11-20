@@ -126,7 +126,7 @@ def _():
 def _(catena, config_path, mo, nodes_path):
     import inspect
 
-    from catena.graph import graph_html
+    from dotdoc import graph_html
 
     def api_url(fn):
         """Link a function from nodes.py to its entry at the end of this page."""

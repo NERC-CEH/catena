@@ -13,8 +13,7 @@ import tempfile
 from pathlib import Path
 
 import graphviz
-
-from catena.graph import graph_html
+from dotdoc import graph_html
 
 HERE = Path(__file__).parent
 

@@ -134,17 +134,17 @@ Set `tooltips = false` in the style file to drop the hover text.
 ### In a documentation page
 
 An SVG shown through `<img>`, or Markdown's `![](graph.svg)`, has no working links.
-[`graph_html`](../../reference/modules/catena.graph.md#catena.graph.graph_html) renders the digraph as an HTML fragment that inlines the SVG instead:
+[dotdoc](https://jmarshrossney.github.io/dotdoc/)'s [`graph_html`](https://jmarshrossney.github.io/dotdoc/api/#dotdoc.html.graph_html) renders the digraph as an HTML fragment that inlines the SVG instead:
 
 ```python
-from catena.graph import graph_html
+from dotdoc import graph_html
 
 html = graph_html(catena.build_graph("config.toml", link=api_url))
 ```
 
 Write `html` into the page source, or return `mo.Html(html)` from a marimo notebook that is exported to the page.
-Zensical and Material for MkDocs preview a link's target on hover, but only for HTML links, so `graph_html` lays an invisible link with a `data-preview` attribute over each linked node.
-Pass `overlay=` other attributes for another theme, or `overlay=None` for none.
+Zensical and Material for MkDocs preview a link's target on hover, but only for HTML links, so `graph_html` lays an invisible link with a `data-preview` attribute over each linked node's name.
+See its documentation for the other options, such as zoom controls and dark-scheme colours.
 The [recipes](../../recipes/flux-pipeline.md#the-dag) are built this way, linking each node to the documentation of `nodes.py` at the end of the page.
 
 ## From Python
@@ -186,10 +186,10 @@ Frequencies and units are read off the whole DAG, so a node looks the same in ev
 ### Adding your own styling
 
 Hamilton's display methods take a single `custom_style_function`.
-[`compose_styles`](../../reference/modules/catena.graph.md#catena.graph.compose_styles) merges several into one, later attributes winning, so your own style function can sit on top of catena's:
+dotdoc's [`compose_styles`](https://jmarshrossney.github.io/dotdoc/api/#dotdoc.hamilton.compose_styles) merges several into one, later attributes winning, so your own style function can sit on top of catena's:
 
 ```python
-from catena.graph import compose_styles, link_style
+from dotdoc.hamilton import compose_styles, link_style
 
 
 def mine(*, node, node_class):
