@@ -135,7 +135,7 @@ def _(catena, config_path, mo, nodes_path):
         return autoref(f"pipeline_101.nodes.{fn.__qualname__}")
 
     graph = catena.build_graph(config_path, link=api_url)
-    mo.Html(graph_html(graph))
+    mo.Html(graph_html(graph, controls=True))
     return
 
 
