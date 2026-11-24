@@ -6,6 +6,19 @@ icon: lucide/square-terminal
 The `catena` command ships in the `cli` extra.
 Each subcommand wraps a [Python API](python-api.md) function, so anything below can also be done from Python.
 
+## `catena init`
+
+Writes a starting config for a set of modules; see [Write a config](../guides/configs/write-a-config.md#start-from-your-modules).
+The [`catena.scaffold`](modules/catena.scaffold.md) module does the same from Python.
+
+::: mkdocs-typer2
+    :module: catena.cli.app
+    :name: catena
+    :command: init
+    :termynal: true
+    :width: 80
+    :prompt: ❯
+
 ## `catena run`
 
 ::: mkdocs-typer2

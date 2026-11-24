@@ -83,6 +83,24 @@ Any node can be requested, including an intermediate you want to inspect.
 A module's keyword-only arguments are set in that module's section.
 They [share one namespace](../nodes/bring-your-own-module.md#parameter-names-share-one-namespace) across every section, so `floor` set under `[aridity]` is the same `floor` everywhere.
 
+## Start from your modules
+
+`catena init` writes a starting config for a set of modules:
+
+```sh
+catena init -m nodes.py -m diagnostics
+```
+
+Name each module by the section a package [registers](../../extending/register-modules.md) it under, or by its `_import_path`; with no `-m`, it asks.
+The config has one `[inputs]` section listing every data input the modules need and none of them produces, and one `[outputs]` section listing every node nothing else consumes.
+Each module's section holds its keyword-only settings at their defaults.
+
+File paths are placeholders, `inputs.nc` and `outputs.nc`, so set them before running, and split a section in two where your variables live in different files.
+Anything else left to fill in, such as a setting with no default or a contract two modules disagree on, is listed in `TODO` comments at the top of the file.
+An input is listed under its node name, so a file whose variables are named differently needs the [mapping form of `vars`](../../reference/configuration.md#inputs).
+
+From Python, [`catena.scaffold.generate_config`](../../reference/modules/catena.scaffold.md) does the same.
+
 ## Before you run it
 
 ```sh

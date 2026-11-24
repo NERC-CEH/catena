@@ -12,6 +12,7 @@ import typer
 
 from .._version import __version__
 from .graph import app as graph_app
+from .init import app as init_app
 from .run import app as run_app
 from .subset import app as subset_app
 
@@ -55,6 +56,7 @@ def _root(
     """
 
 
+app.add_typer(init_app)
 app.add_typer(graph_app)
 app.add_typer(run_app)
 app.add_typer(subset_app, name="subset")

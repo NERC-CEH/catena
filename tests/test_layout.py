@@ -28,6 +28,7 @@ HAMILTON_IMPORTERS = frozenset(
         "catena.contract_check",
         "catena.wiring_check",
         "catena.graph",
+        "catena.scaffold",
     }
 )
 
