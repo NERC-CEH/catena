@@ -367,3 +367,73 @@ class TestErrorTypes:
     def test_base_is_not_a_value_error(self):
         """`except ValueError` must not catch a missing-file error by accident."""
         assert not issubclass(CatenaError, ValueError)
+
+
+# ---------------------------------------------------------------------------
+# init
+# ---------------------------------------------------------------------------
+
+
+class TestInitCommand:
+    NODES = (
+        "import xarray as xr\n\ndef y(x: xr.DataArray) -> xr.DataArray:\n    return x\n"
+    )
+
+    @pytest.fixture
+    def workdir(self, tmp_path, monkeypatch):
+        (tmp_path / "nodes.py").write_text(self.NODES)
+        monkeypatch.chdir(tmp_path)
+        return tmp_path
+
+    def test_writes_the_config(self, workdir):
+        result = runner.invoke(app, ["init", "-m", "nodes.py"])
+        assert result.exit_code == 0, result.output
+        assert 'vars = [\n    "x",\n]' in (workdir / "config.toml").read_text()
+
+    def test_a_py_path_is_rewritten_relative_to_the_config(self, workdir):
+        result = runner.invoke(app, ["init", "-m", "nodes.py", "-o", "sub/c.toml"])
+        assert result.exit_code == 0, result.output
+        assert '_import_path = "../nodes.py"' in (workdir / "sub/c.toml").read_text()
+
+    def test_refuses_to_overwrite_without_force(self, workdir):
+        (workdir / "config.toml").write_text("")
+        result = runner.invoke(app, ["init", "-m", "nodes.py"])
+        assert isinstance(result.exception, CatenaFileExistsError)
+        result = runner.invoke(app, ["init", "-m", "nodes.py", "--force"])
+        assert result.exit_code == 0, result.output
+
+    def test_prints_the_notes(self, workdir):
+        (workdir / "nodes.py").write_text("def y(*, k: int) -> int:\n    return k\n")
+        result = runner.invoke(app, ["init", "-m", "nodes.py"])
+        assert "TODO: 'k' is a required setting" in result.output
+
+    def test_interactive_toggles_and_adds_paths(self, workdir, monkeypatch):
+        monkeypatch.setattr(
+            "catena.cli.init.discover_registered_modules",
+            lambda: {"transforms": None, "hidden": None},
+        )
+        result = runner.invoke(app, ["init"], input="\n9\n1 nodes.py\n1\n\n")
+        assert result.exit_code == 0, result.output
+        assert "[ ] 1: transforms" in result.output
+        assert "hidden" in result.output
+        assert "Choose at least one module." in result.output
+        assert "No module number 9." in result.output
+        assert "[nodes]" in (workdir / "config.toml").read_text()
+        assert "[transforms]" not in (workdir / "config.toml").read_text()
+
+    def test_factory_excludes_and_postprocesses(self, workdir, monkeypatch):
+        from catena.cli.init import make_init_app
+
+        monkeypatch.setattr(
+            "catena.cli.init.discover_registered_modules",
+            lambda: {"transforms": None, "hidden": None},
+        )
+
+        def postprocess(data):
+            data["validation"] = {"checks": []}
+
+        custom = make_init_app(exclude={"hidden"}, postprocess=postprocess)
+        result = runner.invoke(custom, input="nodes.py\n\n")
+        assert result.exit_code == 0, result.output
+        assert "hidden" not in result.output
+        assert "[validation]" in (workdir / "config.toml").read_text()
