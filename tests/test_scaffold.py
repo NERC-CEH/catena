@@ -68,10 +68,41 @@ def two_models(tmp_path):
 class TestGenerateConfig:
     def test_inputs_are_what_nothing_produces(self, two_models):
         data = generate_config(["first.py", "second.py"], base=two_models).data
+        assert data["inputs"] == {"path": "inputs.nc", "vars": ["rain", "soil"]}
+
+    def test_group_splits_sections_by_label(self, two_models):
+        seen = {}
+
+        def group(name, declared):
+            seen[name] = declared
+            freqs = {d.freq for d in declared if d.freq is not None}
+            return "static" if not freqs else str(freqs.pop().freq)
+
+        data = generate_config(
+            ["first.py", "second.py"], base=two_models, group=group
+        ).data
         assert data["inputs"] == {
-            "freq_D": {"path": "inputs/freq_D.nc", "suffix": "", "vars": ["rain"]},
-            "no_freq": {"path": "inputs/no_freq.nc", "suffix": "", "vars": ["soil"]},
+            "D": {"path": "inputs/D.nc", "suffix": "", "vars": ["rain"]},
+            "static": {"path": "inputs/static.nc", "suffix": "", "vars": ["soil"]},
         }
+        assert data["outputs"] == {
+            "7D": {"path": "outputs/7D.nc", "suffix": "", "vars": ["wet_weeks"]}
+        }
+        assert [d.unit for d in seen["rain"]] == [Unit("mm d-1")]
+        assert [d.freq for d in seen["wet_weeks"]] == [Freq("7D")]
+
+    def test_an_undeclared_output_is_grouped_with_no_declarations(self, tmp_path):
+        _module(
+            tmp_path, "a", "def y(x: xr.DataArray) -> xr.DataArray:\n    return x\n"
+        )
+        seen = {}
+
+        def group(name, declared):
+            seen[name] = declared
+            return "all"
+
+        generate_config(["a.py"], base=tmp_path, group=group)
+        assert seen == {"x": (), "y": ()}
 
     def test_outputs_are_what_nothing_consumes(self, two_models):
         data = generate_config(["first.py", "second.py"], base=two_models).data
@@ -219,10 +250,13 @@ def test_the_flux_recipe_runs_once_its_paths_are_set(tmp_path):
     spec.loader.exec_module(make_data)
     flux, satellite = make_data.write_inputs(tmp_path / "data")
 
-    generated = generate_config(["nodes.py"], base=tmp_path)
+    def by_file(name, declared):
+        return "satellite" if name == "sat_gpp" else "flux"
+
+    generated = generate_config(["nodes.py"], base=tmp_path, group=by_file)
     assert generated.notes == []
-    generated.data["inputs"]["freq_W-SUN"]["path"] = str(satellite)
-    generated.data["inputs"]["no_freq"]["path"] = str(flux)
+    generated.data["inputs"]["satellite"]["path"] = str(satellite)
+    generated.data["inputs"]["flux"]["path"] = str(flux)
     generated.dump(tmp_path / "config.toml")
     with xra.enabled(True):
         report = catena.dry_run(tmp_path / "config.toml")

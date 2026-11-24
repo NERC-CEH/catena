@@ -432,8 +432,14 @@ class TestInitCommand:
         def postprocess(data):
             data["validation"] = {"checks": []}
 
-        custom = make_init_app(exclude={"hidden"}, postprocess=postprocess)
+        custom = make_init_app(
+            exclude={"hidden"},
+            group=lambda name, declared: "everything",
+            postprocess=postprocess,
+        )
         result = runner.invoke(custom, input="nodes.py\n\n")
         assert result.exit_code == 0, result.output
         assert "hidden" not in result.output
-        assert "[validation]" in (workdir / "config.toml").read_text()
+        text = (workdir / "config.toml").read_text()
+        assert "[validation]" in text
+        assert "[inputs.everything]" in text

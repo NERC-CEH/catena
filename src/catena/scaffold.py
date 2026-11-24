@@ -15,16 +15,24 @@ The modules are built into one DAG, and the config gets:
 
 - one module section each, holding the keyword-only settings their node
   functions declare, at their defaults;
-- one `[inputs.<label>]` section per declared frequency, listing every data input
-  the modules need and none of them produces, under its node name;
-- one `[outputs.<label>]` section per declared frequency, listing the nodes no
-  other node consumes.
+- an `[inputs]` section listing every data input the modules need and none of
+  them produces, under its node name;
+- an `[outputs]` section listing the nodes no other node consumes.
 
-Section labels come from the declared `Freq` (`freq_D`, `freq_1ME`), with
-`no_freq` for inputs that declare none; a config with a single input or output
-group uses the unlabelled `[inputs]` or `[outputs]` form. Every path follows one
-rule, to be replaced with your own: `inputs/<label>.nc` and `outputs/<label>.nc`,
-or `inputs.nc` and `outputs.nc` for the unlabelled form.
+How variables are split between files depends on the data, so by default every
+input goes in one section and every output in another, at the placeholder paths
+`inputs.nc` and `outputs.nc`. Pass `group` to split them into labelled sections
+instead. It is called with each node's name and the contracts declared for it,
+and returns the section label to put the node in; the sections' paths are then
+`inputs/<label>.nc` and `outputs/<label>.nc`. Grouping by declared frequency:
+
+```python
+def by_freq(name, declared):
+    freqs = {d.freq for d in declared if d.freq is not None}
+    return "static" if not freqs else str(freqs.pop().freq)
+
+generate_config(["diagnostics"], group=by_freq)
+```
 
 What the generator cannot write is listed in `GeneratedConfig.notes`, and at
 the top of the file `GeneratedConfig.dumps` writes: settings with no default,
@@ -40,7 +48,7 @@ data generator, needs to know.
 import inspect
 import types
 import typing
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -67,13 +75,18 @@ from .wiring_check import terminal_nodes
 
 __all__ = [
     "GeneratedConfig",
+    "Group",
     "InputRequirement",
     "generate_config",
     "input_requirements",
 ]
 
-# Label of the input group whose consumers declare no frequency.
-_NO_FREQ = "no_freq"
+Group = Callable[[str, tuple[Declared, ...]], str]
+"""Choose a node's section label from its name and the contracts declared for it.
+
+For an input, the declarations are its consumers'; for an output, its producer's.
+Either may be empty.
+"""
 
 
 @dataclass
@@ -134,7 +147,10 @@ class InputRequirement:
 
 
 def generate_config(
-    modules: Sequence[str], *, base: str | Path | None = None
+    modules: Sequence[str],
+    *,
+    base: str | Path | None = None,
+    group: Group | None = None,
 ) -> GeneratedConfig:
     """Write a starting config for `modules`.
 
@@ -148,6 +164,9 @@ def generate_config(
     base
         The directory the config will be written to. A relative `.py` path
         resolves against it, as it will when the config is loaded.
+    group
+        Splits inputs and outputs into labelled sections; see `Group`. Without
+        it, the config has one `[inputs]` and one `[outputs]` section.
 
     Returns
     -------
@@ -192,29 +211,25 @@ def generate_config(
 
     produced, consumed = _collect_declarations(dr)
     required = _required(dr)
-    data_inputs: dict[str, str] = {}
+    data_inputs: dict[str, tuple[Declared, ...]] = {}
     for node in graph_types.HamiltonGraph.from_graph(dr.graph).nodes:
         if not node.is_external_input or node.name not in required:
             continue
         if _is_data(node.type):
-            data_inputs[node.name] = _freq_label(
-                next(
-                    (d for d, _ in consumed.get(node.name, ()) if d.freq is not None),
-                    None,
-                )
-            )
+            data_inputs[node.name] = tuple(d for d, _ in consumed.get(node.name, ()))
         elif node.name not in defaults:
             notes.append(
                 f"{node.name!r} is a required setting with no default; set it in "
                 f"the section of the module that uses it."
             )
 
-    outputs: dict[str, str] = {}
+    outputs: dict[str, tuple[Declared, ...]] = {}
     types_ = {v.name: v.type for v in dr.list_available_variables()}
     for name in terminal_nodes(dr):
-        if _is_data(types_[name]) or name in produced:
-            declared = produced.get(name, (None, ""))[0]
-            outputs[name] = _freq_label(declared)
+        if name in produced:
+            outputs[name] = (produced[name][0],)
+        elif _is_data(types_[name]):
+            outputs[name] = ()
 
     notes.extend(f"contract conflict: {fault}" for fault in dag_contract_conflicts(dr))
 
@@ -225,9 +240,9 @@ def generate_config(
         }
         data[section] = ({} if registered else {"_import_path": path}) | settings
     if data_inputs:
-        data["inputs"] = _io_tables("inputs", data_inputs)
+        data["inputs"] = _io_tables("inputs", data_inputs, group)
     if outputs:
-        data["outputs"] = _io_tables("outputs", outputs)
+        data["outputs"] = _io_tables("outputs", outputs, group)
 
     generated = GeneratedConfig(data=data, notes=notes)
     _verify(generated, base, dr)
@@ -373,21 +388,15 @@ def _is_data(hint: Any) -> bool:
     return isinstance(hint, type) and issubclass(hint, xr.DataArray)
 
 
-def _freq_label(declared: Declared | None) -> str:
-    """Return the section label for nodes declared with `declared`'s frequency."""
-    if declared is None or declared.freq is None:
-        return _NO_FREQ
-    return f"freq_{declared.freq.freq}"
-
-
-def _io_tables(kind: str, labels: dict[str, str]) -> dict[str, Any]:
-    """Return the `[inputs]` or `[outputs]` table grouping `labels`' nodes."""
+def _io_tables(
+    kind: str, nodes: dict[str, tuple[Declared, ...]], group: Group | None
+) -> dict[str, Any]:
+    """Return the `[inputs]` or `[outputs]` table holding `nodes`."""
+    if group is None:
+        return {"path": f"{kind}.nc", "vars": sorted(nodes)}
     groups: dict[str, list[str]] = {}
-    for name, label in sorted(labels.items()):
-        groups.setdefault(label, []).append(name)
-    if len(groups) == 1:
-        (names,) = groups.values()
-        return {"path": f"{kind}.nc", "vars": names}
+    for name, declared in sorted(nodes.items()):
+        groups.setdefault(group(name, declared), []).append(name)
     return {
         label: {"path": f"{kind}/{label}.nc", "suffix": "", "vars": names}
         for label, names in sorted(groups.items())

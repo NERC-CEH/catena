@@ -9,13 +9,16 @@ import typer
 
 from ..errors import CatenaFileExistsError
 from ..importing import discover_registered_modules, is_file_form
-from ..scaffold import generate_config
+from ..scaffold import Group, generate_config
 
 Postprocess = Callable[[dict[str, Any]], None]
 
 
 def make_init_app(
-    *, exclude: Collection[str] = (), postprocess: Postprocess | None = None
+    *,
+    exclude: Collection[str] = (),
+    group: Group | None = None,
+    postprocess: Postprocess | None = None,
 ) -> typer.Typer:
     """Return a typer app holding the `init` command.
 
@@ -24,6 +27,9 @@ def make_init_app(
     exclude
         Registered modules not to offer in the interactive menu. They can still
         be named with `--module`.
+    group
+        Passed to `catena.scaffold.generate_config`, to split inputs and outputs
+        into labelled sections.
     postprocess
         Called on the generated config's data, in place, before it is written.
     """
@@ -62,7 +68,7 @@ def make_init_app(
         chosen = modules or _choose(exclude)
         base = output.resolve().parent
         generated = generate_config(
-            [_relative_to(name, base) for name in chosen], base=base
+            [_relative_to(name, base) for name in chosen], base=base, group=group
         )
         if postprocess is not None:
             postprocess(generated.data)
