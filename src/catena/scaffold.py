@@ -36,8 +36,26 @@ generate_config(["diagnostics"], group=by_freq)
 
 What the generator cannot write is listed in `GeneratedConfig.notes`, and at
 the top of the file `GeneratedConfig.dumps` writes: settings with no default,
-settings two modules give different defaults, and contract conflicts between the
-modules.
+settings two modules give different defaults, contract conflicts between the
+modules, and the inputs a setting brings in or drops when it selects another
+`@config.when*` variant.
+
+`variant_inputs` lists those variant inputs for each setting a `@config.when*`
+decorator reads, value by value:
+
+```python
+from catena.scaffold import ANY_OTHER, variant_inputs
+
+changes = variant_inputs(["pmodel"])
+changes["method_kphio"]["sandoval"].added    # ('aridity_index',)
+changes["method_kphio"][ANY_OTHER].added     # ()
+```
+
+The values are the ones the `config.when`, `when_not`, `when_in` and
+`when_not_in` decorators name, plus `ANY_OTHER` for every value none of them
+names, which all select the same variants. Each value is built with every other
+setting at its default, so a variant that a combination of two settings selects
+is not listed.
 
 `input_requirements` lists, for each input section of a parsed config, the
 variables it loads and the contracts their consumers declare for them, without
@@ -56,6 +74,8 @@ from typing import Any
 import tomli_w
 import xarray as xr
 from hamilton import driver, graph_types
+from hamilton.function_modifiers import config as hamilton_config
+from hamilton.function_modifiers.base import NodeResolver
 from hamilton.graph_utils import find_functions
 from xarray_annotated import Declared, declaration_from_hint
 
@@ -74,12 +94,26 @@ from .specs import RECOGNISED_SECTIONS, ParsedConfig, io_section_name
 from .wiring_check import terminal_nodes
 
 __all__ = [
+    "ANY_OTHER",
     "GeneratedConfig",
     "Group",
+    "InputChange",
     "InputRequirement",
     "generate_config",
     "input_requirements",
+    "variant_inputs",
 ]
+
+
+class _AnyOther:
+    """The type of `ANY_OTHER`."""
+
+    def __repr__(self) -> str:
+        return "<any other>"
+
+
+ANY_OTHER = _AnyOther()
+"""Stands for every value of a setting that no `@config.when*` decorator names."""
 
 Group = Callable[[str, tuple[Declared, ...]], str]
 """Choose a node's section label from its name and the contracts declared for it.
@@ -107,7 +141,9 @@ class GeneratedConfig:
 
     def dumps(self) -> str:
         """Return the config as TOML, with `notes` as a comment block at the top."""
-        header = "".join(f"# TODO: {note}\n" for note in self.notes)
+        header = "".join(
+            "# TODO: " + note.replace("\n", "\n#       ") + "\n" for note in self.notes
+        )
         body = tomli_w.dumps(self.data)
         return f"{header}\n{body}" if header else body
 
@@ -146,6 +182,82 @@ class InputRequirement:
     consumers: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class InputChange:
+    """What one value of a setting changes about the inputs a config must load.
+
+    Attributes
+    ----------
+    added
+        Required inputs the value brings in, compared with the defaults.
+    removed
+        Inputs the defaults need and the value does not.
+    error
+        Why the modules do not build with this value, if they do not; `added`
+        and `removed` are then empty.
+    """
+
+    added: tuple[str, ...] = ()
+    removed: tuple[str, ...] = ()
+    error: str | None = None
+
+    def __bool__(self) -> bool:
+        """Return True if the value changes anything."""
+        return bool(self.added or self.removed or self.error)
+
+
+def variant_inputs(
+    modules: Sequence[str], *, base: str | Path | None = None
+) -> dict[str, dict[Any, InputChange]]:
+    """List, for each setting a `@config.when*` reads, what each value changes.
+
+    Parameters
+    ----------
+    modules
+        As for `generate_config`.
+    base
+        As for `generate_config`.
+
+    Returns
+    -------
+    dict[str, dict[Any, InputChange]]
+        For each setting, sorted by name, each value a decorator names and then
+        `ANY_OTHER`, mapped to how the inputs differ from those the defaults
+        need. A setting only custom `config(resolver, config_used=[...])`
+        decorators read, whose values cannot be known, maps to an empty dict.
+
+    Raises
+    ------
+    CatenaValueError
+        As for `generate_config`, if the modules do not build at their defaults.
+    """
+    modules_ = _Modules.load(modules, base)
+    return _variant_changes(modules_, modules_.build(modules_.config))
+
+
+def _variant_changes(
+    modules_: "_Modules", dr: driver.Driver
+) -> dict[str, dict[Any, InputChange]]:
+    """Return `variant_inputs` for loaded modules, given their default build."""
+    default = _unbound(dr)
+    changes: dict[str, dict[Any, InputChange]] = {}
+    for setting, (_, values) in sorted(_selectors(modules_.imported).items()):
+        changes[setting] = {}
+        if not values:
+            continue
+        for value in (*values, ANY_OTHER):
+            try:
+                unbound = _unbound(modules_.build(modules_.config | {setting: value}))
+            except CatenaValueError as exc:
+                changes[setting][value] = InputChange(error=str(exc))
+                continue
+            changes[setting][value] = InputChange(
+                added=tuple(sorted(unbound - default)),
+                removed=tuple(sorted(default - unbound)),
+            )
+    return changes
+
+
 def generate_config(
     modules: Sequence[str],
     *,
@@ -180,28 +292,10 @@ def generate_config(
         section, or if the modules cannot be built into one DAG (two of them
         defining the same node, for instance).
     """
-    base = None if base is None else Path(base).resolve()
-    sections = _sections(modules)
-    import_paths = [path for path, _ in sections.values()]
-    imported = {
-        section: import_user_module(path, base)
-        for section, (path, _) in sections.items()
-    }
-
-    defaults, clashes = _settings(imported)
-    try:
-        dr = build_driver(
-            import_paths,
-            {key: value for key, (_, value) in defaults.items()},
-            base=base,
-            check_contracts=False,
-        )
-    except CatenaValueError:
-        raise
-    except Exception as exc:  # Hamilton raises bare exceptions for a bad graph.
-        raise CatenaValueError(
-            f"The modules {list(sections)} cannot be built into one DAG: {exc}"
-        ) from exc
+    modules_ = _Modules.load(modules, base)
+    base, sections, defaults = modules_.base, modules_.sections, modules_.defaults
+    clashes = modules_.clashes
+    dr = modules_.build(modules_.config)
 
     notes = [
         f"setting {key!r} defaults to {value!r} in [{owner}] and to {other!r} in "
@@ -232,6 +326,9 @@ def generate_config(
             outputs[name] = ()
 
     notes.extend(f"contract conflict: {fault}" for fault in dag_contract_conflicts(dr))
+    owners = {key: owner for key, (owner, _) in _selectors(modules_.imported).items()}
+    owners |= {key: owner for key, (owner, _) in defaults.items()}
+    notes.extend(_variant_notes(_variant_changes(modules_, dr), owners))
 
     data: dict[str, Any] = {}
     for section, (path, registered) in sections.items():
@@ -295,6 +392,138 @@ def input_requirements(
             )
         requirements[label] = section
     return requirements
+
+
+@dataclass(frozen=True)
+class _Modules:
+    """The requested modules, imported, with their settings at their defaults."""
+
+    base: Path | None
+    sections: dict[str, tuple[str, bool]]
+    imported: dict[str, types.ModuleType]
+    defaults: dict[str, tuple[str, Any]]
+    clashes: dict[str, tuple[str, Any, str, Any]]
+
+    @classmethod
+    def load(cls, modules: Sequence[str], base: str | Path | None) -> "_Modules":
+        """Import `modules` and collect their settings."""
+        base_ = None if base is None else Path(base).resolve()
+        sections = _sections(modules)
+        imported = {
+            section: import_user_module(path, base_)
+            for section, (path, _) in sections.items()
+        }
+        defaults, clashes = _settings(imported)
+        return cls(base_, sections, imported, defaults, clashes)
+
+    @property
+    def config(self) -> dict[str, Any]:
+        """Return each setting at its default, as the driver config."""
+        return {key: value for key, (_, value) in self.defaults.items()}
+
+    def build(self, config: dict[str, Any]) -> driver.Driver:
+        """Build the modules into one driver, without the contract check."""
+        try:
+            return build_driver(
+                [path for path, _ in self.sections.values()],
+                config,
+                base=self.base,
+                check_contracts=False,
+            )
+        except CatenaValueError:
+            raise
+        except Exception as exc:  # Hamilton raises bare exceptions for a bad graph.
+            raise CatenaValueError(
+                f"The modules {list(self.sections)} cannot be built into one DAG: {exc}"
+            ) from exc
+
+
+def _selectors(
+    imported: dict[str, types.ModuleType],
+) -> dict[str, tuple[str, list[Any]]]:
+    """Map each setting a `@config` decorator reads to the values decorators name.
+
+    A setting is listed if any decorator reads it, by its public
+    `optional_config`, with the first section whose module does. Its values
+    come from the `config.when*` resolvers, whose key-value pairs Hamilton keeps
+    only in a closure: `resolves` in `ConfigResolver.when*` closes over the one
+    mapping it was called with.
+    """
+    found: dict[str, tuple[str, list[Any]]] = {}
+    for section, module in imported.items():
+        for _, func in find_functions(module):
+            for resolver in getattr(func, NodeResolver.get_lifecycle_name(), []):
+                if not isinstance(resolver, hamilton_config):
+                    continue
+                for key in resolver.optional_config() or {}:
+                    found.setdefault(key, (section, []))
+                for key, named in _named_values(resolver).items():
+                    values = found[key][1]
+                    values.extend(v for v in named if v not in values)
+    return found
+
+
+def _named_values(resolver: hamilton_config) -> dict[str, list[Any]]:
+    """Return the values a `config.when*` decorator names, by setting."""
+    resolves = getattr(resolver.does_resolve, "resolves", None)
+    closure = getattr(resolves, "__closure__", None)
+    if resolves is None or not closure:
+        return {}
+    if not isinstance(pairs := closure[0].cell_contents, dict):
+        return {}
+    if resolves.__qualname__.split(".")[1] in ("when_in", "when_not_in"):
+        return {key: list(group) for key, group in pairs.items()}
+    return {key: [value] for key, value in pairs.items()}
+
+
+def _unbound(dr: driver.Driver) -> set[str]:
+    """Return the inputs some node requires and the driver config does not set."""
+    externals = {
+        node.name
+        for node in graph_types.HamiltonGraph.from_graph(dr.graph).nodes
+        if node.is_external_input
+    }
+    return (_required(dr) & externals) - set(dr.graph.config)
+
+
+def _variant_notes(
+    changes: dict[str, dict[Any, InputChange]], owners: dict[str, str]
+) -> list[str]:
+    """Word what each setting's values change, merging values that change alike.
+
+    `ANY_OTHER` is left out: what it changes is what an unsupported value would,
+    which is not something to act on, and a dry run reports it.
+    """
+    notes = []
+    for setting, by_value in changes.items():
+        where = f"[{owners[setting]}] "
+        if not by_value:
+            notes.append(
+                f"{where}{setting!r} selects variants with values catena cannot "
+                f"list; check the module for the inputs each one needs."
+            )
+            continue
+        alike: dict[InputChange, list[Any]] = {}
+        for value, change in by_value.items():
+            if change and value is not ANY_OTHER:
+                alike.setdefault(change, []).append(value)
+        for change, values in alike.items():
+            named = " or ".join(repr(v) for v in values)
+            parts = []
+            if change.error is not None:
+                parts.append(f"does not build: {change.error}")
+            if change.added:
+                parts.append(f"also needs {_names(change.added)}")
+            if change.removed:
+                parts.append(f"no longer needs {_names(change.removed)}")
+            effect = "; ".join(parts)
+            notes.append(f"{where}{setting} = {named} {effect}.")
+    return notes
+
+
+def _names(names: tuple[str, ...]) -> str:
+    """Join input names for a note."""
+    return ", ".join(repr(name) for name in names)
 
 
 def _sections(modules: Sequence[str]) -> dict[str, tuple[str, bool]]:
