@@ -489,7 +489,11 @@ def _unbound(dr: driver.Driver) -> set[str]:
 def _variant_notes(
     changes: dict[str, dict[Any, InputChange]], owners: dict[str, str]
 ) -> list[str]:
-    """Word what each setting's values change, merging values that change alike."""
+    """Word what each setting's values change, merging values that change alike.
+
+    `ANY_OTHER` is left out: what it changes is what an unsupported value would,
+    which is not something to act on, and a dry run reports it.
+    """
     notes = []
     for setting, by_value in changes.items():
         where = f"[{owners[setting]}] "
@@ -501,12 +505,10 @@ def _variant_notes(
             continue
         alike: dict[InputChange, list[Any]] = {}
         for value, change in by_value.items():
-            if change:
+            if change and value is not ANY_OTHER:
                 alike.setdefault(change, []).append(value)
         for change, values in alike.items():
-            named = " or ".join(
-                "any other value" if v is ANY_OTHER else repr(v) for v in values
-            )
+            named = " or ".join(repr(v) for v in values)
             parts = []
             if change.error is not None:
                 parts.append(f"does not build: {change.error}")

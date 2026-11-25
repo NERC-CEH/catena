@@ -337,7 +337,7 @@ class TestVariantNotes:
         notes = generate_config([_module(tmp_path, "m", VARIANTS)], base=tmp_path).notes
         assert notes == [
             "[m] method = 'corrected' also needs 'correction'.",
-            "[m] method = 'other' or any other value also needs 'extra'.",
+            "[m] method = 'other' also needs 'extra'.",
         ]
 
     def test_a_decorator_only_setting_names_its_section(self, tmp_path):

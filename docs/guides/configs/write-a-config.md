@@ -97,8 +97,9 @@ Each module's section holds its keyword-only settings at their defaults.
 
 File paths are placeholders, `inputs.nc` and `outputs.nc`, so set them before running, and split a section in two where your variables live in different files.
 Anything else left to fill in, such as a setting with no default or a contract two modules disagree on, is listed in `TODO` comments at the top of the file.
+An input is listed under its node name, so a file whose variables are named differently needs the [mapping form of `vars`](../../reference/configuration.md#inputs).
 
-The inputs listed are the ones the modules need at their defaults.
+The body of the config describes one complete build, the modules at their defaults, and the `TODO` comments describe how other choices differ from it.
 Where a setting picks between `@config.when` variants, a `TODO` names each value that needs other inputs, and the inputs it adds or drops:
 
 ```toml
@@ -107,7 +108,6 @@ Where a setting picks between `@config.when` variants, a `TODO` names each value
 
 Each value is checked with every other setting at its default, so a variant only a combination of two settings selects is not listed.
 [`catena.scaffold.variant_inputs`](../../reference/modules/catena.scaffold.md) gives the same listing as data, for instance to document a module's inputs by method.
-An input is listed under its node name, so a file whose variables are named differently needs the [mapping form of `vars`](../../reference/configuration.md#inputs).
 
 From Python, [`catena.scaffold.generate_config`](../../reference/modules/catena.scaffold.md) does the same.
 
