@@ -36,9 +36,9 @@ The table is defined in [`catena.formats.FORMATS`](modules/catena.formats.md).
 Inputs keep the dimensions and coordinates they have in their files: catena does not stack, transpose, rename or reproject them, and reads no meaning into a CRS.
 A gridded input arrives as `(time, y, x)`, or whatever its spatial dimensions are called, and a table of sites as `(time, site)`.
 
-catena does not check that gridded inputs share a grid unless you ask it to.
-Without a check, xarray aligns two arrays on mismatched coordinates by intersecting them, so a grid offset by rounding error gives a partial or empty result and no error.
-Declare [`crs_equal` and `coords_equal`](configuration.md#validation) on the spatial coordinates to make a mismatch an error before anything runs.
+Nodes run under xarray's `arithmetic_join="exact"`, so arithmetic between arrays whose shared coordinates differ, such as two grids offset by rounding error, raises `xarray.AlignmentError` naming the dimension instead of silently intersecting them.
+A node that wants the intersection aligns its operands explicitly, with `xr.align(a, b, join="inner")`.
+The error comes when the node runs; declare [`crs_equal` and `coords_equal`](configuration.md#validation) on the spatial coordinates to report a mismatched grid before anything runs.
 
 A model that wants one spatial dimension can stack the grid itself, for example with `.stack(pixel=("y", "x"))`, and must unstack its results before they reach an output.
 No supported format can store a stacked (MultiIndex) dimension, so catena refuses such an output and names the dimension.

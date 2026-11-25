@@ -1,14 +1,41 @@
-"""Build Hamilton drivers from a parsed config or a list of modules."""
+"""Build Hamilton drivers from a parsed config or a list of modules.
 
+Nodes in a driver built here run under xarray's `arithmetic_join="exact"`:
+arithmetic between arrays whose shared coordinates differ raises
+`xarray.AlignmentError` naming the dimension, rather than silently intersecting
+them. A node that wants an inner join aligns its operands explicitly, with
+`xr.align(a, b, join="inner")`.
+"""
+
+import contextlib
 from pathlib import Path
 from typing import Any
 
+import xarray as xr
 from hamilton import driver
+from hamilton.lifecycle import GraphExecutionHook
 from hamilton.settings import ENABLE_POWER_USER_MODE
 
 from .errors import CatenaValueError
 from .importing import import_user_module
 from .specs import CacheSpec, NodeSpec, ParsedConfig, RegisteredModule
+
+
+class _ExactAlignment(GraphExecutionHook):
+    """Run every node under `xr.set_options(arithmetic_join="exact")`."""
+
+    def __init__(self) -> None:
+        self._stack = contextlib.ExitStack()
+
+    def run_before_graph_execution(self, **kwargs: Any) -> None:
+        """Switch exact alignment on for this execution."""
+        self._stack.enter_context(xr.set_options(arithmetic_join="exact"))
+
+    def run_after_graph_execution(self, **kwargs: Any) -> None:
+        """Restore the alignment option in force before the execution."""
+        # Hamilton calls this from a `finally`, so the option is restored when a
+        # node raises.
+        self._stack.close()
 
 
 def build_driver(
@@ -76,7 +103,12 @@ def build_driver(
         else:
             modules_.append(import_user_module(mod, base, by.get(mod)))
 
-    dr = driver.Builder().with_modules(*modules_).with_config(config)
+    dr = (
+        driver.Builder()
+        .with_modules(*modules_)
+        .with_config(config)
+        .with_adapters(_ExactAlignment())
+    )
 
     if allow_module_overrides:
         dr = dr.allow_module_overrides()
