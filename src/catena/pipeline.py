@@ -33,7 +33,14 @@ from .io import (
     save_outputs,
 )
 from .specs import CacheSpec, ParsedConfig, SubsetSpec
-from .wiring_check import WiringWarning, check_wiring, terminal_nodes, unused_inputs
+from .wiring_check import (
+    WiringWarning,
+    check_wiring,
+    terminal_nodes,
+    unbound_inputs,
+    unbound_message,
+    unused_inputs,
+)
 
 __all__ = [
     "DryRunError",
@@ -539,12 +546,28 @@ def _plan_stage(
         )
         for name in unused_inputs(dr, targets, inputs)
     )
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", WiringWarning)
-        try:
-            check_wiring(dr, targets, inputs)
-        except CatenaError as exc:
-            errors.append(Fault("plan_invalid", str(exc)))
+    unbound = unbound_inputs(dr, targets, inputs)
+    errors.extend(
+        Fault(
+            "input_unbound",
+            unbound_message(name, consumers),
+            node=name,
+            target=f"input of {', '.join(consumers)}",
+            hint=(
+                f"add {name!r} to an [inputs.*] section's vars, or set it in a "
+                f"module section"
+            ),
+            location="[inputs.*]",
+        )
+        for name, consumers in unbound.items()
+    )
+    if not unbound:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", WiringWarning)
+            try:
+                check_wiring(dr, targets, inputs)
+            except CatenaError as exc:
+                errors.append(Fault("plan_invalid", str(exc)))
     if errors:
         return Stage(
             "plan", "failed", "execution plan invalid", findings, tuple(errors)

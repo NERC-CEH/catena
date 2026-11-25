@@ -78,8 +78,7 @@ def test_only_the_calibrated_parameter_is_missing():
     [plan] = excinfo.value.report.failed
     assert plan.name == "plan"
     [fault] = plan.errors
-    assert fault.kind == "plan_invalid"
-    assert "['scaling_factor']" in fault.message
+    assert (fault.kind, fault.node) == ("input_unbound", "scaling_factor")
 ```
 
 If your inputs are large or absent in CI, point the test at a small synthetic file with the same variables and metadata: the checks read headers, not arrays.

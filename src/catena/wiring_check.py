@@ -12,15 +12,17 @@ through a run:
   suffix/alias typo, e.g. loading `temperature_daily` for a node that wants
   `temperature_weekly`).
 
-It reads the graph structure only, so it needs no compute. The unbound check is
-Hamilton's own `Driver.validate_execution`, which names the nodes that need
-each missing input.
+It reads the graph structure only, so it needs no compute. `unbound_inputs`
+lists each unbound input with the nodes that consume it, resolving inputs and
+config values as Hamilton's `Driver.validate_execution` does; `check_wiring`
+then runs `validate_execution` for anything else that would stop the run.
 """
 
 import warnings
 from typing import Any
 
 from hamilton import driver, graph_types
+from hamilton.execution import graph_functions
 
 from .errors import CatenaValueError
 
@@ -60,6 +62,33 @@ def unused_inputs(
     return sorted(set(inputs) - external)
 
 
+def unbound_inputs(
+    dr: driver.Driver, final_vars: list[str], inputs: dict[str, Any]
+) -> dict[str, list[str]]:
+    """Return the required inputs with no loaded or config value, sorted by name.
+
+    Each maps to the sorted names of the nodes upstream of `final_vars` that
+    consume it. An input with a default value is not required, and a scalar set
+    in a module section binds an input as a loaded one does.
+    """
+    nodes, user_nodes = dr.graph.get_upstream_nodes(final_vars, inputs)  # type: ignore[reportArgumentType]
+    bound = graph_functions.combine_config_and_inputs(dr.graph.config, inputs)
+    return {
+        node.name: sorted(c.name for c in node.depended_on_by if c in nodes)
+        for node in sorted(user_nodes, key=lambda n: n.name)
+        if node.name not in bound
+        and graph_functions.node_is_required_by_anything(node, nodes)
+    }
+
+
+def unbound_message(name: str, consumers: list[str]) -> str:
+    """Return the sentence reporting that input `name` of `consumers` is unbound."""
+    return (
+        f"required input {name!r} of {', '.join(consumers)} is neither loaded nor "
+        f"set in the config"
+    )
+
+
 def check_wiring(
     dr: driver.Driver,
     final_vars: list[str],
@@ -79,8 +108,9 @@ def check_wiring(
     Raises
     ------
     CatenaValueError
-        If Hamilton cannot plan the execution: a required external input has no
-        loaded or config value (unbound), or a loaded value has the wrong type.
+        If a required external input has no loaded or config value (unbound),
+        naming each one on its own line, or if Hamilton cannot otherwise plan the
+        execution, e.g. a loaded value has the wrong type.
 
     Warns
     -----
@@ -94,6 +124,13 @@ def check_wiring(
             WiringWarning,
             stacklevel=2,
         )
+
+    if unbound := unbound_inputs(dr, final_vars, inputs):
+        lines = "\n".join(
+            f"  {unbound_message(name, consumers)}"
+            for name, consumers in unbound.items()
+        )
+        raise CatenaValueError(f"the DAG cannot be executed:\n{lines}")
 
     try:
         dr.validate_execution(final_vars, inputs=inputs)  # type: ignore[reportArgumentType]

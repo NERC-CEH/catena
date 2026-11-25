@@ -19,7 +19,7 @@ sudo dnf install graphviz     # Fedora
 
 ## Wiring and contracts
 
-### "Required input X not provided" / an unbound input
+### "required input 'X' … is neither loaded nor set in the config"
 
 A node needs an input that nothing produces.
 Usually one of:

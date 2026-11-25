@@ -20,7 +20,8 @@ fail, and never renamed or reused.
 | `"contract_conflict"` | `dag` | Two declarations on one DAG edge conflict |
 | `"contract_violation"` | `contracts` | A loaded input fails a declaration on it |
 | `"unknown_target"` | `plan` | A requested node is not in the DAG |
-| `"plan_invalid"` | `plan` | Hamilton cannot plan the run, e.g. an unbound input |
+| `"input_unbound"` | `plan` | A required input is not loaded or set in the config |
+| `"plan_invalid"` | `plan` | Hamilton cannot otherwise plan the run, e.g. a bad type |
 | `"unused_input"` | `plan` | A loaded input no node consumes, reported as a finding |
 | `"output_not_writable"` | `outputs` | An `[outputs.*]` destination cannot be written |
 
@@ -43,6 +44,7 @@ type FaultKind = Literal[
     "contract_conflict",
     "contract_violation",
     "unknown_target",
+    "input_unbound",
     "plan_invalid",
     "unused_input",
     "output_not_writable",
@@ -64,14 +66,16 @@ class Fault:
         The fault in words, as the CLI prints it.
     node
         The variable a `contract_conflict` is on, the input a `contract_violation`
-        is about, the node an `unknown_target` names, or the `unused_input`.
+        is about, the node an `unknown_target` names, the `input_unbound`, or
+        the `unused_input`.
     source
         One end of a `contract_conflict`'s edge, e.g.
         `"output of partition_fluxes"`: the producer, where the edge has one.
     target
         The other end of a `contract_conflict`'s edge, e.g.
         `"input of to_mass_flux"`, or the consumers whose declarations a
-        `contract_violation` fails, e.g. `"input of a, b"`.
+        `contract_violation` fails, e.g. `"input of a, b"`, or the consumers of
+        an `input_unbound`, worded the same way.
     facet
         The contract facet at fault: `"unit"`, `"dims"`, `"coords"`, `"dtype"` or
         `"freq"`. Coords never conflict, so only a violation has `"coords"`.
@@ -87,11 +91,13 @@ class Fault:
         violation, what the input has for the facet, e.g. `"K"` or
         `["time", "y", "x"]`.
     hint
-        What to do about a `contract_violation`, as worded in `message`.
+        What to do about a `contract_violation`, as worded in `message`, or
+        about an `input_unbound`.
     location
         Where in the config: the inputs an `input_check_failed` compared, e.g.
         `"[inputs.met], [inputs.soil]"`, or what made the request an
-        `unknown_target` names, e.g. `"[outputs.*]"`.
+        `unknown_target` names, e.g. `"[outputs.*]"`, or `"[inputs.*]"` for an
+        `input_unbound`.
 
     Examples
     --------

@@ -481,13 +481,39 @@ class TestEveryFaultInOneRun:
         report = excinfo.value.report
         assert [s.name for s in report.failed] == ["plan"]
         [fault] = _stage(report, "plan").errors
-        assert fault.kind == "plan_invalid"
-        assert "Required input offset" in fault.message
+        assert fault.kind == "input_unbound"
+        assert (fault.node, fault.target) == ("offset", "input of total")
+        assert fault.location == "[inputs.*]"
+        assert fault.hint is not None
+        assert "'offset'" in fault.hint
+        assert "required input 'offset'" in fault.message
+
+    def test_each_unbound_input_is_its_own_fault(self, tmp_path):
+        """The #58 reproduction: two missing inputs give two faults."""
+        (tmp_path / "nodes.py").write_text(
+            "import xarray as xr\n\n\n"
+            "def total(rain: xr.DataArray, snow: xr.DataArray, hail: xr.DataArray)"
+            " -> xr.DataArray:\n    return rain + snow + hail\n"
+        )
+        xr.Dataset({"rain": ("x", [1.0])}).to_netcdf(tmp_path / "met.nc")
+        cfg = tmp_path / "config.toml"
+        cfg.write_text(
+            '[inputs.met]\npath = "met.nc"\nsuffix = ""\nvars = ["rain"]\n\n'
+            '[nodes]\n_import_path = "nodes.py"\n\n'
+            '[outputs.out]\npath = "out.nc"\nsuffix = ""\nvars = ["total"]\n'
+        )
+        with pytest.raises(DryRunError) as excinfo:
+            dry_run(cfg)
+        errors = _stage(excinfo.value.report, "plan").errors
+        assert [(f.kind, f.node) for f in errors] == [
+            ("input_unbound", "hail"),
+            ("input_unbound", "snow"),
+        ]
 
     def test_unbound_input_with_outputs_is_a_fault(self, tmp_path):
         with (
             xra.enabled(True),
-            pytest.raises(DryRunError, match="Required input offset"),
+            pytest.raises(DryRunError, match="required input 'offset'"),
         ):
             dry_run(_unbound_config(tmp_path, outputs=True))
 
@@ -498,7 +524,7 @@ class TestEveryFaultInOneRun:
         assert [s.name for s in report.failed] == ["dag", "plan"]
         [conflict] = _stage(report, "dag").errors
         assert (conflict.kind, conflict.node) == ("contract_conflict", "temperature")
-        assert "Required input offset" in _stage(report, "plan").errors[0].message
+        assert "required input 'offset'" in _stage(report, "plan").errors[0].message
         assert _stage(report, "outputs").status == "ok"
 
     def test_an_unbound_input_does_not_hide_an_unused_one(
@@ -513,7 +539,7 @@ class TestEveryFaultInOneRun:
         with xra.enabled(True), pytest.raises(DryRunError) as excinfo:
             dry_run(cfg)
         plan = _stage(excinfo.value.report, "plan")
-        assert "Required input offset" in plan.errors[0].message
+        assert "required input 'offset'" in plan.errors[0].message
         assert [f.node for f in plan.findings] == ["humidity_extra"]
 
     def test_a_failed_blocking_dim_labels_the_inputs_invalid(
@@ -553,7 +579,7 @@ class TestEveryFaultInOneRun:
     def test_final_vars_that_need_an_unbound_input_fail(self, tmp_path):
         with (
             xra.enabled(True),
-            pytest.raises(DryRunError, match="Required input offset"),
+            pytest.raises(DryRunError, match="required input 'offset'"),
         ):
             dry_run(_unbound_config(tmp_path), final_vars=["total"])
 
@@ -578,7 +604,7 @@ class TestEveryFaultInOneRun:
         with xra.enabled(True):
             result = runner.invoke(app, ["run", cfg, "--dry-run"])
         assert result.exit_code == 1
-        assert "Required input offset" in result.output
+        assert "required input 'offset'" in result.output
         assert "'temperature'" in result.output
         assert "Dry run failed: 2 stage(s)" in result.output
         assert "Dry run passed." not in result.output
@@ -638,7 +664,7 @@ class TestStructuredReport:
         data = json.loads(result.output)
         assert data["ok"] is False
         kinds = [f["kind"] for stage in data["stages"] for f in stage["errors"]]
-        assert kinds == ["contract_conflict", "plan_invalid"]
+        assert kinds == ["contract_conflict", "input_unbound"]
 
     def test_cli_json_on_an_unparseable_config(self, tmp_path):
         cfg = tmp_path / "config.toml"

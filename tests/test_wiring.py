@@ -58,7 +58,7 @@ def _consumer_module(register):
 class TestUnbound:
     def test_missing_required_input_raises(self, register):
         dr = _consumer_module(register)
-        with pytest.raises(ValueError, match="Required input x not provided"):
+        with pytest.raises(ValueError, match="required input 'x'"):
             check_wiring(dr, ["out"], {})
 
     def test_present_input_passes(self, register):
@@ -140,5 +140,7 @@ class TestUnused:
 class TestUnboundMessage:
     def test_names_the_consuming_node_and_is_a_catena_error(self, register):
         dr = _consumer_module(register)
-        with pytest.raises(CatenaValueError, match=r"x not provided.*\['out'\]"):
+        with pytest.raises(
+            CatenaValueError, match="required input 'x' of out is neither loaded"
+        ):
             check_wiring(dr, ["out"], {})
