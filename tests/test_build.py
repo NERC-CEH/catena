@@ -1,6 +1,8 @@
 """Tests for catena.build — build_driver wiring."""
 
+import numpy as np
 import pytest
+import xarray as xr
 from hamilton import driver
 
 from catena.build import build_driver
@@ -106,3 +108,45 @@ class TestBuildDriverFromConfig:
         config.write_text('[model]\n_import_path = "nodes.py"\n')
         dr = build_driver_from_config(load_config(config))
         assert dr.execute(["one"]) == {"one": 1}
+
+
+class TestExactAlignment:
+    """Nodes run under `arithmetic_join="exact"`, so a coordinate mismatch raises."""
+
+    @pytest.fixture
+    def dr(self):
+        spec = NodeSpec(
+            name="total",
+            inputs=["a", "b"],
+            expression="a + b",
+            import_path=None,
+            function=None,
+        )
+        return build_driver(["node"], {}, node_specs=[spec])
+
+    @staticmethod
+    def _arrays(offset: float):
+        a = xr.DataArray(np.ones(3), dims="y", coords={"y": [0.0, 1.0, 2.0]})
+        return {"a": a, "b": a.assign_coords(y=a.y + offset)}
+
+    def test_mismatched_coordinates_raise(self, dr):
+        with pytest.raises(xr.AlignmentError, match="'y'"):
+            dr.execute(["total"], inputs=self._arrays(1e-9))
+
+    def test_matching_coordinates_run(self, dr):
+        result = dr.execute(["total"], inputs=self._arrays(0.0))
+        assert result["total"].sizes == {"y": 3}
+
+    def test_broadcasting_a_new_dimension_is_unaffected(self, dr):
+        inputs = self._arrays(0.0)
+        inputs["b"] = xr.DataArray(np.ones(2), dims="time")
+        assert dr.execute(["total"], inputs=inputs)["total"].sizes == {
+            "y": 3,
+            "time": 2,
+        }
+
+    def test_option_is_restored_after_a_failed_run(self, dr):
+        before = xr.get_options()["arithmetic_join"]
+        with pytest.raises(xr.AlignmentError):
+            dr.execute(["total"], inputs=self._arrays(1e-9))
+        assert xr.get_options()["arithmetic_join"] == before

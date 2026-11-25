@@ -312,7 +312,7 @@ Available checks:
 | `coords_equal` | any | the named `coords` match across all inputs (`atol` for float coords) |
 | `crs_equal` | any | all inputs declare the same CRS, compared as the text stored in the files |
 
-To check that gridded inputs share a grid, declare `crs_equal` and `coords_equal` on the spatial coordinates; catena does not check this otherwise ([Data formats › Spatial handling](data-formats.md#spatial-handling)).
+To check that gridded inputs share a grid before anything runs, declare `crs_equal` and `coords_equal` on the spatial coordinates; otherwise a mismatch is an error only when a node combines them ([Data formats › Spatial handling](data-formats.md#spatial-handling)).
 
 The checks live in [`catena.input_checks`](modules/catena.input_checks.md) and can be called directly from Python, with a mapping from a name to each dataset.
 They check the whole input files, also under [`[subset]`](#subset).
