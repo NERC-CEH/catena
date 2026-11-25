@@ -9,10 +9,12 @@ from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
+import pytest
 import xarray as xr
 
-from catena.build import build_driver
+from catena.build import build_driver, build_driver_from_config
 from catena.config import IOSpec, SubsetSpec, load_config
+from catena.errors import CatenaValueError
 from catena.io import effective_suffix, get_final_vars, get_outputs, load_inputs
 
 
@@ -207,3 +209,107 @@ class TestSubsetArbitraryDim:
             xr.open_zarr(store, consolidated=False).compute(),
             xr.open_zarr(reference, consolidated=False).compute(),
         )
+
+
+class TestDimensionCreatedByANode:
+    """A node can add a dimension no input has: here `levels` builds `level`.
+
+    `profile` combines it with an input on `location`, so it carries both, and
+    blocking and subset runs partition `location` while `level` is left whole.
+    """
+
+    @staticmethod
+    def _config(tmp_path, outputs: str, extra: str = "") -> Path:
+        xr.Dataset(
+            {"field": ("location", np.arange(1.0, 5.0))},
+            coords={"location": np.arange(4)},
+        ).to_netcdf(tmp_path / "field.nc", engine="netcdf4")
+        (tmp_path / "nodes.py").write_text(
+            "import numpy as np\n"
+            "import xarray as xr\n\n\n"
+            "def levels(*, n_levels: int = 3) -> xr.DataArray:\n"
+            "    depth = np.arange(n_levels) + 0.5\n"
+            '    return xr.DataArray(depth, dims="level", coords={"level": depth})\n\n\n'
+            "def profile(field: xr.DataArray, levels: xr.DataArray) -> xr.DataArray:\n"
+            "    return field * levels\n"
+        )
+        cfg = tmp_path / "config.toml"
+        cfg.write_text(
+            '[nodes]\n_import_path = "nodes.py"\n\n'
+            f'[inputs]\npath = "{tmp_path / "field.nc"}"\nvars = ["field"]\n\n'
+            f"[outputs]\n{outputs}\n{extra}"
+        )
+        return cfg
+
+    def _netcdf_config(self, tmp_path, extra: str = "", vars_: str = '"profile"'):
+        outputs = f'path = "{tmp_path / "out.nc"}"\nvars = [{vars_}]\n'
+        return self._config(tmp_path, outputs, extra)
+
+    def test_blocked_matches_unblocked(self, tmp_path):
+        from catena.blocking import execute_blocked
+        from catena.config import BlockingSpec
+
+        parsed = load_config(self._netcdf_config(tmp_path))
+        inputs = load_inputs(parsed.input_specs)
+        dr = build_driver_from_config(parsed)
+        ref = dr.execute(["profile"], inputs=inputs)  # type: ignore[reportArgumentType]
+        blocked = execute_blocked(
+            dr, inputs, ["profile"], BlockingSpec(block_size=3, dim="location")
+        )
+        assert ref["profile"].sizes == {"location": 4, "level": 3}
+        xr.testing.assert_identical(blocked["profile"], ref["profile"])
+
+    def test_zarr_subsets_merge_to_the_full_run(self, tmp_path):
+        from catena import run
+        from catena.subsets import create_output_store, merge_subset_outputs
+
+        store = tmp_path / "out.zarr"
+        parsed = load_config(
+            self._config(tmp_path, f'path = "{store}"\nvars = ["profile"]\n')
+        )
+        create_output_store(parsed, dim="location", chunk=2)
+        template = xr.open_zarr(store, consolidated=False)
+        assert template["profile"].sizes == {"location": 4, "level": 3}
+
+        for start, stop in ((0, 2), (2, 4)):
+            run(parsed, subset=SubsetSpec(start=start, stop=stop, dim="location"))
+        merge_subset_outputs(parsed.output_specs)
+
+        reference = tmp_path / "reference.zarr"
+        run(
+            replace(
+                parsed,
+                output_specs={
+                    "outputs": replace(
+                        parsed.output_specs["outputs"], path=str(reference)
+                    )
+                },
+            )
+        )
+        xr.testing.assert_identical(
+            xr.open_zarr(store, consolidated=False).compute(),
+            xr.open_zarr(reference, consolidated=False).compute(),
+        )
+
+    def test_blocking_refuses_the_dimension_node_as_an_output(self, tmp_path):
+        from catena import run
+
+        cfg = self._netcdf_config(
+            tmp_path,
+            extra='\n[blocking]\nblock_size = 2\ndim = "location"\n',
+            vars_='"profile", "levels"',
+        )
+        with pytest.raises(CatenaValueError, match="recombine 'levels'"):
+            run(cfg)
+
+    def test_zarr_store_refuses_the_dimension_node_as_an_output(self, tmp_path):
+        from catena.subsets import create_output_store
+
+        parsed = load_config(
+            self._config(
+                tmp_path,
+                f'path = "{tmp_path / "out.zarr"}"\nvars = ["profile", "levels"]\n',
+            )
+        )
+        with pytest.raises(CatenaValueError, match="'levels' has no 'location'"):
+            create_output_store(parsed, dim="location", chunk=2)
