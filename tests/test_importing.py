@@ -7,8 +7,11 @@ error a user gets when they try is part of the contract.
 """
 
 import os
+import pickle
+import subprocess
 import sys
 
+import cloudpickle
 import pytest
 
 from catena.config import Config
@@ -85,6 +88,43 @@ class TestNoCollisionBetweenDirectories:
         before = list(sys.path)
         import_user_module("nodes.py", base=tmp_path)
         assert sys.path == before
+
+
+class TestPickling:
+    """A node function must reach dask workers in other processes.
+
+    `apply_ufunc(dask="parallelized")` and `map_blocks` embed the user's callable in
+    the dask graph, which the `processes` and `distributed` schedulers pickle.
+    """
+
+    @pytest.fixture
+    def module(self, tmp_path):
+        directory = tmp_path / "my-proj.v1"
+        directory.mkdir()
+        (directory / "nodes.py").write_text("def double(x):\n    return 2 * x\n")
+        return import_user_module("nodes.py", base=directory)
+
+    def test_module_name_is_a_flat_identifier(self, module):
+        assert module.__name__.isidentifier()
+
+    def test_pickle_round_trips_in_process(self, module):
+        assert pickle.loads(pickle.dumps(module.double))(3) == 6
+
+    def test_cloudpickle_payload_loads_in_a_fresh_process(self, module):
+        """The fresh process never loaded the module, so only a by-value payload
+        can be called there."""
+        payload = cloudpickle.dumps(module.double)
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import pickle, sys; print(pickle.loads(sys.stdin.buffer.read())(3))",
+            ],
+            input=payload,
+            capture_output=True,
+            check=True,
+        )
+        assert result.stdout.decode().strip() == "6"
 
 
 class TestSiblingImportsAreUnsupported:
