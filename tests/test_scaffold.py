@@ -15,7 +15,13 @@ import catena
 from catena.config import Config
 from catena.errors import CatenaFileExistsError, CatenaValueError
 from catena.importing import ENTRY_POINT_GROUP, clear_registry_cache
-from catena.scaffold import generate_config, input_requirements
+from catena.scaffold import (
+    ANY_OTHER,
+    InputChange,
+    generate_config,
+    input_requirements,
+    variant_inputs,
+)
 
 RECIPES = Path(__file__).parent.parent / "recipes"
 
@@ -197,6 +203,149 @@ class TestGenerateConfig:
     def test_a_dotted_module_carries_its_import_path(self):
         data = generate_config(["catena.transforms"]).data
         assert data["transforms"]["_import_path"] == "catena.transforms"
+
+
+VARIANTS = """
+from hamilton.function_modifiers import config
+
+
+def model(extra: xr.DataArray, *, method: str = "plain") -> xr.DataArray:
+    return extra
+
+
+@config.when(method="plain")
+def extra__plain() -> xr.DataArray:
+    return xr.DataArray(0.0)
+
+
+@config.when(method="corrected")
+def extra__corrected(correction: xr.DataArray) -> xr.DataArray:
+    return correction
+
+
+@config.when_in(method=["corrected", "other"])
+def report(extra: xr.DataArray) -> xr.DataArray:
+    return extra
+"""
+
+COUPLING = """
+from hamilton.function_modifiers import config
+
+
+def growth(vwc: xr.DataArray) -> xr.DataArray:
+    return vwc
+
+
+@config.when(vwc_from="splash")
+def vwc__splash(soil_moisture: xr.DataArray) -> xr.DataArray:
+    return soil_moisture
+"""
+
+
+class TestVariantInputs:
+    """The issue #64 cases: inputs only a non-default variant needs."""
+
+    def test_each_named_value_and_any_other_is_listed(self, tmp_path):
+        changes = variant_inputs([_module(tmp_path, "m", VARIANTS)], base=tmp_path)
+        assert changes == {
+            "method": {
+                "corrected": InputChange(added=("correction",)),
+                "plain": InputChange(),
+                "other": InputChange(added=("extra",)),
+                ANY_OTHER: InputChange(added=("extra",)),
+            }
+        }
+
+    def test_a_setting_only_a_decorator_reads_adds_and_removes(self, tmp_path):
+        changes = variant_inputs([_module(tmp_path, "c", COUPLING)], base=tmp_path)
+        assert changes["vwc_from"] == {
+            "splash": InputChange(added=("soil_moisture",), removed=("vwc",)),
+            ANY_OTHER: InputChange(),
+        }
+
+    def test_when_not_and_when_not_in_values_are_read(self, tmp_path):
+        name = _module(
+            tmp_path,
+            "n",
+            """
+            from hamilton.function_modifiers import config
+
+
+            @config.when_not(mode="a")
+            def x__not_a(p: xr.DataArray) -> xr.DataArray:
+                return p
+
+
+            @config.when_not_in(mode=["b", "c"])
+            def y(q: xr.DataArray) -> xr.DataArray:
+                return q
+            """,
+        )
+        assert list(variant_inputs([name], base=tmp_path)["mode"]) == [
+            "a",
+            "b",
+            "c",
+            ANY_OTHER,
+        ]
+
+    def test_a_custom_resolver_alone_has_unknown_values(self, tmp_path):
+        name = _module(
+            tmp_path,
+            "u",
+            """
+            from hamilton.function_modifiers import config
+
+
+            @config(lambda cfg: cfg.get("flag") == 1, config_used=["flag"])
+            def x(p: xr.DataArray) -> xr.DataArray:
+                return p
+            """,
+        )
+        assert variant_inputs([name], base=tmp_path) == {"flag": {}}
+        notes = generate_config([name], base=tmp_path).notes
+        assert any("'flag' selects variants" in note for note in notes)
+
+    def test_a_value_that_does_not_build_carries_the_error(self, tmp_path):
+        name = _module(
+            tmp_path,
+            "e",
+            """
+            from hamilton.function_modifiers import config
+
+
+            @config.when(m="a")
+            def x__a() -> xr.DataArray:
+                return xr.DataArray(0.0)
+
+
+            @config.when_in(m=["a", "b"])
+            def x__b() -> xr.DataArray:
+                return xr.DataArray(1.0)
+            """,
+        )
+        change = variant_inputs([name], base=tmp_path)["m"]["a"]
+        assert change.error is not None
+        assert change
+        tomllib.loads(generate_config([name], base=tmp_path).dumps())
+
+    def test_a_module_without_config_decorators_has_none(self, two_models):
+        assert variant_inputs(["first.py", "second.py"], base=two_models) == {}
+
+
+class TestVariantNotes:
+    def test_values_that_change_alike_share_a_note(self, tmp_path):
+        notes = generate_config([_module(tmp_path, "m", VARIANTS)], base=tmp_path).notes
+        assert notes == [
+            "[m] method = 'corrected' also needs 'correction'.",
+            "[m] method = 'other' or any other value also needs 'extra'.",
+        ]
+
+    def test_a_decorator_only_setting_names_its_section(self, tmp_path):
+        generated = generate_config([_module(tmp_path, "c", COUPLING)], base=tmp_path)
+        assert generated.notes == [
+            "[c] vwc_from = 'splash' also needs 'soil_moisture'; no longer needs 'vwc'."
+        ]
+        assert generated.data["inputs"]["vars"] == ["vwc"]
 
 
 class TestRegisteredModules:
