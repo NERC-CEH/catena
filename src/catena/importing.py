@@ -22,12 +22,15 @@ explanation pointing at packaging when one tries.
 
 import hashlib
 import importlib.util
+import re
 import sys
 import warnings
 from functools import cache
 from importlib.metadata import entry_points
 from pathlib import Path
 from types import ModuleType
+
+import cloudpickle
 
 from .errors import CatenaFileNotFoundError, CatenaValueError
 from .specs import RECOGNISED_SECTIONS, RegisteredModule
@@ -81,8 +84,11 @@ def resolve_file_form(import_path: str, base: Path | None) -> Path:
 
 def _module_name(path: Path) -> str:
     """Return a `sys.modules` name unique to this file, readable in a traceback."""
+    # Flat, with no package part: pickle resolves a function through its module's
+    # dotted name, and the parent package of a dotted name is never imported.
     digest = hashlib.sha256(str(path).encode()).hexdigest()[:8]
-    return f"{_LOCAL_PREFIX}_{path.parent.name}_{digest}.{path.stem}"
+    name = f"{_LOCAL_PREFIX}_{path.parent.name}_{digest}_{path.stem}"
+    return re.sub(r"\W", "_", name)
 
 
 def _load_from_file(path: Path, import_path: str) -> ModuleType:
@@ -127,6 +133,9 @@ def _load_from_file(path: Path, import_path: str) -> ModuleType:
     except Exception:
         del sys.modules[name]
         raise
+    # By value, so a dask worker in another process can call a node's functions
+    # without importing a module that exists only in this one.
+    cloudpickle.register_pickle_by_value(module)
     return module
 
 

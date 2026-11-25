@@ -2737,6 +2737,7 @@ version = "0.5.0.dev0"
 source = { editable = "." }
 dependencies = [
     { name = "apache-hamilton" },
+    { name = "cloudpickle" },
     { name = "dask" },
     { name = "netcdf4" },
     { name = "numpy" },
@@ -2808,6 +2809,7 @@ test = [
 requires-dist = [
     { name = "apache-hamilton", specifier = ">=1.90.0" },
     { name = "apache-hamilton", extras = ["visualization"], marker = "extra == 'viz'", specifier = ">=1.90.0" },
+    { name = "cloudpickle", specifier = ">=3.1.2" },
     { name = "dask", specifier = ">=2025.1.0" },
     { name = "dotdoc", extras = ["hamilton"], marker = "extra == 'viz'", specifier = ">=0.1.0" },
     { name = "netcdf4", specifier = ">=1.7.4" },
